@@ -12,34 +12,22 @@ from datetime import datetime
 
 import NXOpen
 import NXOpen.UF
+import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from utils.nx_helpers import get_session, get_work_part, prompt_folder, traverse_assembly  # noqa: E402
-from utils.excel_writer import ExcelWriter  # noqa: E402
+from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
+from utils.template_generator import MASTER_COLUMNS, create_workbook_with_headers  # noqa: E402
+
+_MAPPING_FILE = os.path.join(_REPO_ROOT, "config", "attribute_mapping.yaml")
 
 
-_REQUIRED_ATTRS = [
-    "PART_NUMBER",
-    "DESCRIPTION",
-    "MATERIAL",
-    "FINISH",
-    "REVISION",
-    "DRAWING_NUMBER",
-]
-
-_BOM_HEADERS = [
-    "Level",
-    "Part Number",
-    "Description",
-    "Material",
-    "Finish",
-    "Revision",
-    "Drawing Number",
-    "Quantity",
-]
+def _load_mapping():
+    with open(_MAPPING_FILE, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    return cfg.get("columns", {})
 
 
 def _get_attr(nxobj, attr_name):
@@ -71,6 +59,31 @@ def _collect_components(root_component):
     return rows, part_counter
 
 
+def _build_row(component, depth, part_counter, col_map):
+    """Build a MASTER_COLUMNS-ordered list of values for one component."""
+    proto = component.Prototype
+    pn = _get_attr(proto, "PART_NUMBER") if proto else ""
+    qty = part_counter.get(pn or component.Name, 1)
+
+    values = {}
+    for col in MASTER_COLUMNS:
+        if col == "LEVEL":
+            values[col] = depth
+        elif col == "PART_NUMBER":
+            values[col] = pn
+        elif col == "QUANTITY":
+            values[col] = qty
+        elif col in ("STATUS", "NOTES"):
+            values[col] = ""
+        elif proto is not None:
+            nx_attr = col_map.get(col, col)
+            values[col] = _get_attr(proto, nx_attr)
+        else:
+            values[col] = ""
+
+    return [values[col] for col in MASTER_COLUMNS]
+
+
 def main():
     session = get_session()
     part = get_work_part()
@@ -84,6 +97,8 @@ def main():
         print("BOM export cancelled by user.")
         return
 
+    col_map = _load_mapping()
+
     hla_pn = _get_attr(part, "PART_NUMBER") or os.path.splitext(os.path.basename(part.FullPath))[0]
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"BOM_{hla_pn}_{timestamp}.xlsx"
@@ -92,24 +107,14 @@ def main():
     root = part.ComponentAssembly.RootComponent
     component_rows, part_counter = _collect_components(root)
 
-    writer = ExcelWriter(output_path)
-    writer.add_header_row("BOM", _BOM_HEADERS)
+    workbook, worksheet = create_workbook_with_headers(output_path)
+    cell_fmt = workbook.add_format({"border": 1})
 
-    for component, depth in component_rows:
-        proto = component.Prototype
-        values = [
-            depth,
-            _get_attr(proto, "PART_NUMBER"),
-            _get_attr(proto, "DESCRIPTION"),
-            _get_attr(proto, "MATERIAL"),
-            _get_attr(proto, "FINISH"),
-            _get_attr(proto, "REVISION"),
-            _get_attr(proto, "DRAWING_NUMBER"),
-            part_counter.get(_get_attr(proto, "PART_NUMBER") or component.Name, 1),
-        ]
-        writer.add_row("BOM", values)
+    for row_idx, (component, depth) in enumerate(component_rows, start=1):
+        for col_idx, value in enumerate(_build_row(component, depth, part_counter, col_map)):
+            worksheet.write(row_idx, col_idx, value, cell_fmt)
 
-    writer.save()
+    workbook.close()
     print(f"BOM exported ({len(component_rows)} components): {output_path}")
 
 

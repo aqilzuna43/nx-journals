@@ -1,0 +1,18 @@
+# Maps master template column names → actual NX internal attribute names.
+# Run utils/discover_attributes.py on a real part to find your internal names,
+# then update the values below.
+
+columns:
+  DESCRIPTION:     DB_TITLE         # update after running discover_attributes
+  MATERIAL:        MATERIAL
+  FINISH:          SURFACE_FINISH   # update after running discover_attributes
+  REVISION:        DB_PART_REV      # update after running discover_attributes
+  DRAWING_NUMBER:  DRAWING_NUMBER   # update after running discover_attributes
+
+# These columns exist in the master template but are never written back to NX
+skip_columns:
+  - LEVEL
+  - PART_NUMBER
+  - QUANTITY
+  - STATUS
+  - NOTES

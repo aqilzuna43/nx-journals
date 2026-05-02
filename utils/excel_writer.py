@@ -25,6 +25,7 @@ class ExcelWriter:
         self._workbook = xlsxwriter.Workbook(filepath)
         self._sheets = {}
         self._row_counters = {}
+        self._color_formats = {}
 
         self._header_fmt = self._workbook.add_format({
             "bold": True,
@@ -66,6 +67,28 @@ class ExcelWriter:
         sheet = self._get_or_create_sheet(sheet_name)
         fmt = self._amber_fmt if highlight_amber else self._cell_fmt
         sheet.write(row, col, value, fmt)
+
+    def _get_color_format(self, bg_color):
+        if bg_color not in self._color_formats:
+            self._color_formats[bg_color] = self._workbook.add_format({
+                "bg_color": bg_color,
+                "border": 1,
+            })
+        return self._color_formats[bg_color]
+
+    def add_row_with_color(self, sheet_name, values, bg_color):
+        """Append a data row with a specific background hex color (e.g. '#FFF3CD')."""
+        sheet = self._get_or_create_sheet(sheet_name)
+        row = self._row_counters[sheet_name]
+        fmt = self._get_color_format(bg_color)
+        for col, value in enumerate(values):
+            sheet.write(row, col, value, fmt)
+        self._row_counters[sheet_name] += 1
+
+    def write_master_header(self, sheet_name):
+        """Write MASTER_COLUMNS as a styled header row."""
+        from utils.template_generator import MASTER_COLUMNS
+        self.add_header_row(sheet_name, MASTER_COLUMNS)
 
     def save(self):
         """Close the workbook and flush to disk."""
