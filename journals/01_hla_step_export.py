@@ -35,8 +35,10 @@ def _get_part_attr(part, attr_name, fallback=""):
 
 
 def _build_output_filename(part, config):
-    part_number = _get_part_attr(part, "PART_NUMBER")
-    revision = _get_part_attr(part, "REVISION")
+    # TC stores part number as DB_PART_NO and revision as DB_PART_REV.
+    # Fall back to legacy names for parts not yet synced via TC.
+    part_number = _get_part_attr(part, "DB_PART_NO") or _get_part_attr(part, "PART_NUMBER")
+    revision = _get_part_attr(part, "DB_PART_REV") or _get_part_attr(part, "REVISION")
 
     if part_number:
         template = config.get("output_naming", "{part_number}_REV{revision}.stp")

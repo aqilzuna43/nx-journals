@@ -1,18 +1,71 @@
-# Maps master template column names → actual NX internal attribute names.
-# Run utils/discover_attributes.py on a real part to find your internal names,
-# then update the values below.
+# Attribute name mappings derived from the TC export:
+#   documents/input/Att-264MN021145A01_20Apr26.xlsx
+#   Row 1 = TC object group, Row 2 = display alias (parenthetical = internal NX name)
+#
+# Verify internal names by:
+#   1. Run J05 PULL on the open assembly → inspect PULL_*.xlsx column headers
+#   2. Run utils/discover_attributes.py on a representative part → ATTR_DISCOVERY_*.txt
+#   3. Update values below if NX reports different names.
 
+# ── J02 / J04: maps MASTER_COLUMNS header → NX internal attribute name ──────
+# These drive BOM export and attribute audit output.
 columns:
-  DESCRIPTION:     DB_TITLE         # update after running discover_attributes
-  MATERIAL:        MATERIAL
-  FINISH:          SURFACE_FINISH   # update after running discover_attributes
-  REVISION:        DB_PART_REV      # update after running discover_attributes
-  DRAWING_NUMBER:  DRAWING_NUMBER   # update after running discover_attributes
+  PART_NUMBER:    DB_PART_NO        # TC alias: "ID (DB_PART_NO)"
+  DESCRIPTION:    DB_PART_NAME      # TC alias: "Name (DB_PART_NAME)"
+  MATERIAL:       MATERIAL          # TC alias: "Material"
+  FINISH:         SURFACE_FINISH    # not in TC export — verify via discover_attributes
+  REVISION:       DB_PART_REV       # TC alias: "Revision (DB_PART_REV)"
+  DRAWING_NUMBER: DRAWING_NUMBER    # stored attribute on NX part — verify via discover_attributes
 
-# These columns exist in the master template but are never written back to NX
+# ── J05: maps TC display alias → NX internal attribute name ─────────────────
+tc_columns:
+  # --- Part identity (used for matching only — never written) ---
+  DB_PART_NO:   DB_PART_NO    # TC alias: "ID (DB_PART_NO)"
+  DB_PART_REV:  DB_PART_REV   # TC alias: "Revision (DB_PART_REV)"
+
+  # --- Writable attributes ---
+  # Verify WAEItem / WAEItemRevision internal names via PULL mode before first push.
+
+  # CAD Design group
+  Material:     MATERIAL
+
+  # WAEItem group
+  Commodity Code:           Commodity Code
+  Commodity Type:           Commodity Type
+  Country of Origin:        Country of Origin
+  Export Control Number:    Export Control Number
+  HANDEDNESS:               HANDEDNESS
+  ID (WAEItemItemID):       WAEItemItemID       # TC alias contains internal name
+  MANUFACTURINGCODE:        MANUFACTURINGCODE
+  Mfr. Name:                Mfr. Name
+  Mfr. Part Number:         Mfr. Part Number
+  Part Classification:      Part Classification
+  PARTCATEGORY:             PARTCATEGORY
+  PROGRAMIDENTIFIER:        PROGRAMIDENTIFIER
+  PROJECT_IDS:              PROJECT_IDS
+  Serviceable item flag:    Serviceable item flag
+  Shelf Life Limited:       Shelf Life Limited
+  Stocking Type:            Stocking Type
+  Temperature Sensitive:    Temperature Sensitive
+  Traceability:             Traceability
+  UOM:                      UOM
+  WAEItemID:                WAEItemID
+
+  # WAEItemRevision group
+  COMPONENT_CLASS:          COMPONENT_CLASS
+  LIFED:                    LIFED
+  PREFERRED:                PREFERRED
+  SERIAL_NUMBERED_PART:     SERIAL_NUMBERED_PART
+
+# TC export columns that exist in the Excel but must never be written to NX
 skip_columns:
-  - LEVEL
-  - PART_NUMBER
-  - QUANTITY
-  - STATUS
-  - NOTES
+  - DB_PART_NAME          # key field — use for display only
+  - Description           # DB_TITLE equivalent — managed by TC
+  - Part Category
+  - Part Identifier
+  - Type
+  - Checked out user id   # TC user record — read-only
+  - User ID
+  - NX_MassPropRollupMass # computed by NX mass rollup — read-only
+  - Checked-Out           # UGMASTER flag — read-only
+  - Date Modified

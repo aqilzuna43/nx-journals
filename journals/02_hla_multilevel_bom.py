@@ -39,18 +39,19 @@ def _get_attr(nxobj, attr_name):
         return ""
 
 
-def _collect_components(root_component):
+def _collect_components(root_component, col_map):
     """
     Walk the assembly, collecting (component, depth) tuples.
     Also builds a part-number → occurrence count map for QUANTITY.
     """
     rows = []
     part_counter = Counter()
+    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
 
     def _walk(component, depth):
         for child in component.GetChildren():
             proto = child.Prototype
-            pn = _get_attr(proto, "PART_NUMBER") if proto else ""
+            pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
             part_counter[pn or child.Name] += 1
             rows.append((child, depth))
             _walk(child, depth + 1)
@@ -62,7 +63,8 @@ def _collect_components(root_component):
 def _build_row(component, depth, part_counter, col_map):
     """Build a MASTER_COLUMNS-ordered list of values for one component."""
     proto = component.Prototype
-    pn = _get_attr(proto, "PART_NUMBER") if proto else ""
+    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
+    pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
     qty = part_counter.get(pn or component.Name, 1)
 
     values = {}
@@ -99,13 +101,18 @@ def main():
 
     col_map = _load_mapping()
 
-    hla_pn = _get_attr(part, "PART_NUMBER") or os.path.splitext(os.path.basename(part.FullPath))[0]
+    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
+    hla_pn = (
+        _get_attr(part, pn_attr)
+        or _get_attr(part, "PART_NUMBER")
+        or os.path.splitext(os.path.basename(part.FullPath))[0]
+    )
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"BOM_{hla_pn}_{timestamp}.xlsx"
     output_path = os.path.join(output_folder, filename)
 
     root = part.ComponentAssembly.RootComponent
-    component_rows, part_counter = _collect_components(root)
+    component_rows, part_counter = _collect_components(root, col_map)
 
     workbook, worksheet = create_workbook_with_headers(output_path)
     cell_fmt = workbook.add_format({"border": 1})
