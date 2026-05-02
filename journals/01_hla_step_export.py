@@ -1,6 +1,6 @@
 """
 Journal 01 — HLA STEP Export
-Exports the active work part to STEP using settings from config/step_export.yaml.
+Exports the active work part to STEP using settings from config/step_export.json.
 Run via: NX > Tools > Journal > Play
 """
 
@@ -15,14 +15,12 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import yaml  # noqa: E402
+from utils.config_loader import load_json_config  # noqa: E402
 from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
 
 
 def _load_config():
-    config_path = os.path.join(_REPO_ROOT, "config", "step_export.yaml")
-    with open(config_path, "r") as fh:
-        return yaml.safe_load(fh)
+    return load_json_config(_REPO_ROOT, os.path.join("config", "step_export.json"))
 
 
 def _get_part_attr(part, attr_name, fallback=""):

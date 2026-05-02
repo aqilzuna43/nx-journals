@@ -1,0 +1,51 @@
+{
+  "columns": {
+    "PART_NUMBER": "DB_PART_NO",
+    "DESCRIPTION": "DB_PART_NAME",
+    "MATERIAL": "MATERIAL",
+    "FINISH": "SURFACE_FINISH",
+    "REVISION": "DB_PART_REV",
+    "DRAWING_NUMBER": "DRAWING_NUMBER"
+  },
+  "tc_columns": {
+    "DB_PART_NO": "DB_PART_NO",
+    "DB_PART_REV": "DB_PART_REV",
+    "Material": "MATERIAL",
+    "Commodity Code": "Commodity Code",
+    "Commodity Type": "Commodity Type",
+    "Country of Origin": "Country of Origin",
+    "Export Control Number": "Export Control Number",
+    "HANDEDNESS": "HANDEDNESS",
+    "ID (WAEItemItemID)": "WAEItemItemID",
+    "MANUFACTURINGCODE": "MANUFACTURINGCODE",
+    "Mfr. Name": "Mfr. Name",
+    "Mfr. Part Number": "Mfr. Part Number",
+    "Part Classification": "Part Classification",
+    "PARTCATEGORY": "PARTCATEGORY",
+    "PROGRAMIDENTIFIER": "PROGRAMIDENTIFIER",
+    "PROJECT_IDS": "PROJECT_IDS",
+    "Serviceable item flag": "Serviceable item flag",
+    "Shelf Life Limited": "Shelf Life Limited",
+    "Stocking Type": "Stocking Type",
+    "Temperature Sensitive": "Temperature Sensitive",
+    "Traceability": "Traceability",
+    "UOM": "UOM",
+    "WAEItemID": "WAEItemID",
+    "COMPONENT_CLASS": "COMPONENT_CLASS",
+    "LIFED": "LIFED",
+    "PREFERRED": "PREFERRED",
+    "SERIAL_NUMBERED_PART": "SERIAL_NUMBERED_PART"
+  },
+  "skip_columns": [
+    "DB_PART_NAME",
+    "Description",
+    "Part Category",
+    "Part Identifier",
+    "Type",
+    "Checked out user id",
+    "User ID",
+    "NX_MassPropRollupMass",
+    "Checked-Out",
+    "Date Modified"
+  ]
+}

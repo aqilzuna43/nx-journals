@@ -12,22 +12,22 @@ from datetime import datetime
 
 import NXOpen
 import NXOpen.UF
-import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from utils.config_loader import load_json_config  # noqa: E402
 from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
 from utils.excel_writer import ExcelWriter  # noqa: E402
 from utils.template_generator import MASTER_COLUMNS  # noqa: E402
 
-_MAPPING_FILE = os.path.join(_REPO_ROOT, "config", "attribute_mapping.yaml")
+_MAPPING_FILE = os.path.join("config", "attribute_mapping.json")
 
 _REVISION_PATTERN = re.compile(r"^([A-Z]|\d+)$")
 
 # Columns whose NX attr values are audited for presence and validity.
-# These are MASTER_COLUMNS names; the yaml mapping resolves the internal NX name.
+# These are MASTER_COLUMNS names; the JSON mapping resolves the internal NX name.
 _AUDITED_COLS = ["PART_NUMBER", "DESCRIPTION", "MATERIAL", "FINISH", "REVISION", "DRAWING_NUMBER"]
 
 _AMBER = "#FFF3CD"
@@ -37,8 +37,7 @@ _SUMMARY_HEADERS = ["Metric", "Value"]
 
 
 def _load_mapping():
-    with open(_MAPPING_FILE, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    cfg = load_json_config(_REPO_ROOT, _MAPPING_FILE)
     return cfg.get("columns", {})
 
 

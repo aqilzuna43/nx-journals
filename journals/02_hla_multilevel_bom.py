@@ -12,21 +12,20 @@ from datetime import datetime
 
 import NXOpen
 import NXOpen.UF
-import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from utils.config_loader import load_json_config  # noqa: E402
 from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
 from utils.template_generator import MASTER_COLUMNS, create_workbook_with_headers  # noqa: E402
 
-_MAPPING_FILE = os.path.join(_REPO_ROOT, "config", "attribute_mapping.yaml")
+_MAPPING_FILE = os.path.join("config", "attribute_mapping.json")
 
 
 def _load_mapping():
-    with open(_MAPPING_FILE, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    cfg = load_json_config(_REPO_ROOT, _MAPPING_FILE)
     return cfg.get("columns", {})
 
 

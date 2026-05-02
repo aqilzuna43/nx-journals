@@ -4,13 +4,13 @@ discover_attributes.py — Run once in NX to reveal internal attribute names.
 NX Open shows display aliases in the UI (e.g. "@ Part Number") but the
 internal title used by GetUserAttribute() may differ (e.g. "DB_PART_NO").
 This journal dumps every attribute on the current work part so you can
-build the correct attribute_mapping.yaml.
+build the correct attribute_mapping.json.
 
 How to use:
   1. Open a part in NX that has all your standard attributes populated.
   2. Tools > Journal > Play > select this file.
   3. Open the output .txt file — match titles against what you see in the
-     NX attribute editor to build your attribute_mapping.yaml.
+NX attribute editor to build your attribute_mapping.json.
 """
 
 import os

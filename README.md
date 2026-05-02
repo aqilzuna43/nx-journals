@@ -7,7 +7,7 @@ Run via **NX > Tools > Journal > Play** (`Alt+F8`). Each journal prompts for inp
 
 | # | File | Description |
 |---|------|-------------|
-| 01 | `01_hla_step_export.py` | Exports the active HLA part to STEP (AP214/AP242) using settings from `config/step_export.yaml` |
+| 01 | `01_hla_step_export.py` | Exports the active HLA part to STEP (AP214/AP242) using settings from `config/step_export.json` |
 | 02 | `02_hla_multilevel_bom.py` | Traverses the full assembly tree and exports a multilevel BOM to Excel from NX part attributes |
 | 03 | `03_batch_drawing_pdf.py` | Traverses the assembly, finds all associated drawing sheets, and batch-exports them to PDF |
 | 04 | `04_assembly_attribute_audit.py` | Audits required part attributes across the assembly and flags missing/invalid values to Excel |
@@ -28,8 +28,8 @@ This Excel file (generated from Teamcenter) defines:
 - The **display alias** shown in TC (row 2 of the export)
 - The **internal NX attribute name** shown in parentheses in the alias, e.g. `ID (DB_PART_NO)` -> internal name is `DB_PART_NO`
 
-All attribute mappings in `config/attribute_mapping.yaml` are derived from this file.
-Run **J05 PULL** to verify that the internal names in the yaml match what NX actually stores on real parts.
+All attribute mappings in `config/attribute_mapping.json` are derived from this file.
+Run **J05 PULL** to verify that the internal names in the JSON match what NX actually stores on real parts.
 
 ---
 
@@ -47,7 +47,7 @@ Run **J05 PULL** to verify that the internal names in the yaml match what NX act
 
 ### First time - verify attribute names
 
-Before running any push, confirm that the internal NX attribute names in `attribute_mapping.yaml` match your actual parts:
+Before running any push, confirm that the internal NX attribute names in `attribute_mapping.json` match your actual parts:
 
 ```
 Step 1  Open a representative part (one with TC attributes populated) in NX.
@@ -55,8 +55,8 @@ Step 2  Tools > Journal > Play -> utils/discover_attributes.py
         -> generates ATTR_DISCOVERY_*.txt listing every attribute on the part.
 Step 3  Run J05 PULL on the open assembly
         -> generates PULL_<assembly>_<timestamp>.xlsx listing current NX values.
-Step 4  Compare PULL output and ATTR_DISCOVERY report against attribute_mapping.yaml.
-        Update yaml values for any names that differ.
+Step 4  Compare PULL output and ATTR_DISCOVERY report against attribute_mapping.json.
+        Update JSON values for any names that differ.
 ```
 
 ### Ongoing - populate TC attributes from TC export
@@ -85,27 +85,30 @@ J02 -> BOM_<part>_<timestamp>.xlsx     Multilevel BOM, one row per component
 J04 -> AUDIT_<part>_<timestamp>.xlsx   Attribute audit, green = PASS, amber = FAIL
 ```
 
-J02 and J04 read the same attribute names resolved through `config/attribute_mapping.yaml -> columns`.
+J02 and J04 read the same attribute names resolved through `config/attribute_mapping.json -> columns`.
 Run J05 PUSH first to populate TC attributes, then J04 to verify completeness.
 
 ---
 
 ## Attribute Mapping Configuration
 
-`config/attribute_mapping.yaml` has two sections:
+`config/attribute_mapping.json` has two sections:
 
 ### `columns` - used by J02 and J04
 
 Maps the BOM/audit column header names to NX internal attribute names:
 
-```yaml
-columns:
-  PART_NUMBER:    DB_PART_NO        # TC alias: "ID (DB_PART_NO)"
-  DESCRIPTION:    DB_PART_NAME      # TC alias: "Name (DB_PART_NAME)"
-  MATERIAL:       MATERIAL
-  FINISH:         SURFACE_FINISH    # verify via discover_attributes
-  REVISION:       DB_PART_REV       # TC alias: "Revision (DB_PART_REV)"
-  DRAWING_NUMBER: DRAWING_NUMBER    # stored attribute on NX part - verify via discover_attributes
+```json
+{
+  "columns": {
+    "PART_NUMBER": "DB_PART_NO",
+    "DESCRIPTION": "DB_PART_NAME",
+    "MATERIAL": "MATERIAL",
+    "FINISH": "SURFACE_FINISH",
+    "REVISION": "DB_PART_REV",
+    "DRAWING_NUMBER": "DRAWING_NUMBER"
+  }
+}
 ```
 
 `DRAWING_NUMBER` is a stored user attribute on the NX part. It may differ from the part number (e.g. a shared drawing covers multiple PNs), so it is read directly via `GetUserAttribute` and is included in the J04 audit.
@@ -139,12 +142,11 @@ TC columns that exist in the export but must never be written to NX (user IDs, r
 Install into NX's Python environment (`<NX_ROOT>\NXBIN\python.exe`):
 
 ```
-python.exe -m pip install xlsxwriter pyyaml
+python.exe -m pip install xlsxwriter
 ```
 
 - **NXOpen / NXOpen.UF** - bundled with NX 2312
 - **xlsxwriter** - Excel output (J02, J04, J05)
-- **PyYAML** - attribute mapping config
 
 ---
 
@@ -154,4 +156,4 @@ python.exe -m pip install xlsxwriter pyyaml
 - The TC CSV used by J05 PUSH is read as a plain spreadsheet export - it supplies the desired attribute values but J05 writes them into NX, not back into TC.
 - `DB_PART_NO` / `DB_PART_REV` are TC-propagated attributes stored on the NX part file. Legacy parts may have `PART_NUMBER` / `REVISION` instead - all journals fall back to these if the TC names are missing.
 - All output files are excluded from version control via `.gitignore`.
-- Edit `config/step_export.yaml` to control STEP version (AP214/AP242) and output naming for J01.
+- Edit `config/step_export.json` to control STEP version (AP214/AP242) and output naming for J01.

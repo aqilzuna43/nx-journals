@@ -11,7 +11,7 @@ Two modes:
   PULL - Reads existing attribute values from every unique NX prototype in the
          open assembly and writes them to PULL_<assembly>_<timestamp>.xlsx.
          Run this first to verify that the internal NX attribute names in
-         attribute_mapping.yaml match what is actually stored on the parts.
+         attribute_mapping.json match what is actually stored on the parts.
 
   PUSH - Reads the TC-exported attribute CSV (e.g. Att-*.csv) as plain
          spreadsheet rows, matches rows to NX prototypes by DB_PART_NO, and
@@ -22,7 +22,7 @@ Two modes:
 
 Workflow:
   1. Run PULL on the open assembly. Review PULL_*.xlsx to confirm attribute names.
-  2. Update config/attribute_mapping.yaml if any names differ.
+  2. Update config/attribute_mapping.json if any names differ.
   3. Export the TC attribute sheet as CSV and place it in a folder.
   4. Run PUSH, select that folder. Review PUSH_REPORT_*.xlsx and verify in NX.
 """
@@ -35,16 +35,16 @@ from datetime import datetime
 
 import NXOpen
 import NXOpen.UF
-import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from utils.config_loader import load_json_config  # noqa: E402
 from utils.nx_helpers import get_session, get_work_part, prompt_folder, traverse_assembly  # noqa: E402
 from utils.excel_writer import ExcelWriter  # noqa: E402
 
-_MAPPING_FILE = os.path.join(_REPO_ROOT, "config", "attribute_mapping.yaml")
+_MAPPING_FILE = os.path.join("config", "attribute_mapping.json")
 
 # Pull output columns ordered to match FZ-PowerSystem_v1 - MASTER.csv.
 # Prefixed identity columns (DB_PART_NO / DB_PART_REV) are always written first.
@@ -87,8 +87,7 @@ _PULL_ALL_COLS = _PULL_IDENTITY_COLS + _PULL_ATTR_COLS
 # ---------------------------------------------------------------------------
 
 def _load_mapping():
-    with open(_MAPPING_FILE, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    cfg = load_json_config(_REPO_ROOT, _MAPPING_FILE)
     tc_columns = cfg.get("tc_columns", {})
     skip = set(cfg.get("skip_columns", []))
     return tc_columns, skip
