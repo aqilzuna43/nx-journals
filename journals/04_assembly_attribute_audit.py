@@ -1,6 +1,6 @@
 """
-Journal 04 — Assembly Attribute Audit
-Checks required NX part attributes across the full assembly and reports issues to Excel.
+Journal 04 - Assembly Attribute Audit
+Checks required NX part attributes across the assembly and reports issues to CSV.
 Run via: NX > Tools > Journal > Play
 """
 
@@ -18,22 +18,22 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from utils.config_loader import load_json_config  # noqa: E402
-from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
-from utils.excel_writer import ExcelWriter  # noqa: E402
+from utils.csv_reports import write_csv  # noqa: E402
+from utils.nx_helpers import (  # noqa: E402
+    get_string_attr,
+    iter_occurrences,
+    log_info,
+    prompt_folder,
+    require_work_part,
+    run_journal,
+    safe_part_name,
+    get_root_component,
+)
 from utils.template_generator import MASTER_COLUMNS  # noqa: E402
 
 _MAPPING_FILE = os.path.join("config", "attribute_mapping.json")
-
 _REVISION_PATTERN = re.compile(r"^([A-Z]|\d+)$")
-
-# Columns whose NX attr values are audited for presence and validity.
-# These are MASTER_COLUMNS names; the JSON mapping resolves the internal NX name.
 _AUDITED_COLS = ["PART_NUMBER", "DESCRIPTION", "MATERIAL", "FINISH", "REVISION", "DRAWING_NUMBER"]
-
-_AMBER = "#FFF3CD"
-_GREEN = "#D4EDDA"
-
-_SUMMARY_HEADERS = ["Metric", "Value"]
 
 
 def _load_mapping():
@@ -41,62 +41,50 @@ def _load_mapping():
     return cfg.get("columns", {})
 
 
-def _get_attr(nxobj, attr_name):
-    try:
-        attr = nxobj.GetUserAttribute(attr_name, NXOpen.NXObject.AttributeType.String, -1)
-        return attr.StringValue.strip()
-    except Exception:
-        return ""
+def _part_number(part, col_map):
+    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
+    return get_string_attr(part, pn_attr) or get_string_attr(part, "PART_NUMBER")
 
 
-def _collect_components(root_component, col_map):
-    """Return (component, depth) tuples and a part-number occurrence Counter."""
+def _collect_rows(work_part, col_map):
     rows = []
     part_counter = Counter()
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
 
-    def _walk(component, depth):
+    occurrences = list(iter_occurrences(work_part))
+    for component in occurrences:
+        proto = component.Prototype
+        pn = _part_number(proto, col_map) if proto is not None else ""
+        part_counter[pn or component.Name] += 1
+
+    def walk(component, depth):
         for child in component.GetChildren():
-            proto = child.Prototype
-            pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
-            part_counter[pn or child.Name] += 1
             rows.append((child, depth))
-            _walk(child, depth + 1)
+            walk(child, depth + 1)
 
-    _walk(root_component, 1)
+    root = get_root_component(work_part)
+    if root is not None:
+        walk(root, 1)
+
     return rows, part_counter
 
 
 def _audit_proto(proto, col_map):
-    """
-    Check required attributes on a prototype.
-    Returns the name of the first failing MASTER_COLUMNS column, or None if all pass.
-    """
     for col in _AUDITED_COLS:
-        nx_attr = col_map.get(col, col)
-        value = _get_attr(proto, nx_attr)
-
+        value = ""
+        if proto is not None:
+            value = get_string_attr(proto, col_map.get(col, col))
         if not value:
             return col
-
         if col == "REVISION" and not _REVISION_PATTERN.match(value):
             return col
-
     return None
 
 
 def _build_row(component, depth, part_counter, col_map):
-    """
-    Build a MASTER_COLUMNS-ordered list of values for one component,
-    filling STATUS with 'PASS' or 'FAIL: {col}'.
-    Returns (row_values, first_failing_col_or_None).
-    """
     proto = component.Prototype
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
-    pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
+    pn = _part_number(proto, col_map) if proto is not None else ""
     qty = part_counter.get(pn or component.Name, 1)
-
-    first_fail = _audit_proto(proto, col_map) if proto is not None else "PART_NUMBER"
+    first_fail = _audit_proto(proto, col_map)
     status = "PASS" if first_fail is None else f"FAIL: {first_fail}"
 
     values = {}
@@ -112,77 +100,70 @@ def _build_row(component, depth, part_counter, col_map):
         elif col == "NOTES":
             values[col] = ""
         elif proto is not None:
-            nx_attr = col_map.get(col, col)
-            values[col] = _get_attr(proto, nx_attr)
+            values[col] = get_string_attr(proto, col_map.get(col, col))
         else:
             values[col] = ""
 
     return [values[col] for col in MASTER_COLUMNS], first_fail
 
 
-def main():
-    session = get_session()
-    part = get_work_part()
-
+def main(session):
+    part = require_work_part(session)
     if part is None:
-        print("ERROR: No work part loaded.")
         return
 
     output_folder = prompt_folder("Select Audit Output Folder")
     if output_folder is None:
-        print("Audit cancelled by user.")
+        log_info(session, "Audit cancelled by user.")
         return
 
     col_map = _load_mapping()
-
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
-    hla_pn = (
-        _get_attr(part, pn_attr)
-        or _get_attr(part, "PART_NUMBER")
-        or os.path.splitext(os.path.basename(part.FullPath))[0]
-    )
+    hla_pn = _part_number(part, col_map) or safe_part_name(part)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"AUDIT_{hla_pn}_{timestamp}.xlsx"
-    output_path = os.path.join(output_folder, filename)
+    audit_path = os.path.join(output_folder, f"AUDIT_{hla_pn}_{timestamp}.csv")
+    summary_path = os.path.join(output_folder, f"AUDIT_SUMMARY_{hla_pn}_{timestamp}.csv")
 
-    root = part.ComponentAssembly.RootComponent
-    component_rows, part_counter = _collect_components(root, col_map)
-
-    writer = ExcelWriter(output_path)
-    writer.write_master_header("Audit")
-
+    component_rows, part_counter = _collect_rows(part, col_map)
+    audit_rows = []
     pass_count = 0
     fail_count = 0
     fail_by_col = {col: 0 for col in _AUDITED_COLS}
 
     for component, depth in component_rows:
         row_values, first_fail = _build_row(component, depth, part_counter, col_map)
+        audit_rows.append(row_values)
         if first_fail is None:
-            writer.add_row_with_color("Audit", row_values, _GREEN)
             pass_count += 1
         else:
-            writer.add_row_with_color("Audit", row_values, _AMBER)
             fail_count += 1
             fail_by_col[first_fail] = fail_by_col.get(first_fail, 0) + 1
 
-    # Summary sheet
-    writer.add_header_row("Summary", _SUMMARY_HEADERS)
-    writer.add_row("Summary", ["Total components checked", len(component_rows)])
-    writer.add_row("Summary", ["PASS", pass_count])
-    writer.add_row("Summary", ["FAIL", fail_count])
-    writer.add_row("Summary", ["", ""])
-    writer.add_row("Summary", ["First-failing attribute", "FAIL count"])
-    for col in _AUDITED_COLS:
-        writer.add_row("Summary", [col, fail_by_col.get(col, 0)])
+    summary_rows = [
+        ["Total components checked", len(component_rows)],
+        ["PASS", pass_count],
+        ["FAIL", fail_count],
+        ["", ""],
+        ["First-failing attribute", "FAIL count"],
+    ]
+    summary_rows.extend([[col, fail_by_col.get(col, 0)] for col in _AUDITED_COLS])
 
-    writer.save()
+    write_csv(audit_path, MASTER_COLUMNS, audit_rows)
+    write_csv(summary_path, ["Metric", "Value"], summary_rows)
 
-    print(f"Audit complete.")
-    print(f"  Components checked : {len(component_rows)}")
-    print(f"  PASS               : {pass_count}")
-    print(f"  FAIL               : {fail_count}")
-    print(f"  Report written to  : {output_path}")
+    log_info(
+        session,
+        "\n".join(
+            [
+                "Audit complete.",
+                f"  Components checked : {len(component_rows)}",
+                f"  PASS               : {pass_count}",
+                f"  FAIL               : {fail_count}",
+                f"  Report written to  : {audit_path}",
+                f"  Summary written to : {summary_path}",
+            ]
+        ),
+    )
 
 
 if __name__ == "__main__":
-    main()
+    run_journal(main)

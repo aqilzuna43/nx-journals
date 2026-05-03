@@ -1,102 +1,58 @@
 # NX Open Python Journals
 
-NX Open Python journals for NX 2312 + Teamcenter (TC) productivity.
-Run via **NX > Tools > Journal > Play** (`Alt+F8`). Each journal prompts for input paths at runtime.
+NX Open Python journals for **Siemens NX 2312** + Teamcenter productivity.
+Run via **NX > Tools > Journal > Play** (`Alt+F8`). The journals target NX 2312 embedded Python 3.10 and avoid third-party Python packages.
 
 ## Journals
 
 | # | File | Description |
 |---|------|-------------|
-| 01 | `01_hla_step_export.py` | Exports the active HLA part to STEP (AP214/AP242) using settings from `config/step_export.json` |
-| 02 | `02_hla_multilevel_bom.py` | Traverses the full assembly tree and exports a multilevel BOM to Excel from NX part attributes |
-| 03 | `03_batch_drawing_pdf.py` | Traverses the assembly, finds all associated drawing sheets, and batch-exports them to PDF |
-| 04 | `04_assembly_attribute_audit.py` | Audits required part attributes across the assembly and flags missing/invalid values to Excel |
-| 05 | `05_bulk_attribute_updater.py` | **Pull/Push** - dumps existing NX attributes to Excel (PULL), or writes TC CSV attribute values back to NX (PUSH) |
+| 01 | `01_hla_step_export.py` | Exports the active HLA part to STEP using `config/step_export.json` |
+| 02 | `02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
+| 03 | `03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
+| 04 | `04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
+| 05 | `05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
 
----
+## Key Runtime Notes
 
-## Single Source of Truth
-
-The attribute schema is driven by the TC export file:
-
-```
-documents/input/Att-264MN021145A01_20Apr26.xlsx
-```
-
-This Excel file (generated from Teamcenter) defines:
-- Which attributes exist on CAD Design, WAEItem, and WAEItemRevision objects
-- The **display alias** shown in TC (row 2 of the export)
-- The **internal NX attribute name** shown in parentheses in the alias, e.g. `ID (DB_PART_NO)` -> internal name is `DB_PART_NO`
-
-All attribute mappings in `config/attribute_mapping.json` are derived from this file.
-Run **J05 PULL** to verify that the internal names in the JSON match what NX actually stores on real parts.
-
----
-
-## How to Run
-
-1. Open NX 2312 with the target assembly loaded as the work part.
-2. Go to **Tools > Journal > Play** (or press `Alt+F8`).
-3. Browse to the desired `.py` file in `journals/`.
-4. The journal prompts for any required folder paths via NX dialogs at runtime.
-5. Outputs are written to the folder you select.
-
----
+- Deployment target: NX 2312 embedded Python 3.10.
+- Required external Python packages: none.
+- Config format: JSON.
+- Report format: CSV with UTF-8 BOM so Excel opens it cleanly.
+- Errors and summaries are written to the NX Listing Window because NX may run journals through `ugraf.exe`.
 
 ## Recommended Workflow
 
 ### First time - verify attribute names
 
-Before running any push, confirm that the internal NX attribute names in `attribute_mapping.json` match your actual parts:
-
 ```
-Step 1  Open a representative part (one with TC attributes populated) in NX.
+Step 1  Open a representative part with Teamcenter attributes populated.
 Step 2  Tools > Journal > Play -> utils/discover_attributes.py
-        -> generates ATTR_DISCOVERY_*.txt listing every attribute on the part.
-Step 3  Run J05 PULL on the open assembly
-        -> generates PULL_<assembly>_<timestamp>.xlsx listing current NX values.
-Step 4  Compare PULL output and ATTR_DISCOVERY report against attribute_mapping.json.
+        -> generates ATTR_DISCOVERY_<part>_<timestamp>.txt.
+Step 3  Run J05 PULL on a representative part or assembly.
+        -> generates PULL_<part>_<timestamp>.csv.
+Step 4  Compare discovery/PULL output against config/attribute_mapping.json.
         Update JSON values for any names that differ.
 ```
 
-### Ongoing - populate TC attributes from TC export
+### Ongoing - populate NX attributes from Teamcenter CSV
 
 ```
-Step 1  Export the TC attribute sheet from Teamcenter for your assembly,
-        then save that sheet as CSV while keeping the same two header rows.
+Step 1  Export the Teamcenter attribute sheet and save it as Att-*.csv.
+        Keep the same two header rows.
 
-Step 2  Run J05 PUSH, select the folder containing the TC CSV.
-        -> Reads TC CSV, matches parts by DB_PART_NO.
-        -> Reads existing NX attributes first - only writes to empty fields.
-        -> Never overwrites a non-empty attribute.
-        -> Generates PUSH_REPORT_<timestamp>.xlsx showing every decision:
-             UPDATED    - TC value written to NX (was empty)
-             KEPT       - NX already had a value, TC value ignored
-             BOTH_EMPTY - both NX and TC are empty, no action
-             NO_MATCH   - part number from TC not found in open assembly
+Step 2  Run J05 PUSH and select the folder containing Att-*.csv.
+        -> Matches parts by DB_PART_NO.
+        -> Writes only to empty NX attributes.
+        -> Never overwrites a non-empty NX attribute.
+        -> Generates PUSH_REPORT_<timestamp>.csv.
 
-Step 3  Review PUSH_REPORT.xlsx, then verify spot-check values in the NX attribute editor.
+Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 ```
 
-### BOM export and audit
+## Attribute Mapping
 
-```
-J02 -> BOM_<part>_<timestamp>.xlsx     Multilevel BOM, one row per component
-J04 -> AUDIT_<part>_<timestamp>.xlsx   Attribute audit, green = PASS, amber = FAIL
-```
-
-J02 and J04 read the same attribute names resolved through `config/attribute_mapping.json -> columns`.
-Run J05 PUSH first to populate TC attributes, then J04 to verify completeness.
-
----
-
-## Attribute Mapping Configuration
-
-`config/attribute_mapping.json` has two sections:
-
-### `columns` - used by J02 and J04
-
-Maps the BOM/audit column header names to NX internal attribute names:
+`config/attribute_mapping.json` is the source of truth for attribute names.
 
 ```json
 {
@@ -111,49 +67,24 @@ Maps the BOM/audit column header names to NX internal attribute names:
 }
 ```
 
-`DRAWING_NUMBER` is a stored user attribute on the NX part. It may differ from the part number (e.g. a shared drawing covers multiple PNs), so it is read directly via `GetUserAttribute` and is included in the J04 audit.
-
-### `tc_columns` - used by J05
-
-Maps the TC display alias (row 2 of the TC CSV export) to the NX internal attribute name.
-Covers all 26 writable attributes across CAD Design, WAEItem, and WAEItemRevision groups.
-WAEItem/WAEItemRevision internal names are best-guess from the TC export - **verify with PULL mode before first push**.
-
-### `skip_columns` - used by J05
-
-TC columns that exist in the export but must never be written to NX (user IDs, read-only flags, computed values).
-
----
+- `columns` drives J02 BOM output and J04 audit output.
+- `tc_columns` maps Teamcenter CSV row-2 aliases to NX internal attribute names for J05 PUSH.
+- `skip_columns` documents Teamcenter columns that must not be written to NX.
 
 ## Output File Naming
 
 | Journal | Output pattern |
 |---------|---------------|
 | J01 | `<DB_PART_NO>_REV<DB_PART_REV>.stp` |
-| J02 | `BOM_<DB_PART_NO>_<timestamp>.xlsx` |
-| J04 | `AUDIT_<DB_PART_NO>_<timestamp>.xlsx` |
-| J05 PULL | `PULL_<assembly_name>_<timestamp>.xlsx` |
-| J05 PUSH | `PUSH_REPORT_<timestamp>.xlsx` (alongside TC CSV) |
-
----
-
-## Dependencies
-
-Install into NX's Python environment (`<NX_ROOT>\NXBIN\python.exe`):
-
-```
-python.exe -m pip install xlsxwriter
-```
-
-- **NXOpen / NXOpen.UF** - bundled with NX 2312
-- **xlsxwriter** - Excel output (J02, J04, J05)
-
----
+| J02 | `BOM_<DB_PART_NO>_<timestamp>.csv` |
+| J03 | `<drawing_number>_REV<revision>.pdf` |
+| J04 | `AUDIT_<DB_PART_NO>_<timestamp>.csv` and `AUDIT_SUMMARY_<DB_PART_NO>_<timestamp>.csv` |
+| J05 PULL | `PULL_<part_name>_<timestamp>.csv` |
+| J05 PUSH | `PUSH_REPORT_<timestamp>.csv` |
 
 ## Notes
 
-- All journals operate entirely within NX using `GetUserAttribute` / `SetUserAttribute` on NX part files. No connection to Teamcenter is made at runtime.
-- The TC CSV used by J05 PUSH is read as a plain spreadsheet export - it supplies the desired attribute values but J05 writes them into NX, not back into TC.
-- `DB_PART_NO` / `DB_PART_REV` are TC-propagated attributes stored on the NX part file. Legacy parts may have `PART_NUMBER` / `REVISION` instead - all journals fall back to these if the TC names are missing.
-- All output files are excluded from version control via `.gitignore`.
-- Edit `config/step_export.json` to control STEP version (AP214/AP242) and output naming for J01.
+- All journals operate directly on NX part files through `GetUserAttribute` and `SetUserAttribute`.
+- No Teamcenter connection is made at journal runtime.
+- Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
+- Edit `config/step_export.json` to control STEP version and output naming for J01.

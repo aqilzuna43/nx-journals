@@ -5,6 +5,8 @@
 
 # Journal output files
 *.xlsx
+*.csv
+*.txt
 *.stp
 *.step
 *.pdf

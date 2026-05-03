@@ -1,16 +1,9 @@
 """
-discover_attributes.py — Run once in NX to reveal internal attribute names.
+discover_attributes.py - Run once in NX to reveal internal attribute names.
 
-NX Open shows display aliases in the UI (e.g. "@ Part Number") but the
-internal title used by GetUserAttribute() may differ (e.g. "DB_PART_NO").
-This journal dumps every attribute on the current work part so you can
-build the correct attribute_mapping.json.
-
-How to use:
-  1. Open a part in NX that has all your standard attributes populated.
-  2. Tools > Journal > Play > select this file.
-  3. Open the output .txt file — match titles against what you see in the
-NX attribute editor to build your attribute_mapping.json.
+NX Open shows display aliases in the UI, but the internal title used by
+GetUserAttribute() may differ. This journal dumps every attribute on the
+current work part so you can build config/attribute_mapping.json.
 """
 
 import os
@@ -24,10 +17,14 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
+from utils.nx_helpers import (  # noqa: E402
+    log_info,
+    prompt_folder,
+    require_work_part,
+    run_journal,
+    safe_part_name,
+)
 
-# Known TC-propagated attribute names to probe explicitly in addition to the
-# bulk GetUserAttributes() call, in case they are not returned by the bulk API.
 _TC_PROBE_NAMES = [
     "DB_PART_NO",
     "DB_TITLE",
@@ -43,7 +40,6 @@ _TC_PROBE_NAMES = [
 
 
 def _attr_value_str(attr_info):
-    """Return a readable string for an AttributeInformation value."""
     t = attr_info.Type
     try:
         if t == NXOpen.NXObject.AttributeType.String:
@@ -62,7 +58,6 @@ def _attr_value_str(attr_info):
 
 
 def _type_name(attr_type):
-    """Return a short string label for an attribute type enum value."""
     mapping = {
         NXOpen.NXObject.AttributeType.String: "String",
         NXOpen.NXObject.AttributeType.Integer: "Integer",
@@ -76,34 +71,26 @@ def _type_name(attr_type):
     return mapping.get(attr_type, "Unknown")
 
 
-def main():
-    session = get_session()
-    part = get_work_part()
-
+def main(session):
+    part = require_work_part(session)
     if part is None:
-        print("ERROR: No work part loaded. Open a representative part and try again.")
         return
 
     output_folder = prompt_folder("Select Output Folder for Attribute Report")
     if output_folder is None:
-        print("Attribute discovery cancelled by user.")
+        log_info(session, "Attribute discovery cancelled by user.")
         return
 
-    part_name = os.path.splitext(os.path.basename(part.FullPath))[0]
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_name = f"ATTR_DISCOVERY_{part_name}_{timestamp}.txt"
-    report_path = os.path.join(output_folder, report_name)
+    report_path = os.path.join(output_folder, f"ATTR_DISCOVERY_{safe_part_name(part)}_{timestamp}.txt")
 
-    # --- collect bulk attributes ---
-    rows = {}  # title → (type_name, value)
+    rows = {}
     try:
         for attr_info in part.GetUserAttributes():
-            title = attr_info.Title
-            rows[title] = (_type_name(attr_info.Type), _attr_value_str(attr_info))
+            rows[attr_info.Title] = (_type_name(attr_info.Type), _attr_value_str(attr_info))
     except Exception as exc:
         rows["__GetUserAttributes_error__"] = ("Error", str(exc))
 
-    # --- probe known TC attribute names explicitly ---
     for probe_name in _TC_PROBE_NAMES:
         if probe_name in rows:
             continue
@@ -119,17 +106,14 @@ def main():
             except Exception:
                 pass
 
-    # --- build sorted report lines ---
     header_line = f"{'Title':<40} | {'Type':<12} | Value"
     separator = "-" * 80
-    sorted_rows = sorted(rows.items())
     data_lines = [
         f"{title:<40} | {type_str:<12} | {value}"
-        for title, (type_str, value) in sorted_rows
+        for title, (type_str, value) in sorted(rows.items())
     ]
-
     report_lines = [
-        f"NX Attribute Discovery Report",
+        "NX Attribute Discovery Report",
         f"Part file : {part.FullPath}",
         f"Date      : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"Attributes: {len(rows)}",
@@ -138,20 +122,14 @@ def main():
         separator,
         *data_lines,
         separator,
+        f"Report saved to: {report_path}",
     ]
 
-    # --- write txt report ---
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(report_lines))
+    with open(report_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(report_lines))
 
-    # --- echo to NX listing window ---
-    lw = session.ListingWindow
-    lw.Open()
-    for line in report_lines:
-        lw.WriteFullline(line)
-
-    print(f"Report saved to: {report_path}")
+    log_info(session, "\n".join(report_lines))
 
 
 if __name__ == "__main__":
-    main()
+    run_journal(main)

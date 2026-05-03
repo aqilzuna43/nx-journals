@@ -1,3 +1,0 @@
-step_version: AP214        # AP214 or AP242
-output_naming: "{part_number}_REV{revision}.stp"
-include_pmis: false

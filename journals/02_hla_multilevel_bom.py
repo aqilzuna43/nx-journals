@@ -1,6 +1,5 @@
-# Attributes pulled from NX part file directly (not TC) for reliability.
 """
-Journal 02 — HLA Multilevel BOM to Excel
+Journal 02 - HLA Multilevel BOM to CSV
 Traverses the full assembly tree and exports a multilevel BOM from NX part attributes.
 Run via: NX > Tools > Journal > Play
 """
@@ -18,8 +17,18 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from utils.config_loader import load_json_config  # noqa: E402
-from utils.nx_helpers import get_session, get_work_part, prompt_folder  # noqa: E402
-from utils.template_generator import MASTER_COLUMNS, create_workbook_with_headers  # noqa: E402
+from utils.csv_reports import write_csv  # noqa: E402
+from utils.nx_helpers import (  # noqa: E402
+    get_string_attr,
+    iter_occurrences,
+    log_info,
+    prompt_folder,
+    require_work_part,
+    run_journal,
+    safe_part_name,
+    get_root_component,
+)
+from utils.template_generator import MASTER_COLUMNS  # noqa: E402
 
 _MAPPING_FILE = os.path.join("config", "attribute_mapping.json")
 
@@ -29,41 +38,36 @@ def _load_mapping():
     return cfg.get("columns", {})
 
 
-def _get_attr(nxobj, attr_name):
-    """Read a string user attribute; returns empty string if not found."""
-    try:
-        attr = nxobj.GetUserAttribute(attr_name, NXOpen.NXObject.AttributeType.String, -1)
-        return attr.StringValue.strip()
-    except Exception:
-        return ""
+def _part_number(part, col_map):
+    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
+    return get_string_attr(part, pn_attr) or get_string_attr(part, "PART_NUMBER")
 
 
-def _collect_components(root_component, col_map):
-    """
-    Walk the assembly, collecting (component, depth) tuples.
-    Also builds a part-number → occurrence count map for QUANTITY.
-    """
+def _collect_rows(work_part, col_map):
     rows = []
     part_counter = Counter()
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
 
-    def _walk(component, depth):
+    occurrences = list(iter_occurrences(work_part))
+    for component in occurrences:
+        proto = component.Prototype
+        pn = _part_number(proto, col_map) if proto is not None else ""
+        part_counter[pn or component.Name] += 1
+
+    def walk(component, depth):
         for child in component.GetChildren():
-            proto = child.Prototype
-            pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
-            part_counter[pn or child.Name] += 1
             rows.append((child, depth))
-            _walk(child, depth + 1)
+            walk(child, depth + 1)
 
-    _walk(root_component, 1)
+    root = get_root_component(work_part)
+    if root is not None:
+        walk(root, 1)
+
     return rows, part_counter
 
 
 def _build_row(component, depth, part_counter, col_map):
-    """Build a MASTER_COLUMNS-ordered list of values for one component."""
     proto = component.Prototype
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
-    pn = (_get_attr(proto, pn_attr) or _get_attr(proto, "PART_NUMBER")) if proto else ""
+    pn = _part_number(proto, col_map) if proto is not None else ""
     qty = part_counter.get(pn or component.Name, 1)
 
     values = {}
@@ -77,52 +81,33 @@ def _build_row(component, depth, part_counter, col_map):
         elif col in ("STATUS", "NOTES"):
             values[col] = ""
         elif proto is not None:
-            nx_attr = col_map.get(col, col)
-            values[col] = _get_attr(proto, nx_attr)
+            values[col] = get_string_attr(proto, col_map.get(col, col))
         else:
             values[col] = ""
-
     return [values[col] for col in MASTER_COLUMNS]
 
 
-def main():
-    session = get_session()
-    part = get_work_part()
-
+def main(session):
+    part = require_work_part(session)
     if part is None:
-        print("ERROR: No work part loaded.")
         return
 
     output_folder = prompt_folder("Select BOM Output Folder")
     if output_folder is None:
-        print("BOM export cancelled by user.")
+        log_info(session, "BOM export cancelled by user.")
         return
 
     col_map = _load_mapping()
-
-    pn_attr = col_map.get("PART_NUMBER", "DB_PART_NO")
-    hla_pn = (
-        _get_attr(part, pn_attr)
-        or _get_attr(part, "PART_NUMBER")
-        or os.path.splitext(os.path.basename(part.FullPath))[0]
-    )
+    hla_pn = _part_number(part, col_map) or safe_part_name(part)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"BOM_{hla_pn}_{timestamp}.xlsx"
-    output_path = os.path.join(output_folder, filename)
+    output_path = os.path.join(output_folder, f"BOM_{hla_pn}_{timestamp}.csv")
 
-    root = part.ComponentAssembly.RootComponent
-    component_rows, part_counter = _collect_components(root, col_map)
+    component_rows, part_counter = _collect_rows(part, col_map)
+    rows = [_build_row(component, depth, part_counter, col_map) for component, depth in component_rows]
+    write_csv(output_path, MASTER_COLUMNS, rows)
 
-    workbook, worksheet = create_workbook_with_headers(output_path)
-    cell_fmt = workbook.add_format({"border": 1})
-
-    for row_idx, (component, depth) in enumerate(component_rows, start=1):
-        for col_idx, value in enumerate(_build_row(component, depth, part_counter, col_map)):
-            worksheet.write(row_idx, col_idx, value, cell_fmt)
-
-    workbook.close()
-    print(f"BOM exported ({len(component_rows)} components): {output_path}")
+    log_info(session, f"BOM exported ({len(rows)} components): {output_path}")
 
 
 if __name__ == "__main__":
-    main()
+    run_journal(main)

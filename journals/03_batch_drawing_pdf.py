@@ -1,6 +1,6 @@
 """
-Journal 03 — Batch Drawing PDF Export
-Traverses the assembly, finds all associated drawing sheets, and exports each to PDF.
+Journal 03 - Batch Drawing PDF Export
+Traverses the assembly, finds drawing sheets, and exports each to PDF.
 Run via: NX > Tools > Journal > Play
 """
 
@@ -14,93 +14,76 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from utils.nx_helpers import get_session, get_work_part, prompt_folder, traverse_assembly  # noqa: E402
+from utils.nx_helpers import (  # noqa: E402
+    get_string_attr,
+    log_info,
+    prompt_folder,
+    require_work_part,
+    run_journal,
+    safe_part_name,
+    unique_prototype_parts,
+)
 
 
-def _get_attr(nxobj, attr_name):
+def _export_current_sheet_to_pdf(session, pdf_path):
+    exporter = session.DexManager.CreatePdfExporter()
     try:
-        attr = nxobj.GetUserAttribute(attr_name, NXOpen.NXObject.AttributeType.String, -1)
-        return attr.StringValue.strip()
-    except Exception:
-        return ""
-
-
-def _collect_unique_part_tags(root_component):
-    """Return a set of unique Prototype tags found in the assembly tree."""
-    seen = set()
-    seen.add(root_component.Prototype.Tag if root_component.Prototype else None)
-    for comp in traverse_assembly(root_component):
-        proto = comp.Prototype
-        if proto is not None:
-            seen.add(proto.Tag)
-    seen.discard(None)
-    return seen
-
-
-def _export_drawing_sheet(session, sheet, pdf_path):
-    """Export a single NX drawing sheet to a PDF file."""
-    pdfExporter = session.DexManager.CreatePdfExporter()
-    try:
-        pdfExporter.OutputFile = pdf_path
-        pdfExporter.Commit()
+        exporter.OutputFile = pdf_path
+        exporter.Commit()
     finally:
-        pdfExporter.Destroy()
+        exporter.Destroy()
 
 
-def main():
-    session = get_session()
-    part = get_work_part()
+def _sheet_count(drawing_sheets):
+    try:
+        return drawing_sheets.Count
+    except Exception:
+        return 0
 
+
+def main(session):
+    part = require_work_part(session)
     if part is None:
-        print("ERROR: No work part loaded.")
         return
 
     output_folder = prompt_folder("Select PDF Output Folder")
     if output_folder is None:
-        print("PDF export cancelled by user.")
+        log_info(session, "PDF export cancelled by user.")
         return
 
-    root = part.ComponentAssembly.RootComponent
-    unique_proto_tags = _collect_unique_part_tags(root)
-
     pdf_count = 0
+    original_display_part = session.Parts.Display
+    try:
+        for proto_part in unique_prototype_parts(part, include_work_part=True):
+            drawing_sheets = proto_part.DrawingSheets
+            count = _sheet_count(drawing_sheets)
+            if count == 0:
+                continue
 
-    for proto_tag in unique_proto_tags:
-        try:
-            proto_part = session.Parts.FindObject(str(proto_tag))
-        except Exception:
-            continue
+            drawing_number = get_string_attr(proto_part, "DRAWING_NUMBER")
+            revision = get_string_attr(proto_part, "DB_PART_REV") or get_string_attr(proto_part, "REVISION")
 
-        drawing_sheets = proto_part.DrawingSheets
-        if drawing_sheets is None or drawing_sheets.Count == 0:
-            continue
+            for sheet in drawing_sheets:
+                if drawing_number:
+                    rev_suffix = f"_REV{revision}" if revision else ""
+                    sheet_suffix = f"_{sheet.Name}" if count > 1 else ""
+                    pdf_name = f"{drawing_number}{rev_suffix}{sheet_suffix}.pdf"
+                else:
+                    sheet_suffix = f"_{sheet.Name}" if count > 1 else ""
+                    pdf_name = f"{safe_part_name(proto_part)}{sheet_suffix}.pdf"
 
-        drawing_number = _get_attr(proto_part, "DRAWING_NUMBER")
-        revision = _get_attr(proto_part, "REVISION")
+                pdf_path = os.path.join(output_folder, pdf_name)
+                session.Parts.SetDisplay(proto_part, False, True, NXOpen.PartCollection.SdpsAction.None_)
+                proto_part.DrawingSheets.SetCurrentSheet(sheet)
+                _export_current_sheet_to_pdf(session, pdf_path)
+                pdf_count += 1
+                log_info(session, f"Exported PDF: {pdf_name}")
+    finally:
+        if original_display_part is not None:
+            session.Parts.SetDisplay(original_display_part, False, True, NXOpen.PartCollection.SdpsAction.None_)
 
-        for sheet in drawing_sheets:
-            # Build PDF filename using DRAWING_NUMBER and REVISION attributes
-            if drawing_number:
-                rev_suffix = f"_REV{revision}" if revision else ""
-                sheet_suffix = f"_{sheet.Name}" if drawing_sheets.Count > 1 else ""
-                pdf_name = f"{drawing_number}{rev_suffix}{sheet_suffix}.pdf"
-            else:
-                base = os.path.splitext(os.path.basename(proto_part.FullPath))[0]
-                sheet_suffix = f"_{sheet.Name}" if drawing_sheets.Count > 1 else ""
-                pdf_name = f"{base}{sheet_suffix}.pdf"
-
-            pdf_path = os.path.join(output_folder, pdf_name)
-
-            # Make the drawing sheet the display part so the exporter targets it
-            session.Parts.SetDisplay(proto_part, False, True, NXOpen.PartCollection.SdpsAction.None_)
-            proto_part.DrawingSheets.SetCurrentSheet(sheet)
-
-            _export_drawing_sheet(session, sheet, pdf_path)
-            pdf_count += 1
-            print(f"  Exported: {pdf_name}")
-
-    print(f"\nBatch PDF export complete. {pdf_count} PDF(s) written to: {output_folder}")
+    log_info(session, f"Batch PDF export complete. {pdf_count} PDF(s) written to: {output_folder}")
 
 
 if __name__ == "__main__":
-    main()
+    run_journal(main)
