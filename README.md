@@ -1,17 +1,37 @@
 # NX Open Python Journals
 
 NX Open Python journals for **Siemens NX 2312** + Teamcenter productivity.
-Run via **NX > Tools > Journal > Play** (`Alt+F8`). The journals target NX 2312 embedded Python 3.10 and avoid third-party Python packages.
+Run via **NX > Tools > Journal > Play** (`Alt+F8`). The deployable runtime is the `from_git/` folder, which targets NX 2312 embedded Python 3.10 and avoids third-party Python packages.
+
+## Deployment Layout
+
+Copy or pull the whole `from_git/` folder to the office PC. The folder must keep this shape:
+
+```text
+from_git/
+  config/
+  journals/
+  templates/
+  utils/
+```
+
+In NX, browse to journals inside that folder, for example:
+
+```text
+...\from_git\journals\05_bulk_attribute_updater.py
+```
+
+Do not copy a single journal file by itself. The journals import repo-local modules from `from_git\utils` and read config from `from_git\config`.
 
 ## Journals
 
 | # | File | Description |
 |---|------|-------------|
-| 01 | `01_hla_step_export.py` | Exports the active HLA part to STEP using `config/step_export.json` |
-| 02 | `02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
-| 03 | `03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
-| 04 | `04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
-| 05 | `05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
+| 01 | `from_git/journals/01_hla_step_export.py` | Exports the active HLA part to STEP using `from_git/config/step_export.json` |
+| 02 | `from_git/journals/02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
+| 03 | `from_git/journals/03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
+| 04 | `from_git/journals/04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
+| 05 | `from_git/journals/05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
 
 ## Key Runtime Notes
 
@@ -27,11 +47,11 @@ Run via **NX > Tools > Journal > Play** (`Alt+F8`). The journals target NX 2312 
 
 ```
 Step 1  Open a representative part with Teamcenter attributes populated.
-Step 2  Tools > Journal > Play -> utils/discover_attributes.py
+Step 2  Tools > Journal > Play -> from_git/utils/discover_attributes.py
         -> generates ATTR_DISCOVERY_<part>_<timestamp>.txt.
 Step 3  Run J05 PULL on a representative part or assembly.
         -> generates PULL_<part>_<timestamp>.csv.
-Step 4  Compare discovery/PULL output against config/attribute_mapping.json.
+Step 4  Compare discovery/PULL output against from_git/config/attribute_mapping.json.
         Update JSON values for any names that differ.
 ```
 
@@ -52,7 +72,7 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 
 ## Attribute Mapping
 
-`config/attribute_mapping.json` is the source of truth for attribute names.
+`from_git/config/attribute_mapping.json` is the source of truth for attribute names.
 
 ```json
 {
@@ -87,4 +107,4 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 - All journals operate directly on NX part files through `GetUserAttribute` and `SetUserAttribute`.
 - No Teamcenter connection is made at journal runtime.
 - Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
-- Edit `config/step_export.json` to control STEP version and output naming for J01.
+- Edit `from_git/config/step_export.json` to control STEP version and output naming for J01.
