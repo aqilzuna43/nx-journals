@@ -15,9 +15,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from utils.nx_helpers import (  # noqa: E402
+    get_output_folder,
     get_string_attr,
     log_info,
-    prompt_folder,
     require_work_part,
     run_journal,
     safe_part_name,
@@ -46,10 +46,8 @@ def main(session):
     if part is None:
         return
 
-    output_folder = prompt_folder("Select PDF Output Folder")
-    if output_folder is None:
-        log_info(session, "PDF export cancelled by user.")
-        return
+    output_folder = get_output_folder()
+    log_info(session, f"PDF output folder: {output_folder}")
 
     pdf_count = 0
     original_display_part = session.Parts.Display

@@ -18,8 +18,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from utils.nx_helpers import (  # noqa: E402
+    get_output_folder,
     log_info,
-    prompt_folder,
     require_work_part,
     run_journal,
     safe_part_name,
@@ -76,10 +76,8 @@ def main(session):
     if part is None:
         return
 
-    output_folder = prompt_folder("Select Output Folder for Attribute Report")
-    if output_folder is None:
-        log_info(session, "Attribute discovery cancelled by user.")
-        return
+    output_folder = get_output_folder()
+    log_info(session, f"Attribute discovery output folder: {output_folder}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = os.path.join(output_folder, f"ATTR_DISCOVERY_{safe_part_name(part)}_{timestamp}.txt")

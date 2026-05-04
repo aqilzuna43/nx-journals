@@ -87,19 +87,6 @@ def _log_error(session, message):
     _log_lines(session, [f"ERROR: {message}"])
 
 
-def _prompt_folder(title):
-    ui = NXOpen.UI.GetUI()
-    dialog = ui.CreateFolderSelectionDialog()
-    dialog.SetTitle(title)
-    try:
-        response = dialog.Show()
-        if response == NXOpen.SelectionDialog.DialogResponse.Ok:
-            return dialog.Path
-        return None
-    finally:
-        dialog.Destroy()
-
-
 def _require_work_part(session):
     part = session.Parts.Work
     if part is None:
@@ -127,6 +114,32 @@ def _config_path():
     return os.path.join(_runtime_root(), "config", "attribute_mapping.json")
 
 
+def _desktop_folder():
+    userprofile = os.environ.get("USERPROFILE")
+    if userprofile:
+        return os.path.join(userprofile, "Desktop")
+    home = os.path.expanduser("~")
+    if home and home != "~":
+        return os.path.join(home, "Desktop")
+    return os.getcwd()
+
+
+def _io_root():
+    root = os.environ.get("NX_JOURNALS_IO_DIR")
+    if not root:
+        root = _desktop_folder()
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _input_folder():
+    return _io_root()
+
+
+def _output_folder():
+    return _io_root()
+
+
 def _startup_diagnostics(session):
     root = _runtime_root()
     cfg = _config_path()
@@ -135,6 +148,8 @@ def _startup_diagnostics(session):
         f"  Journal path : {_journal_path() or '(unavailable)'}",
         f"  Runtime root : {root}",
         f"  Config path  : {cfg}",
+        f"  Input folder : {_input_folder()}",
+        f"  Output folder: {_output_folder()}",
         f"  Python       : {sys.version}",
         "  sys.path     :",
     ]
@@ -218,6 +233,10 @@ def _find_newest_csv(folder, prefix=None):
 def _get_string_attr(nxobj, attr_name, fallback=""):
     if nxobj is None or not attr_name:
         return fallback
+    try:
+        return nxobj.GetStringAttribute(attr_name).strip()
+    except Exception:
+        pass
     try:
         attr = nxobj.GetUserAttribute(attr_name, NXOpen.NXObject.AttributeType.String, -1)
         return attr.StringValue.strip()
@@ -320,11 +339,7 @@ def _pull_rows(part):
 
 
 def _run_pull(session, part):
-    output_folder = _prompt_folder("Select Output Folder for PULL Report")
-    if output_folder is None:
-        _log_info(session, "PULL cancelled by user.")
-        return
-
+    output_folder = _output_folder()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = os.path.join(output_folder, f"PULL_{_safe_part_name(part)}_{timestamp}.csv")
     rows = _pull_rows(part)
@@ -370,14 +385,11 @@ def _get_cell(row, idx):
 
 
 def _run_push(session, part):
-    input_folder = _prompt_folder("Select Folder Containing TC Attribute CSV (Att-*.csv)")
-    if input_folder is None:
-        _log_info(session, "PUSH cancelled by user.")
-        return
-
+    input_folder = _input_folder()
+    output_folder = _output_folder()
     tc_path = _find_newest_csv(input_folder, prefix="Att-")
     if tc_path is None:
-        _log_error(session, f"No TC CSV found in: {input_folder}")
+        _log_error(session, f"No TC CSV found. Save Att-*.csv in: {input_folder}")
         return
 
     try:
@@ -454,7 +466,7 @@ def _run_push(session, part):
                 report_rows.append([pn, internal_name, nx_existing, tc_value, action])
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = os.path.join(input_folder, f"PUSH_REPORT_{timestamp}.csv")
+    report_path = os.path.join(output_folder, f"PUSH_REPORT_{timestamp}.csv")
     _write_csv(report_path, ["PART_NUMBER", "ATTR_NAME", "NX_EXISTING", "TC_VALUE", "ACTION"], report_rows)
 
     _log_info(

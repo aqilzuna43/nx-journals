@@ -29,7 +29,7 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 
 | # | File | Description |
 |---|------|-------------|
-| 01 | `from_git/journals/01_hla_step_export.py` | Exports the active HLA part to STEP using `from_git/config/step_export.json` |
+| 01 | `from_git/journals/01_hla_step_export.py` | Exports the active work part to STEP |
 | 02 | `from_git/journals/02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
 | 03 | `from_git/journals/03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
 | 04 | `from_git/journals/04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
@@ -42,6 +42,10 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 - Config format: JSON.
 - Report format: CSV with UTF-8 BOM so Excel opens it cleanly.
 - Errors and summaries are written to the NX Listing Window because NX may run journals through `ugraf.exe`.
+- NX 2312 does not expose the folder picker API used by older journals, so these scripts follow the known-good `Export_BOM.py` pattern and use the Desktop by default:
+  - Input CSV files: `%USERPROFILE%\Desktop`
+  - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
+- To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
 
 ## Recommended Workflow
 
@@ -50,9 +54,9 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 ```
 Step 1  Open a representative part with Teamcenter attributes populated.
 Step 2  Tools > Journal > Play -> from_git/utils/discover_attributes.py
-        -> generates ATTR_DISCOVERY_<part>_<timestamp>.txt.
+        -> generates ATTR_DISCOVERY_<part>_<timestamp>.txt on Desktop.
 Step 3  Run J05 PULL on a representative part or assembly.
-        -> generates PULL_<part>_<timestamp>.csv.
+        -> generates PULL_<part>_<timestamp>.csv on Desktop.
 Step 4  Compare discovery/PULL output against from_git/config/attribute_mapping.json.
         Update JSON values for any names that differ.
 ```
@@ -62,12 +66,13 @@ Step 4  Compare discovery/PULL output against from_git/config/attribute_mapping.
 ```
 Step 1  Export the Teamcenter attribute sheet and save it as Att-*.csv.
         Keep the same two header rows.
+        Put the CSV on Desktop.
 
-Step 2  Run J05 PUSH and select the folder containing Att-*.csv.
+Step 2  Run J05 PUSH.
         -> Matches parts by DB_PART_NO.
         -> Writes only to empty NX attributes.
         -> Never overwrites a non-empty NX attribute.
-        -> Generates PUSH_REPORT_<timestamp>.csv.
+        -> Generates PUSH_REPORT_<timestamp>.csv on Desktop.
 
 Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 ```
@@ -109,4 +114,4 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 - All journals operate directly on NX part files through `GetUserAttribute` and `SetUserAttribute`.
 - No Teamcenter connection is made at journal runtime.
 - Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
-- Edit `from_git/config/step_export.json` to control STEP version and output naming for J01.
+- J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.

@@ -67,21 +67,41 @@ def require_work_part(session):
     return part
 
 
-def prompt_folder(title):
+def _desktop_folder():
+    """Return the user's Desktop folder, matching the known-good BOM journal."""
+    userprofile = os.environ.get("USERPROFILE")
+    if userprofile:
+        return os.path.join(userprofile, "Desktop")
+    home = os.path.expanduser("~")
+    if home and home != "~":
+        return os.path.join(home, "Desktop")
+    return os.getcwd()
+
+
+def get_io_root():
     """
-    Open an NX folder selection dialog with the given title.
-    Returns the selected folder path string, or None if the user cancels.
+    Return the NX journal input/output root.
+
+    NX2312 does not expose the folder picker API used by older scripts, and
+    journals may run from Program Files. Keep operator files on Desktop, matching
+    the known-good Export_BOM.py journal.
+    Override with NX_JOURNALS_IO_DIR when a site needs a shared location.
     """
-    ui = NXOpen.UI.GetUI()
-    dialog = ui.CreateFolderSelectionDialog()
-    dialog.SetTitle(title)
-    try:
-        response = dialog.Show()
-        if response == NXOpen.SelectionDialog.DialogResponse.Ok:
-            return dialog.Path
-        return None
-    finally:
-        dialog.Destroy()
+    root = os.environ.get("NX_JOURNALS_IO_DIR")
+    if not root:
+        root = _desktop_folder()
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def get_input_folder():
+    """Return the folder where users place input CSV files."""
+    return get_io_root()
+
+
+def get_output_folder():
+    """Return the folder where journals write reports and exports."""
+    return get_io_root()
 
 
 def get_root_component(part):
@@ -150,6 +170,10 @@ def get_string_attr(nxobj, attr_name, fallback=""):
     """Read a string user attribute; return fallback if absent or unreadable."""
     if nxobj is None or not attr_name:
         return fallback
+    try:
+        return nxobj.GetStringAttribute(attr_name).strip()
+    except Exception:
+        pass
     try:
         attr = nxobj.GetUserAttribute(attr_name, NXOpen.NXObject.AttributeType.String, -1)
         return attr.StringValue.strip()

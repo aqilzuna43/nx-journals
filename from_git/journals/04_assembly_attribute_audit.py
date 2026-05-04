@@ -20,10 +20,10 @@ if _REPO_ROOT not in sys.path:
 from utils.config_loader import load_json_config  # noqa: E402
 from utils.csv_reports import write_csv  # noqa: E402
 from utils.nx_helpers import (  # noqa: E402
+    get_output_folder,
     get_string_attr,
     iter_occurrences,
     log_info,
-    prompt_folder,
     require_work_part,
     run_journal,
     safe_part_name,
@@ -112,10 +112,8 @@ def main(session):
     if part is None:
         return
 
-    output_folder = prompt_folder("Select Audit Output Folder")
-    if output_folder is None:
-        log_info(session, "Audit cancelled by user.")
-        return
+    output_folder = get_output_folder()
+    log_info(session, f"Audit output folder: {output_folder}")
 
     col_map = _load_mapping()
     hla_pn = _part_number(part, col_map) or safe_part_name(part)
