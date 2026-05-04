@@ -21,7 +21,9 @@ In NX, browse to journals inside that folder, for example:
 ...\from_git\journals\05_bulk_attribute_updater.py
 ```
 
-Do not copy a single journal file by itself. The journals import repo-local modules from `from_git\utils` and read config from `from_git\config`.
+For J05, the production updater is self-contained to avoid NX2312 import-path failures, but it still reads `from_git\config\attribute_mapping.json`. Keep `config` beside `journals`.
+
+For J01-J04, keep the full `from_git` folder together because those journals still use shared helpers from `from_git\utils`.
 
 ## Journals
 

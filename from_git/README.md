@@ -12,8 +12,13 @@ from_git/
   utils/
 ```
 
-Run journals from `from_git/journals` in NX 2312. Do not copy a single `.py`
-file without `utils` and `config`, because the journals import shared helpers
-and read JSON config at runtime.
+Run journals from `from_git/journals` in NX 2312.
+
+`05_bulk_attribute_updater.py` is intentionally self-contained to avoid NX2312
+package/import path problems. It still reads `config/attribute_mapping.json`,
+so keep the `config` folder beside `journals`.
+
+The other journals still use shared helpers from `utils`, so keep the full
+folder together if you run J01-J04.
 
 No third-party Python packages are required.
