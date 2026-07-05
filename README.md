@@ -34,6 +34,7 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 | 03 | `from_git/journals/03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
 | 04 | `from_git/journals/04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
 | 05 | `from_git/journals/05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
+| 06 | `from_git/journals/06_auto_pdf_step_export.py` | Exports the active work part to STEP and its drawing sheets to PDF in one run |
 
 ## Key Runtime Notes
 
@@ -108,6 +109,7 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 | J04 | `AUDIT_<DB_PART_NO>_<timestamp>.csv` and `AUDIT_SUMMARY_<DB_PART_NO>_<timestamp>.csv` |
 | J05 PULL | `PULL_<part_name>_<timestamp>.csv` |
 | J05 PUSH | `PUSH_REPORT_<timestamp>.csv` |
+| J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
 
 ## Notes
 
@@ -115,3 +117,4 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 - No Teamcenter connection is made at journal runtime.
 - Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
+- J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
