@@ -790,79 +790,85 @@ def _export_current_sheet(part, sheet, output_path):
 
 def export_pdfs(session, part, output_folder, part_number, revision):
     dwg_part = None
-    expected_dwg_token = "{0}-{1}-DWG1".format(part_number, revision).upper()
+    target_part_no = part_number.strip().upper()
+    target_rev = revision.strip().upper()
     
     # -----------------------------------------------------------------------
-    # 1. Search currently loaded session parts for the matching drawing dataset
+    # 1. Search currently loaded session parts by attribute and dataset name
     # -----------------------------------------------------------------------
     for loaded_part in session.Parts:
         try:
-            identifiers = []
-            if hasattr(loaded_part, "FullPath") and loaded_part.FullPath:
-                identifiers.append(loaded_part.FullPath.upper())
-            if hasattr(loaded_part, "Leaf") and loaded_part.Leaf:
-                identifiers.append(loaded_part.Leaf.upper())
-            if hasattr(loaded_part, "Name") and loaded_part.Name:
-                identifiers.append(loaded_part.Name.upper())
-                
-            full_ident_str = " | ".join(identifiers)
+            # Gather all identifying text fields for the loaded part
+            leaf = getattr(loaded_part, "Leaf", "") or ""
+            full_path = getattr(loaded_part, "FullPath", "") or ""
             
-            # Match if both the part number and "DWG" exist in the dataset identifier
-            if (part_number.upper() in full_ident_str and "DWG" in full_ident_str):
+            p_no = get_string_attribute(loaded_part, "DB_PART_NO").upper()
+            p_rev = get_string_attribute(loaded_part, "DB_PART_REV").upper()
+            
+            combined_ident = "{0} | {1} | {2}".format(leaf, full_path, loaded_part.Name if hasattr(loaded_part, "Name") else "").upper()
+            
+            # Check if this loaded part represents our drawing dataset
+            is_match = (target_part_no in combined_ident or (p_no == target_part_no))
+            is_drawing = ("DWG" in combined_ident or "UGPART" in combined_ident)
+            
+            if is_match and is_drawing:
                 dwg_part = loaded_part
                 break
         except Exception:
             continue
 
     # -----------------------------------------------------------------------
-    # 2. If not already loaded, attempt to open the drawing dataset
+    # 2. If not pre-loaded, query Teamcenter using expanded CLI spec formats
     # -----------------------------------------------------------------------
     if dwg_part is None:
-        try:
-            if session.IsManagedMode:
-                # Teamcenter Managed Mode database specs
-                tc_specs = [
-                    "@DB/{0}/{1}/dwg1".format(part_number, revision),
-                    "@DB/{0}/{1}/UGPART/dwg1".format(part_number, revision),
-                    "@DB/{0}/{1}/manifest".format(part_number, revision),
-                ]
-                for spec in tc_specs:
+        if session.IsManagedMode:
+            # Try common Teamcenter specification string combinations
+            tc_specs = [
+                "@DB/{0}/{1}/specification/dwg1".format(target_part_no, target_rev),
+                "@DB/{0}/{1}/dwg1".format(target_part_no, target_rev),
+                "@DB/{0}/{1}/UGPART/dwg1".format(target_part_no, target_rev),
+                "@DB/{0}/{1}/manifest/dwg1".format(target_part_no, target_rev),
+                "@DB/{0}/{1}/specification/{0}-{1}-dwg1".format(target_part_no, target_rev),
+                "@DB/{0}/{1}".format(target_part_no, target_rev),
+            ]
+            for spec in tc_specs:
+                try:
+                    loaded_spec, _ = session.Parts.OpenBase(spec)
+                    if loaded_spec is not None:
+                        # Ensure we didn't just re-open the 3D model
+                        if count_drawing_sheets(loaded_spec) > 0 or "DWG" in loaded_spec.Leaf.upper():
+                            dwg_part = loaded_spec
+                            break
+                except Exception:
+                    continue
+        else:
+            # Native Mode Fallback
+            three_d_dir = os.path.dirname(part.FullPath) if getattr(part, "FullPath", None) else ""
+            native_paths = [
+                os.path.join(three_d_dir, "{0}-{1}-dwg1.prt".format(target_part_no, target_rev)),
+                os.path.join(three_d_dir, "{0}-{1}-dwg.prt".format(target_part_no, target_rev)),
+            ]
+            for npath in native_paths:
+                if os.path.exists(npath):
                     try:
-                        dwg_part, _ = session.Parts.OpenBase(spec)
-                        if dwg_part is not None:
+                        loaded_spec, _ = session.Parts.OpenBase(npath)
+                        if loaded_spec is not None:
+                            dwg_part = loaded_spec
                             break
                     except Exception:
                         continue
-            else:
-                # Native mode fallback paths
-                three_d_dir = os.path.dirname(part.FullPath) if part.FullPath else ""
-                native_paths = [
-                    os.path.join(three_d_dir, "{0}-{1}-dwg1.prt".format(part_number, revision)),
-                    os.path.join(three_d_dir, "{0}-{1}-dwg.prt".format(part_number, revision)),
-                ]
-                for npath in native_paths:
-                    if os.path.exists(npath):
-                        dwg_part, _ = session.Parts.OpenBase(npath)
-                        if dwg_part is not None:
-                            break
-        except Exception as e:
-            return {
-                "result": "SKIPPED_NO_DRAWING",
-                "paths": [],
-                "message": "Error attempting to open drawing file: {0}".format(e),
-            }
 
     # -----------------------------------------------------------------------
-    # 3. If drawing dataset cannot be resolved anywhere
+    # 3. Handle case where drawing dataset could not be found
     # -----------------------------------------------------------------------
     if dwg_part is None:
         return {
             "result": "SKIPPED_NO_DRAWING",
             "paths": [],
-            "message": "Drawing dataset '{0}' not found in loaded session or Teamcenter.".format(expected_dwg_token),
+            "message": "Drawing dataset for '{0}/{1}' not found in memory or Teamcenter.".format(target_part_no, target_rev),
         }
 
-    # Switch display window to the drawing dataset so sheets render correctly
+    # Switch display window to the drawing dataset
     session.Parts.SetDisplay(
         dwg_part,
         False,
@@ -879,7 +885,7 @@ def export_pdfs(session, part, output_folder, part_number, revision):
         return {
             "result": "SKIPPED_NO_DRAWING",
             "paths": [],
-            "message": "No drawing sheets were found inside '{0}'".format(dwg_part.Leaf),
+            "message": "No drawing sheets found inside dataset '{0}'".format(dwg_part.Leaf),
         }
 
     successful_paths = []
