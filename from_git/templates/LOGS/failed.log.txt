@@ -1,0 +1,475 @@
+﻿Journal 07 - CSV-driven PDF + STEP export
+Input CSV: C:\Users\my62022696\Desktop\NX_EXPORT_SCOPE.csv
+Managed-mode flag: False (informational only; @DB opens are always attempted)
+Input rows: 7; unique requests: 7; ignored: 0; invalid: 0
+[1/7] 264MN024619A01 / A
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/264MN024619A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024619A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[2/7] 264MN024819A01 / A
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/264MN024819A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024819A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[3/7] 264MN024836A01 / A
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/264MN024836A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024836A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[4/7] 264MN024839A01 / A
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/264MN024839A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024839A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[5/7] 264MN024840A01 / A
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/264MN024840A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024840A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[6/7] 264MN024841A01 / A
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/264MN024841A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024841A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+[7/7] 264MN024845A01 / A
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg1
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg1
+    Not opened: Invalid filename
+  No drawing opened for DWG1.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg2
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg2
+    Not opened: Invalid filename
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg3
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg3
+    Not opened: Invalid filename
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg4
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg4
+    Not opened: Invalid filename
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg5
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg5
+    Not opened: Invalid filename
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg6
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg6
+    Not opened: Invalid filename
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg7
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg7
+    Not opened: Invalid filename
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg8
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg8
+    Not opened: Invalid filename
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/264MN024845A01-A-dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/UGPART/dwg9
+    Not opened: Invalid filename
+  Attempt drawing open: @DB/264MN024845A01/A/dwg9
+    Not opened: Invalid filename
+  No drawing opened for DWG9.
+  PDF: SKIPPED_NO_DRAWING (0 file(s))
+  STEP: NOT_REQUESTED
+Export complete
+Success: 0
+Partial: 0
+No drawing: 7
+Not found: 0
+Failed: 0
+PDF files: 0
+STEP files: 0
+Result report: C:\Users\my62022696\Desktop\NX_BULK_EXPORT\20260721_171221\REPORTS\EXPORT_RESULT_20260721_171221.csv
