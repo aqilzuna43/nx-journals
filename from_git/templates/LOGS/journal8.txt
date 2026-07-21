@@ -1,0 +1,149 @@
+﻿==============================================================================
+NX X / TEAMCENTER DRAWING IDENTITY PROBE
+==============================================================================
+Run while a manually opened drawing is the active display part.
+TXT: C:\Users\my62022696\Desktop\NX_X_IDENTITY_PROBE\NX_X_IDENTITY_PROBE_20260721_180921.txt
+JSON: C:\Users\my62022696\Desktop\NX_X_IDENTITY_PROBE\NX_X_IDENTITY_PROBE_20260721_180921.json
+
+==============================================================================
+RUNTIME
+==============================================================================
+python_version: 3.10.15 (main, Sep 30 2024, 11:52:23) [MSC v.1929 64 bit (AMD64)]
+python_executable: C:\Program Files\Siemens\NX2312\nxbin\ugraf.exe
+platform: Windows-10-10.0.26200
+machine: AMD64
+process_id: 35656
+nxopen_module: 'C:\\Program Files\\Siemens\\NX2312\\nxbin\\python\\NXOpen.pyd'
+current_directory: C:\Users\MY6202~1\AppData\Local\Temp\264MN024619A01___855f1577_024619A01-A-dwg1_1
+
+==============================================================================
+SESSION
+==============================================================================
+Session.IsManagedMode: {'error': {'type': 'builtins.AttributeError', 'message': "'NXOpen.Session' object has no attribute 'IsManagedMode'", 'repr': 'AttributeError("\'NXOpen.Session\' object has no attribute \'IsManagedMode\'")'}}
+
+==============================================================================
+ENVIRONMENT
+==============================================================================
+APPDATA=C:\Users\my62022696\AppData\Roaming
+FMS_HOME=C:\apps\Siemens\TEAMCE~1\tccs
+LOCALAPPDATA=C:\Users\my62022696\AppData\Local
+TEMP=C:\Users\MY6202~1\AppData\Local\Temp
+TMP=C:\Users\MY6202~1\AppData\Local\Temp
+UGII_BASE_DIR=C:\Program Files\Siemens\NX2312
+UGII_LANG=english
+USERPROFILE=C:\Users\my62022696
+Other related names only: FMS_HOME, TCCS_DISABLE_TIMEOUT, TCCS_JAVA, TCCS_MEM, TCCS_MEM_MAX, TC_JAVA_HOME, TC_JRE64_HOME, TC_JRE_HOME, UGII_BASE_DIR, UGII_HTML_UGDOC, UGII_LANG, UGII_PACKAGE, UGII_TCCS_ENV_NAME
+
+==============================================================================
+NXOPEN PDM / CLOUD INVENTORY
+==============================================================================
+AdmTemplateTestManager, AdmUITemplateTestManager, BasePart, BasePartBookmarkOption, BasePartBookmarkOptionMemberType, BasePartCloseAfterSave, BasePartCloseAfterSaveMemberType, BasePartCloseModified, BasePartCloseModifiedMemberType, BasePartCloseWholeTree, BasePartCloseWholeTreeMemberType, BasePartCollaborativeContentType, BasePartCollaborativeContentTypeMemberType, BasePartHistoryEventInformation_Struct, BasePartIncompleteStatus_Struct, BasePartPartPreview, BasePartPartPreviewMemberType, BasePartSaveComponents, BasePartSaveComponentsMemberType, BasePartTransientStatus_Struct, BasePartUnits, BasePartUnitsMemberType, CollaborativeContentManager, CollaborativeDesign, CollaborativeDesignCollection, ConfiguredPart, DMUSessionCollection, DirectionBaseMethodMemberType, DisplayManagerJ3dMaterial_Struct, DisplayPartOption, DisplayPartOptionMemberType, DxfdwgImporterSendModelDataAs, DxfdwgImporterSendModelDataAsMemberType, HumanDataDatabaseType, HumanDataDatabaseTypeMemberType, HumanDataEditDisplayBodyParts, HumanDataEditDisplayBodyPartsMemberType, HumanDataHcpBodyPart, HumanDataHcpBodyPartMemberType, HumanDataInverseKinematicsBodyParts, HumanDataInverseKinematicsBodyPartsMemberType, HumanH10DialogBuilderDatabaseType, HumanH10DialogBuilderDatabaseTypeMemberType, HumanHCPDialogBuilderManipBodyPartType, HumanHCPDialogBuilderManipBodyPartTypeMemberType, HumanHandsDialogBuilderDatabaseType, HumanHandsDialogBuilderDatabaseTypeMemberType, InterpartExpressionsBuilder, InterpartExpressionsBuilderNamingRules, InterpartExpressionsBuilderNamingRulesMemberType, JtCreatorAdvancedMaterials, JtCreatorAdvancedMaterialsMemberType, LinkedMirrorPartAttributeEditData, LinkedMirrorPartAttributeEditEvent, LinkedMirrorPartBuilder, LinkedMirrorPartBuilderMirrorCsysOption, LinkedMirrorPartBuilderMirrorCsysOptionMemberType, LinkedMirrorPartBuilderMirrorPartTypeOption, LinkedMirrorPartBuilderMirrorPartTypeOptionMemberType, LinkedMirrorPartEntityMapData, LinkedMirrorPartEntityMapEvent, LinkedPartManager, LoadOptionsLoadMethod, LoadOptionsLoadMethodMemberType, LoadOptionsManagedModeLoadMethod, LoadOptionsManagedModeLoadMethodMemberType, LoadOptionsUpdateSubsetOnLoadMemberType, ModelingViewHighQualityImageShadeMethodMemberType, NestingPart, NestingPartFormats, NestingPartFormatsMemberType, NestingPartPriorities, NestingPartPrioritiesMemberType, NestingPartRotations, NestingPartRotationsMemberType, NestingSettingsEdgeToPartDistanceOptions, NestingSettingsEdgeToPartDistanceOptionsMemberType, OriginMethodMemberType, PDM, PDMDebugSessionNxPartInfoFlags_Struct, PDMDebugSessionPerformanceStatistics_Struct, PDMDebugSessionTcPartInfoFlags_Struct, PDMDebugSessionWorksetInformationFlags_Struct, Part, PartCleanup, PartCleanupCleanupParts, PartCleanupCleanupPartsMemberType, PartCleanupDeleteGroups, PartCleanupDeleteGroupsMemberType, PartCleanupResetComponentDisplayAction, PartCleanupResetComponentDisplayActionMemberType, PartCloseResponses, PartCloseStatus, PartCollection, PartCollectionDesignWorksetIntentType, PartCollectionDesignWorksetIntentTypeMemberType, PartCollectionMultipleDisplayedPartStatus, PartCollectionMultipleDisplayedPartStatusMemberType, PartCollectionRefsetOption, PartCollectionRefsetOptionMemberType, PartCollectionSdpsStatus, PartCollectionSdpsStatusMemberType, PartCollectionSetProtectionOn, PartCollectionSetProtectionOnMemberType, PartCollectionWorkComponentOption, PartCollectionWorkComponentOptionMemberType, PartDelayedUpdateStatus, PartDelayedUpdateStatusDelayStatusInfo_Struct, PartDisplayPartWorkPartOption, PartDisplayPartWorkPartOptionMemberType, PartFamilyManager, PartFamilyMemberData, PartFamilyMemberValues, PartFeatureUpdateStatus_Struct, PartImporter, PartImporterDestinationCoordinateSystemSpecificationType, PartImporterDestinationCoordinateSystemSpecificationTypeMemberType, PartImporterLayerOptionType, PartImporterLayerOptionTypeMemberType, PartLoadState, PartLoadStateMemberType, PartLoadStatus, PartPartFamilyAttrType, PartPartFamilyAttrTypeMemberType, PartPartFamilyAttributeData_Struct, PartRelations, PartRelationsMemberType, PartReopenReport, PartReopenStatus, PartSaveOptions, PartSaveOptionsPatternData, PartSaveOptionsPatternDataMemberType, PartSaveStatus, PartUnits, PartUnitsMemberType, PartUpdateFromJtFileOptions, PartUpdateFromJtFileOptionsMemberType, PreviewPropertiesBuilderPartCreationOptions, PreviewPropertiesBuilderPartCreationOptionsMemberType, SelectPart, SelectPartList, SessionTransientPartPolicy, SessionTransientPartPolicyMemberType, SketchFindMovableObjectsBuilder, ViewCannedMemberType, ViewDependentDisplayManagerPartialShading, ViewDependentDisplayManagerPartialShadingMemberType
+PdmSession: SUCCESS NXOpen.PDM.PdmSession
+  Members: CreateExportFromTeamcenterBuilderForConfiguredAssembly, CreateExportFromTeamcenterBuilderForDesignWorkset, CreateExportFromTeamcenterBuilderForPartFamily, CreateExternalFileReferenceListBuilder, CreatePartOperationAttributePropertiesBuilder, CreatePartOperationValidationPropertiesBuilder, CreatePdmCopyOrEditOperationAttributePropertiesBuilder, CreatePdmCopyOrEditOperationBuilder, CreateSaveAsNewItemTypeBuilder, ExportFromTeamcenterCreate, GetConfiguredRevisionInput, GetConfiguredRevisionOfItems, GetConfiguredRevisionResult, GetDatabaseObjectManager, GetItemTypes, GetUserName, NewCaeFileContainer, NewFileManagement, PartAttributeAssignmentObserver, PartNameGenerator, PartOperationImportObserver, PdmCopyOrEditOperationObserver
+PdmManager: SUCCESS NXOpen.PDM.PdmManager
+  Members: CreatePartOperationAttributePropertiesBuilder, CreatePartOperationValidationPropertiesBuilder, CreatePdmCopyOrEditOperationAttributePropertiesBuilder
+PdmSearchManager: SUCCESS NXOpen.PDM.PdmSearchManager
+  Members: NewPdmListofvalues, NewPdmSearch, NewPdmSearchresult, NewPdmSoaquery
+WebAppSession: SUCCESS NXOpen.PDM.WebAppSession
+CollaborativeContentManager: SUCCESS NXOpen.CollaborativeContentManager
+  Members: CreateOverridePartBuilder, DeleteOverridePartBuilder
+CollaborationApplicationSession: ERROR 
+CloudDmSession: ERROR 
+CloudDMSession: ERROR 
+
+==============================================================================
+DISPLAY PART
+==============================================================================
+Type: NXOpen.Part
+Identity: ['TAG', '96800']
+Part number: 264MN024619A01
+Revision: A
+Drawing sheets: 1
+Bodies: 0
+Name: '264MN024619A01/A;1-PRT-DCDC-FRAMEBRKT-LHD (specification: 264MN024619A01-A-dwg1) (specification: 264MN024619A01-A-dwg1)'
+Leaf: '264MN024619A01/A (specification: 264MN024619A01-A-dwg1)'
+FullPath: '264MN024619A01/A (specification: 264MN024619A01-A-dwg1)'
+JournalIdentifier: '@DB/264MN024619A01/A/specification/264MN024619A01-A-dwg1'
+Tag: 96800
+IsModified: False
+IsFullyLoaded: True
+OwningPart: <NXOpen.Part object at 0x000002327FDD3280>
+ATTR DB_SEED_PART_USED [DB Part] = {'StringValue': "'@DB/nxml_Drawing-A0-Size-template/A'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR CHECKED_OUT [UGPART] = {'StringValue': "' '", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR LAST_MOD_DATE [UGPART] = {'StringValue': "'21-Jul-2026'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "'2026/07/21 12:00:46'", 'ReferenceValue': "''"}
+ATTR DB_PART_DESC [Cad0Design] = {'StringValue': "'024619'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_REV [Cad0DesignRevision] = {'StringValue': "'A'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_NAME [Cad0Design] = {'StringValue': "'PRT-DCDC-FRAMEBRKT-LHD'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_NO [Cad0Design] = {'StringValue': "'264MN024619A01'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_TYPE [Cad0Design] = {'StringValue': "'Cad0Design'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_MFKID [Cad0Design] = {'StringValue': "'264MN024619A01'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+UF status: SUCCESS
+UF.Part.AskPartName: SUCCESS '%UGMGR=V3.2 PH=gYNAgZ38p_A3dA PRH=gcBAgZ38p_A3dA PN=264MN024619A01 PRN=A AN=264MN024619A01-A-dwg1 RT="has specification" AT="UG part file" AUID=wZCAg5VRp_A3dA '
+UF.Part.AskPartName2: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Part' object has no attribute 'AskPartName2'", 'repr': 'AttributeError("\'NXOpen.UF.Part\' object has no attribute \'AskPartName2\'")'}
+UF.Part.AskDisplayPart: SUCCESS 96800
+UF.Part.AskWorkPart: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Part' object has no attribute 'AskWorkPart'", 'repr': 'AttributeError("\'NXOpen.UF.Part\' object has no attribute \'AskWorkPart\'")'}
+UF UGMGR status: SUCCESS
+UF.Ugmgr.IsActive: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'IsActive'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'IsActive\'")'}
+UF.Ugmgr.AskDatabasePartName: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskDatabasePartName'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskDatabasePartName\'")'}
+UF.Ugmgr.AskPartName: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartName'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartName\'")'}
+UF.Ugmgr.AskPartNumber: ERROR {'type': 'NXOpen.NXException', 'message': 'Teamcenter Error: A deleted or invalid class id was used', 'repr': "NXException('Teamcenter Error: A deleted or invalid class id was used')", 'ErrorCode': '920007'}
+UF.Ugmgr.AskPartRevision: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartRevision'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartRevision\'")'}
+UF.Ugmgr.AskPartRevisionId: ERROR {'type': 'NXOpen.NXException', 'message': 'Teamcenter Error: A deleted or invalid class id was used', 'repr': "NXException('Teamcenter Error: A deleted or invalid class id was used')", 'ErrorCode': '920007'}
+UF.Ugmgr.AskPartUid: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartUid'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartUid\'")'}
+UF.Ugmgr.AskUidFromTag: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskUidFromTag'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskUidFromTag\'")'}
+
+==============================================================================
+WORK PART
+==============================================================================
+Type: NXOpen.Part
+Identity: ['TAG', '96800']
+Part number: 264MN024619A01
+Revision: A
+Drawing sheets: 1
+Bodies: 0
+Name: '264MN024619A01/A;1-PRT-DCDC-FRAMEBRKT-LHD (specification: 264MN024619A01-A-dwg1) (specification: 264MN024619A01-A-dwg1)'
+Leaf: '264MN024619A01/A (specification: 264MN024619A01-A-dwg1)'
+FullPath: '264MN024619A01/A (specification: 264MN024619A01-A-dwg1)'
+JournalIdentifier: '@DB/264MN024619A01/A/specification/264MN024619A01-A-dwg1'
+Tag: 96800
+IsModified: False
+IsFullyLoaded: True
+OwningPart: <NXOpen.Part object at 0x000002327FDD3280>
+ATTR DB_SEED_PART_USED [DB Part] = {'StringValue': "'@DB/nxml_Drawing-A0-Size-template/A'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR CHECKED_OUT [UGPART] = {'StringValue': "' '", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR LAST_MOD_DATE [UGPART] = {'StringValue': "'21-Jul-2026'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "'2026/07/21 12:00:46'", 'ReferenceValue': "''"}
+ATTR DB_PART_DESC [Cad0Design] = {'StringValue': "'024619'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_REV [Cad0DesignRevision] = {'StringValue': "'A'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_NAME [Cad0Design] = {'StringValue': "'PRT-DCDC-FRAMEBRKT-LHD'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_NO [Cad0Design] = {'StringValue': "'264MN024619A01'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_TYPE [Cad0Design] = {'StringValue': "'Cad0Design'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+ATTR DB_PART_MFKID [Cad0Design] = {'StringValue': "'264MN024619A01'", 'IntegerValue': '0', 'RealValue': '0.0', 'BooleanValue': 'False', 'TimeValue': "''", 'ReferenceValue': "''"}
+UF status: SUCCESS
+UF.Part.AskPartName: SUCCESS '%UGMGR=V3.2 PH=gYNAgZ38p_A3dA PRH=gcBAgZ38p_A3dA PN=264MN024619A01 PRN=A AN=264MN024619A01-A-dwg1 RT="has specification" AT="UG part file" AUID=wZCAg5VRp_A3dA '
+UF.Part.AskPartName2: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Part' object has no attribute 'AskPartName2'", 'repr': 'AttributeError("\'NXOpen.UF.Part\' object has no attribute \'AskPartName2\'")'}
+UF.Part.AskDisplayPart: SUCCESS 96800
+UF.Part.AskWorkPart: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Part' object has no attribute 'AskWorkPart'", 'repr': 'AttributeError("\'NXOpen.UF.Part\' object has no attribute \'AskWorkPart\'")'}
+UF UGMGR status: SUCCESS
+UF.Ugmgr.IsActive: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'IsActive'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'IsActive\'")'}
+UF.Ugmgr.AskDatabasePartName: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskDatabasePartName'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskDatabasePartName\'")'}
+UF.Ugmgr.AskPartName: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartName'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartName\'")'}
+UF.Ugmgr.AskPartNumber: ERROR {'type': 'NXOpen.NXException', 'message': 'Teamcenter Error: A deleted or invalid class id was used', 'repr': "NXException('Teamcenter Error: A deleted or invalid class id was used')", 'ErrorCode': '920007'}
+UF.Ugmgr.AskPartRevision: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartRevision'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartRevision\'")'}
+UF.Ugmgr.AskPartRevisionId: ERROR {'type': 'NXOpen.NXException', 'message': 'Teamcenter Error: A deleted or invalid class id was used', 'repr': "NXException('Teamcenter Error: A deleted or invalid class id was used')", 'ErrorCode': '920007'}
+UF.Ugmgr.AskPartUid: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskPartUid'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskPartUid\'")'}
+UF.Ugmgr.AskUidFromTag: NOT_AVAILABLE {'type': 'builtins.AttributeError', 'message': "'NXOpen.UF.Ugmgr' object has no attribute 'AskUidFromTag'", 'repr': 'AttributeError("\'NXOpen.UF.Ugmgr\' object has no attribute \'AskUidFromTag\'")'}
+
+==============================================================================
+ALL LOADED PARTS
+==============================================================================
+Loaded part count: 4
+[1] '264MN024619A01/A;1-PRT-DCDC-FRAMEBRKT-LHD (specification: 264MN024619A01-A-dwg1) (specification: 264MN024619A01-A-dwg1)' [DISPLAY] [WORK]
+[2] '264MN024619A01/A;1-PRT-DCDC-FRAMEBRKT-LHD'
+[3] '028530/A;1'
+[4] '264MN028529A01/A;1-STD-DC/DC CONVERTER MODULES'
+
+==============================================================================
+CONTROLLED REOPEN TESTS
+==============================================================================
+  display_part.FullPath
+    Candidate: 264MN024619A01/A (specification: 264MN024619A01-A-dwg1)
