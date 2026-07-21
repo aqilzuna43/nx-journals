@@ -13,6 +13,8 @@
 
 # Versioned operator input templates
 !from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv
+!from_git/templates/NX_DRAWING_SCOPE_TEMPLATE.csv
+!from_git/templates/NX_ATTRIBUTE_CORRECTIONS_TEMPLATE.csv
 
 # Python
 __pycache__/
