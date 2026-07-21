@@ -11,6 +11,9 @@
 *.step
 *.pdf
 
+# Versioned operator input templates
+!from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv
+
 # Python
 __pycache__/
 *.pyc
