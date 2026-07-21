@@ -1,0 +1,20 @@
+Journal 07 - DataPack PDF + STEP export
+Input CSV: C:\Users\my62022696\Desktop\NX_EXPORT_SCOPE.csv
+Managed mode: False
+Input rows: 2; unique requests: 2; ignored: 0; invalid: 0
+[1/2] 264MN025675A01 / A
+  PDF: NOT_FOUND (0 file(s))
+  STEP: NOT_FOUND
+[2/2] 264MN032237A01 / A
+  Drawing already loaded: A (specification: 264MN032237A01-A-dwg1)
+  Exporting DWG1: 1 sheet(s)
+    PDF created: C:\Users\my62022696\Desktop\NX_BULK_EXPORT\20260721_160407\PDF\264MN032237A01_REVA_DWG1.pdf
+  PDF: SUCCESS (1 file(s))
+  STEP: SUCCESS
+Export complete
+Success: 1
+Partial: 0
+Failed: 0
+PDF files: 1
+STEP files: 1
+Result report: C:\Users\my62022696\Desktop\NX_BULK_EXPORT\20260721_160407\REPORTS\EXPORT_RESULT_20260721_160407.csv
