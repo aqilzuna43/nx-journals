@@ -1,11 +1,17 @@
 # NX Open Python Journals
 
-NX Open Python journals for **Siemens NX 2312** + Teamcenter productivity.
-Run via **NX > Tools > Journal > Play** (`Alt+F8`). The deployable runtime is the `from_git/` folder, which targets NX 2312 embedded Python 3.10 and avoids third-party Python packages.
+NX Open Python journals for **Siemens NX 2312** and managed TeamcenterX.
+Run them through **NX > Tools > Journal > Play** (`Alt+F8`). The deployable
+runtime is the complete `from_git/` folder and uses only Python 3.10 standard
+library modules plus NXOpen.
 
-## Deployment Layout
+NX/Teamcenter is authoritative for the engineering BOM and configured
+attributes. The FZ MASTER workbook is downstream reference evidence only and
+is never used to overwrite NX.
 
-Copy or pull the whole `from_git/` folder to the office PC. The folder must keep this shape:
+## Deployment layout
+
+Copy or pull the entire `from_git/` folder and preserve this shape:
 
 ```text
 from_git/
@@ -15,96 +21,123 @@ from_git/
   utils/
 ```
 
-In NX, browse to journals inside that folder, for example:
-
-```text
-...\from_git\journals\05_bulk_attribute_updater.py
-```
-
-For J05, the production updater is self-contained to avoid NX2312 import-path failures, but it still reads `from_git\config\attribute_mapping.json`. Keep `config` beside `journals`.
-
-For J01-J04, keep the full `from_git` folder together because those journals still use shared helpers from `from_git\utils`.
+J02 and J04 consume the shared reconciliation engine. J05 is intentionally
+self-contained for NX2312 journal loading, but reads
+`config/attribute_reconciliation.json`. Keep the full folder together.
 
 ## Journals
 
-| # | File | Description |
-|---|------|-------------|
-| 01 | `from_git/journals/01_hla_step_export.py` | Exports the active work part to STEP |
-| 02 | `from_git/journals/02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
-| 03 | `from_git/journals/03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
-| 04 | `from_git/journals/04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
-| 05 | `from_git/journals/05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
-| 06 | `from_git/journals/06_auto_pdf_step_export.py` | Exports the active work part to STEP and its drawing sheets to PDF in one run |
-| 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Exports DataPack-controlled drawing PDFs and AP214 STEP files from the loaded assembly |
+| # | File | Role |
+|---|---|---|
+| 01 | `from_git/journals/01_hla_step_export.py` | Active work-part STEP export |
+| 02 | `from_git/journals/02_hla_multilevel_bom.py` | NX-authoritative FZ-compatible **draft** BOM with immediate-parent quantities |
+| 03 | `from_git/journals/03_batch_drawing_pdf.py` | Legacy drawing PDF batch export |
+| 04 | `from_git/journals/04_assembly_attribute_audit.py` | Fail-closed, read-only NX certification and evidence reports |
+| 05 | `from_git/journals/05_bulk_attribute_updater.py` | Approved typed correction workflow (`PULL`, `DRY_RUN`, `APPLY_APPROVED`) |
+| 06 | `from_git/journals/06_auto_pdf_step_export.py` | Legacy active-part STEP and drawing PDF export |
+| 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Protected production DataPack PDF and STEP export |
+| 08 | `from_git/journals/08_nx_x_attribute_diagnostic.py` | Diagnostic-only NX attribute probe |
+| 09 | `from_git/journals/09_managed_drawing_open_test.py` | Canonical managed-drawing regression proof |
 
-## Key Runtime Notes
+J07 is protected and is not part of the J02/J04/J05 reconciliation refactor.
 
-- Deployment target: NX 2312 embedded Python 3.10.
-- Required external Python packages: none.
-- Config format: JSON.
-- Report format: CSV with UTF-8 BOM so Excel opens it cleanly.
-- Errors and summaries are written to the NX Listing Window because NX may run journals through `ugraf.exe`.
-- NX 2312 does not expose the folder picker API used by older journals, so these scripts follow the known-good `Export_BOM.py` pattern and use the Desktop by default:
-  - Input CSV files: `%USERPROFILE%\Desktop`
-  - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
-- To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
+## Runtime I/O
 
-## Journal 07 - DataPack PDF + STEP Export
+The default I/O directory is `%USERPROFILE%\Desktop`. Set
+`NX_JOURNALS_IO_DIR` before launching NX to use a controlled directory.
+Reports are UTF-8-BOM CSVs for Excel and progress is written to the NX Listing
+Window.
 
-Journal 07 reads a manually prepared DataPack scope and exports only the PDF
-and STEP outputs explicitly enabled in that CSV. It matches each request by the
-normalized combination of `DB_PART_NO` and `DB_PART_REV`; it does not decide
-which parts are BTP, determine drawing readiness, search Teamcenter, or select a
-different revision.
+Default reconciliation inputs:
 
-### Prepare the input
+| File | Use | Override |
+|---|---|---|
+| `NX_DRAWING_SCOPE.csv` | Required by J04 certification | `NX_DRAWING_SCOPE_FILE` |
+| `NX_ATTRIBUTE_MASTER_REFERENCE.csv` | Optional downstream drift check | `NX_ATTRIBUTE_MASTER_FILE` |
+| `NX_ATTRIBUTE_CORRECTIONS.csv` | J05 dry-run/apply input | `NX_ATTRIBUTE_CORRECTIONS_FILE` |
 
-1. Refresh and filter the FZ-PowerSystem DataPack tracker to the required BTP
-   scope.
-2. Export or copy the selected rows to CSV and confirm the `PDF` and `STEP`
-   controls.
-3. Use `from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv` as the starting
-   format, then save the working file with the exact name
-   `NX_EXPORT_SCOPE.csv`.
-4. Close Excel after saving the CSV.
-5. Put the file in `NX_JOURNALS_IO_DIR` when configured, or on the current
-   user's Desktop otherwise. Journal 07 never searches for the "latest" CSV.
+Templates for drawing scope and corrections are in `from_git/templates`.
 
-Required logical columns and accepted aliases:
+## NX-authoritative BOM workflow
 
-| Logical value | Accepted headers |
-|---|---|
-| Part number | `DB_PART_NO`, `Item Number`, `PART_NUMBER`, `Part Number` |
-| Revision | `DB_PART_REV`, `Item Rev`, `REVISION`, `Revision` |
-| PDF control | `PDF`, `Export_PDF`, `EXPORT_PDF` |
-| STEP control | `STEP`, `Export_STEP`, `EXPORT_STEP` |
+### J02 draft
 
-Optional traceability columns are `DATA_PACK_STATUS`/`Status`,
-`PRIMARY_MODULE`/`Primary Module`, `PART_DESCRIPTION`/`Part Description`, and
-`OWNER`/`Owner`. Enabled controls are `YES`, `Y`, `TRUE`, `1`, or `X`;
-disabled controls are blank, `NO`, `N`, `FALSE`, or `0`. An unknown nonblank
-control is reported as a warning and treated as disabled. Rows with both
-controls explicitly disabled are ignored. Duplicate part/revision rows are
-merged, with PDF and STEP enabled when any contributing row requests them.
+Open and fully load the intended assembly, then play J02. It includes the
+active root at level 0, excludes suppressed occurrences, aggregates duplicate
+siblings, and preserves the same part under different parents.
 
-### Prepare NX and run
-
-Before playing the journal, open the correct top-level HLA assembly in managed
-NX 2312, apply the intended Teamcenter revision rule, fully load the required
-components, and confirm the expected revisions in Assembly Navigator. Then run:
+Output:
 
 ```text
-NX > Tools > Journal > Play
-from_git\journals\07_datapack_pdf_step_export.py
+BOM_DRAFT_<root>_<timestamp>.csv
 ```
 
-The first version can use only prototype parts already available through the
-loaded assembly. It does not query Teamcenter, open missing revisions, save or
-modify NX parts, create datasets, or upload generated files.
+The exact FZ import headers are:
 
-### Journal 07 outputs
+```text
+BOM Level, DB_PART_NO, Indented Part Name, Component Name, Quantity,
+DB_PART_DESC, DB_PART_NAME, DB_PART_REV, MFG, MPN, Stocking_Type
+```
 
-Each run creates an audit-preserving folder:
+J02 output is always draft and performs no drawing or release certification.
+
+### J04 certification
+
+Prepare `NX_DRAWING_SCOPE.csv` from the template. `Drawing Required` must be
+`YES` or `NO`; `REVIEW`, missing identities, invalid values, and conflicting
+duplicates block certification.
+
+J04 audits exact `category + attribute title`, model identity and hierarchy,
+controlled values, placeholders, material completeness,
+mass/density/volume consistency, exact transformed model-coordinate
+dimensions, and applicable canonical drawings. It is strictly read-only.
+
+Every run creates detailed and summary evidence. A certified BOM is created
+only when the blocking count is zero:
+
+```text
+NX_CERTIFIED_BOM_<root>_<run_id>.csv
+```
+
+When an optional MASTER reference is supplied, any structural, revision,
+quantity, or configured-field difference is `DOWNSTREAM_BOM_DRIFT` and means
+MASTER must be regenerated. It is never an NX correction source.
+
+### J05 controlled correction
+
+Select mode through `NX_J05_MODE`:
+
+```text
+PULL
+DRY_RUN          (default)
+APPLY_APPROVED
+```
+
+Use `NX_ATTRIBUTE_CORRECTIONS.csv` from the template. Each row must identify
+the exact part and revision, MODEL or DRAWING target, category, attribute,
+type, audited raw value, expected value, audit run, engineer, and approval
+evidence. The valid authorities are `ENGINEERING_APPROVAL` or a configured
+`MODEL` mirror. BOM and MASTER authority are rejected.
+
+J05 never writes identity, material, physical, dimension, system-owned,
+locked, PDM-based, read-only, or unconfigured fields. Writes are grouped per
+target under an undo mark and reread immediately. A failure rolls back that
+target and prevents its save.
+
+The versioned save policy is currently `NO_SAVE`. Do not switch it to
+`SAVE_CHANGED_PARTS` until the disposable Teamcenter-item write/save/reopen
+gate is explicitly confirmed in NX 2312.
+
+## Journal 07 DataPack PDF and STEP export
+
+J07 reads a manually prepared `NX_EXPORT_SCOPE.csv` and exports only the PDF
+and STEP outputs enabled by the DataPack scope. It matches the normalized
+combination of `DB_PART_NO` and `DB_PART_REV`; it does not select revisions or
+decide drawing readiness.
+
+Use `from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv`, place the working file
+in `NX_JOURNALS_IO_DIR` (or Desktop), fully load the intended assembly and
+revision rule, then play J07. It writes:
 
 ```text
 <I/O root>\NX_BULK_EXPORT\YYYYMMDD_HHMMSS\
@@ -114,92 +147,27 @@ Each run creates an audit-preserving folder:
   LOGS\EXPORT_LOG_YYYYMMDD_HHMMSS.txt
 ```
 
-STEP files use `<DB_PART_NO>_REV<DB_PART_REV>.stp` and AP214. PDF files use
-`DRAWING_NUMBER` when available, otherwise the requested part number, and add a
-deterministic `_SHEET01`, `_SHEET02`, and so on for multi-sheet drawings.
-Journal 07 creates one PDF per drawing sheet; it does not create a combined PDF.
+J07 is self-contained, does not save or modify NX parts, and restores the
+original display/work parts.
 
-The UTF-8-BOM result CSV contains one row per valid unique request plus each
-invalid input row. Principal results are `SUCCESS`, `PARTIAL_SUCCESS`,
-`NOT_REQUESTED`, `SKIPPED_NO_DRAWING`, `NOT_FOUND`, `REVISION_MISMATCH`,
-`INVALID_INPUT`, `FAILED`, and `FAILED_NO_OUTPUT_FILE`. PDF and STEP outcomes
-are independent, and the expected file must exist before an export is recorded
-as successful. A valid-header CSV containing only invalid or ignored rows still
-produces a report but performs no conversion.
+## Output naming
 
-The NX Listing Window shows progress, traversal diagnostics, collisions, and a
-final file-count summary. Journal 07 restores the original display and work
-parts even when an individual export fails.
-
-## Recommended Workflow
-
-### First time - verify attribute names
-
-```
-Step 1  Open a representative part with Teamcenter attributes populated.
-Step 2  Tools > Journal > Play -> from_git/utils/discover_attributes.py
-        -> generates ATTR_DISCOVERY_<part>_<timestamp>.txt on Desktop.
-Step 3  Run J05 PULL on a representative part or assembly.
-        -> generates PULL_<part>_<timestamp>.csv on Desktop.
-Step 4  Compare discovery/PULL output against from_git/config/attribute_mapping.json.
-        Update JSON values for any names that differ.
-```
-
-### Ongoing - populate NX attributes from Teamcenter CSV
-
-```
-Step 1  Export the Teamcenter attribute sheet and save it as Att-*.csv.
-        Keep the same two header rows.
-        Put the CSV on Desktop.
-
-Step 2  Run J05 PUSH.
-        -> Matches parts by DB_PART_NO.
-        -> Writes only to empty NX attributes.
-        -> Never overwrites a non-empty NX attribute.
-        -> Generates PUSH_REPORT_<timestamp>.csv on Desktop.
-
-Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
-```
-
-## Attribute Mapping
-
-`from_git/config/attribute_mapping.json` is the source of truth for attribute names.
-
-```json
-{
-  "columns": {
-    "PART_NUMBER": "DB_PART_NO",
-    "DESCRIPTION": "DB_PART_NAME",
-    "MATERIAL": "MATERIAL",
-    "FINISH": "SURFACE_FINISH",
-    "REVISION": "DB_PART_REV",
-    "DRAWING_NUMBER": "DRAWING_NUMBER"
-  }
-}
-```
-
-- `columns` drives J02 BOM output and J04 audit output.
-- `tc_columns` maps Teamcenter CSV row-2 aliases to NX internal attribute names for J05 PUSH.
-- `skip_columns` documents Teamcenter columns that must not be written to NX.
-
-## Output File Naming
-
-| Journal | Output pattern |
-|---------|---------------|
+| Journal | Output |
+|---|---|
 | J01 | `<DB_PART_NO>_REV<DB_PART_REV>.stp` |
-| J02 | `BOM_<DB_PART_NO>_<timestamp>.csv` |
-| J03 | `<drawing_number>_REV<revision>.pdf` |
-| J04 | `AUDIT_<DB_PART_NO>_<timestamp>.csv` and `AUDIT_SUMMARY_<DB_PART_NO>_<timestamp>.csv` |
-| J05 PULL | `PULL_<part_name>_<timestamp>.csv` |
-| J05 PUSH | `PUSH_REPORT_<timestamp>.csv` |
-| J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
-| J07 | `NX_BULK_EXPORT\<timestamp>\PDF`, `STEP`, `REPORTS`, and `LOGS` |
+| J02 | `BOM_DRAFT_<root>_<timestamp>.csv` |
+| J04 | detail and summary reports; conditional `NX_CERTIFIED_BOM_<root>_<run_id>.csv` |
+| J05 | `PULL_<timestamp>.csv` or `J05_<mode>_<timestamp>.csv` |
+| J06 | active-part STEP and per-sheet PDF |
+| J07 | timestamped `NX_BULK_EXPORT` tree |
 
-## Notes
+## Acceptance boundary
 
-- All journals operate directly on NX part files through `GetUserAttribute` and `SetUserAttribute`.
-- No Teamcenter connection is made at journal runtime.
-- Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
-- J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
-- J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
-- J07 is self-contained and needs no shared utility or JSON configuration file. It only processes exact part-number/revision matches already loaded under the active assembly.
+Repository tests provide static and fake-adapter evidence only. NX2312 gates
+must separately prove canonical drawing behavior, placeholder suppression,
+fully compliant certification, full-HLA hierarchy/dimensions, J05 approval and
+stale-audit cases, disposable-item save/reopen behavior, and J07 regression.
+Static validation must not be represented as NX runtime proof.
+
+See `docs/J04_J05_ATTRIBUTE_RECONCILIATION_PLAN.md` for the complete rule,
+failure, recovery, and runtime-gate specification.
