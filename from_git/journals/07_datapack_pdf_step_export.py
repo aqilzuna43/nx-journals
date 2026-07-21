@@ -2,15 +2,25 @@
 Journal 07 - DataPack-Controlled PDF + STEP Export
 
 Reads NX_EXPORT_SCOPE.csv, matches DB_PART_NO + DB_PART_REV against the
-currently loaded assembly, and exports the explicitly requested drawing PDFs
-and AP214 STEP files.
+currently loaded assembly, and exports requested drawing PDFs and AP214 STEP
+files.
 
+Drawing specifications do not need to be open. In Teamcenter managed mode the
+journal searches loaded drawing parts first, then attempts numbered non-master
+specifications such as:
+
+    <DB_PART_NO>-<DB_PART_REV>-dwg1
+    <DB_PART_NO>-<DB_PART_REV>-dwg2
+    ...
+
+Target: NX 2312 embedded Python 3.10
 Run via: NX > Tools > Journal > Play
 """
 
 import csv
 import datetime
 import os
+import re
 import traceback
 
 import NXOpen
@@ -18,7 +28,7 @@ import NXOpen.UF
 
 
 # ---------------------------------------------------------------------------
-# Operator-adjustable configuration
+# Configuration
 # ---------------------------------------------------------------------------
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
@@ -28,9 +38,12 @@ INCLUDE_ROOT_WORK_PART = True
 SKIP_SUPPRESSED_COMPONENTS = True
 VERIFY_OUTPUT_FILES = True
 
+# Supports dwg1, dwg2 and further numbered specifications.
+MAX_DRAWING_DATASET_INDEX = 9
+TEAMCENTER_DRAWING_DATASET_TYPE = "UGPART"
+
 TRUE_VALUES = {"YES", "Y", "TRUE", "1", "X"}
 FALSE_VALUES = {"", "NO", "N", "FALSE", "0"}
-
 _INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
 _HEADER_ALIASES = {
@@ -44,7 +57,7 @@ _HEADER_ALIASES = {
     "owner": ("OWNER", "Owner"),
 }
 
-_REQUIRED_LOGICAL_HEADERS = ("part_number", "revision", "pdf", "step")
+_REQUIRED_HEADERS = ("part_number", "revision", "pdf", "step")
 
 _RESULT_COLUMNS = (
     "RUN_TIMESTAMP",
@@ -69,438 +82,153 @@ _RESULT_COLUMNS = (
     "DURATION_SECONDS",
 )
 
+_DRAWING_SUFFIX_RE = re.compile(
+    r"(?:^|[-_])DWG(\d+)(?:$|[^A-Z0-9])",
+    re.IGNORECASE,
+)
+
 
 # ---------------------------------------------------------------------------
-# Text, logging, and file helpers
+# Generic helpers
 # ---------------------------------------------------------------------------
 
 def normalize_text(value):
-    if value is None:
-        return ""
-    return str(value).strip()
+    return "" if value is None else str(value).strip()
 
 
 def normalize_header(value):
-    text = normalize_text(value).lstrip("\ufeff")
-    return " ".join(text.split()).upper()
+    return " ".join(normalize_text(value).lstrip("\ufeff").split()).upper()
 
 
 def clean_filename_token(value, fallback="part"):
     text = normalize_text(value)
     if not text:
         return fallback
-
-    cleaned = []
-    for char in text:
-        if char in _INVALID_FILENAME_CHARS or ord(char) < 32:
-            cleaned.append("_")
-        else:
-            cleaned.append(char)
-
-    result = "".join(cleaned).strip(" .")
-    return result or fallback
+    cleaned = "".join(
+        "_" if char in _INVALID_FILENAME_CHARS or ord(char) < 32 else char
+        for char in text
+    ).strip(" .")
+    return cleaned or fallback
 
 
-def is_enabled(value):
-    return normalize_text(value).upper() in TRUE_VALUES
-
-
-def _parse_control(value, label, row_number):
-    normalized = normalize_text(value).upper()
-    if normalized in TRUE_VALUES:
-        return True, ""
-    if normalized in FALSE_VALUES:
-        return False, ""
-    return (
-        False,
-        "Source row {0}: unknown {1} control value '{2}'; treated as disabled".format(
-            row_number,
-            label,
-            normalize_text(value),
-        ),
-    )
-
-
-def _append_unique(messages, message):
-    message = normalize_text(message)
-    if message and message not in messages:
-        messages.append(message)
+def append_unique(messages, message):
+    text = normalize_text(message)
+    if text and text not in messages:
+        messages.append(text)
 
 
 def log_line(session, message, log_buffer=None):
     text = str(message)
     if log_buffer is not None:
         log_buffer.append(text)
-
     try:
-        listing_window = session.ListingWindow
-        listing_window.Open()
+        window = session.ListingWindow
+        window.Open()
         for line in text.splitlines() or [""]:
-            listing_window.WriteFullline(line)
+            window.WriteFullline(line)
     except Exception:
         pass
-
     try:
         print(text)
     except Exception:
         pass
 
 
-def _write_text_log(path, lines):
+def write_text_log(path, lines):
     with open(path, "w", encoding="utf-8", newline="") as handle:
         for line in lines:
-            handle.write(str(line))
-            handle.write("\n")
+            handle.write(str(line) + "\n")
 
 
-def _desktop_folder():
-    user_profile = normalize_text(os.environ.get("USERPROFILE"))
-    if user_profile:
-        return os.path.join(user_profile, "Desktop")
-
+def desktop_folder():
+    profile = normalize_text(os.environ.get("USERPROFILE"))
+    if profile:
+        return os.path.join(profile, "Desktop")
     home = os.path.expanduser("~")
     if home and home != "~":
         return os.path.join(home, "Desktop")
-
     return os.getcwd()
 
 
 def resolve_io_root():
-    configured = normalize_text(os.environ.get("NX_JOURNALS_IO_DIR"))
-    root = configured or _desktop_folder()
+    root = normalize_text(os.environ.get("NX_JOURNALS_IO_DIR")) or desktop_folder()
     return os.path.abspath(os.path.expanduser(root))
 
 
-def resolve_input_csv(io_root):
-    return os.path.join(io_root, INPUT_FILENAME)
-
-
-def _create_run_folders(io_root, run_timestamp):
-    run_folder = os.path.join(io_root, OUTPUT_ROOT_FOLDER, run_timestamp)
-    os.makedirs(run_folder, exist_ok=False)
-
-    folders = {"run": run_folder}
+def create_run_folders(io_root, timestamp):
+    run = os.path.join(io_root, OUTPUT_ROOT_FOLDER, timestamp)
+    os.makedirs(run, exist_ok=False)
+    folders = {"run": run}
     for name in ("PDF", "STEP", "REPORTS", "LOGS"):
-        path = os.path.join(run_folder, name)
+        path = os.path.join(run, name)
         os.makedirs(path, exist_ok=False)
         folders[name.lower()] = path
     return folders
 
 
-# ---------------------------------------------------------------------------
-# CSV input and result helpers
-# ---------------------------------------------------------------------------
-
-def _resolve_headers(fieldnames):
-    if not fieldnames:
-        raise ValueError("The input CSV does not contain a header row.")
-
-    normalized_fields = []
-    for fieldname in fieldnames:
-        normalized_fields.append((fieldname, normalize_header(fieldname)))
-
-    resolved = {}
-    warnings = []
-    for logical_name, aliases in _HEADER_ALIASES.items():
-        candidates = []
-        for alias in aliases:
-            normalized_alias = normalize_header(alias)
-            for original, normalized in normalized_fields:
-                if normalized == normalized_alias and original not in candidates:
-                    candidates.append(original)
-
-        if candidates:
-            resolved[logical_name] = candidates[0]
-            if len(candidates) > 1:
-                warnings.append(
-                    "Multiple columns match {0}; using '{1}' and ignoring: {2}".format(
-                        logical_name,
-                        candidates[0],
-                        ", ".join(str(item) for item in candidates[1:]),
-                    )
-                )
-
-    missing = [
-        logical_name
-        for logical_name in _REQUIRED_LOGICAL_HEADERS
-        if logical_name not in resolved
-    ]
-    if missing:
-        descriptions = {
-            "part_number": "part-number",
-            "revision": "revision",
-            "pdf": "PDF control",
-            "step": "STEP control",
-        }
-        raise ValueError(
-            "Missing required logical CSV column(s): {0}".format(
-                ", ".join(descriptions[item] for item in missing)
-            )
-        )
-
-    return resolved, warnings
+def dispose(value):
+    if value is not None:
+        try:
+            value.Dispose()
+        except Exception:
+            pass
 
 
-def _row_value(row, resolved_headers, logical_name):
-    fieldname = resolved_headers.get(logical_name)
-    if not fieldname:
-        return ""
-    return normalize_text(row.get(fieldname, ""))
-
-
-def _optional_values(row, resolved_headers):
-    return {
-        "part_description": _row_value(row, resolved_headers, "part_description"),
-        "primary_module": _row_value(row, resolved_headers, "primary_module"),
-        "data_pack_status": _row_value(row, resolved_headers, "data_pack_status"),
-        "owner": _row_value(row, resolved_headers, "owner"),
-    }
-
-
-def _row_is_blank(row):
-    for value in row.values():
-        if isinstance(value, list):
-            if any(normalize_text(item) for item in value):
-                return False
-        elif normalize_text(value):
-            return False
-    return True
-
-
-def read_export_scope(csv_path):
-    instructions_by_key = {}
-    invalid_rows = []
-    ignored_row_count = 0
-    input_row_count = 0
-
-    with open(csv_path, "r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        resolved_headers, header_warnings = _resolve_headers(reader.fieldnames)
-
-        for row_number, row in enumerate(reader, start=2):
-            if _row_is_blank(row):
-                continue
-
-            input_row_count += 1
-            pdf_requested, pdf_warning = _parse_control(
-                _row_value(row, resolved_headers, "pdf"),
-                "PDF",
-                row_number,
-            )
-            step_requested, step_warning = _parse_control(
-                _row_value(row, resolved_headers, "step"),
-                "STEP",
-                row_number,
-            )
-            control_warnings = [
-                warning for warning in (pdf_warning, step_warning) if warning
-            ]
-
-            if not pdf_requested and not step_requested and not control_warnings:
-                ignored_row_count += 1
-                continue
-
-            part_number = _row_value(row, resolved_headers, "part_number")
-            revision = _row_value(row, resolved_headers, "revision")
-            optional = _optional_values(row, resolved_headers)
-
-            validation_errors = []
-            if not part_number:
-                validation_errors.append("Part number is blank")
-            if not revision:
-                validation_errors.append("Revision is blank")
-            if not pdf_requested and not step_requested:
-                validation_errors.append("No valid PDF or STEP request remains")
-
-            if validation_errors:
-                messages = list(control_warnings)
-                messages.append(
-                    "Source row {0}: {1}".format(
-                        row_number,
-                        "; ".join(validation_errors),
-                    )
-                )
-                invalid_rows.append(
-                    {
-                        "source_rows": [row_number],
-                        "source_row_count": 1,
-                        "merged_row_count": 0,
-                        "part_number": part_number,
-                        "revision": revision,
-                        "normalized_key": (
-                            part_number.upper(),
-                            revision.upper(),
-                        ),
-                        "pdf_requested": pdf_requested,
-                        "step_requested": step_requested,
-                        "part_description": optional["part_description"],
-                        "primary_module": optional["primary_module"],
-                        "data_pack_status": optional["data_pack_status"],
-                        "owner": optional["owner"],
-                        "warnings": messages,
-                    }
-                )
-                continue
-
-            key = (part_number.upper(), revision.upper())
-            instruction = instructions_by_key.get(key)
-            if instruction is None:
-                instruction = {
-                    "source_rows": [],
-                    "source_row_count": 0,
-                    "merged_row_count": 0,
-                    "part_number": part_number,
-                    "revision": revision,
-                    "normalized_key": key,
-                    "pdf_requested": False,
-                    "step_requested": False,
-                    "part_description": "",
-                    "primary_module": "",
-                    "data_pack_status": "",
-                    "owner": "",
-                    "warnings": [],
-                }
-                instructions_by_key[key] = instruction
-
-            instruction["source_rows"].append(row_number)
-            instruction["source_row_count"] += 1
-            instruction["merged_row_count"] = instruction["source_row_count"] - 1
-            instruction["pdf_requested"] = (
-                instruction["pdf_requested"] or pdf_requested
-            )
-            instruction["step_requested"] = (
-                instruction["step_requested"] or step_requested
-            )
-
-            for optional_name, optional_value in optional.items():
-                if optional_value and not instruction[optional_name]:
-                    instruction[optional_name] = optional_value
-
-            for warning in control_warnings:
-                _append_unique(instruction["warnings"], warning)
-
-    instructions = sorted(
-        instructions_by_key.values(),
-        key=lambda item: item["normalized_key"],
-    )
-    return {
-        "instructions": instructions,
-        "invalid_rows": invalid_rows,
-        "ignored_row_count": ignored_row_count,
-        "input_row_count": input_row_count,
-        "header_warnings": header_warnings,
-    }
-
-
-def merge_instructions(rows):
-    """Merge already parsed instruction dictionaries by normalized identity."""
-    merged = {}
-    for row in rows:
-        key = row["normalized_key"]
-        current = merged.get(key)
-        if current is None:
-            current = dict(row)
-            current["source_rows"] = list(row.get("source_rows", []))
-            current["warnings"] = list(row.get("warnings", []))
-            merged[key] = current
-            continue
-
-        current["source_rows"].extend(row.get("source_rows", []))
-        current["source_row_count"] += row.get("source_row_count", 1)
-        current["merged_row_count"] = current["source_row_count"] - 1
-        current["pdf_requested"] = (
-            current["pdf_requested"] or row.get("pdf_requested", False)
-        )
-        current["step_requested"] = (
-            current["step_requested"] or row.get("step_requested", False)
-        )
-        for name in (
-            "part_description",
-            "primary_module",
-            "data_pack_status",
-            "owner",
-        ):
-            if not current.get(name) and row.get(name):
-                current[name] = row[name]
-        for warning in row.get("warnings", []):
-            _append_unique(current["warnings"], warning)
-
-    return sorted(merged.values(), key=lambda item: item["normalized_key"])
-
-
-def _new_result(run_timestamp, instruction):
-    pdf_requested = bool(instruction.get("pdf_requested"))
-    step_requested = bool(instruction.get("step_requested"))
-    return {
-        "RUN_TIMESTAMP": run_timestamp,
-        "SOURCE_ROW_COUNT": instruction.get("source_row_count", 1),
-        "MERGED_ROW_COUNT": instruction.get("merged_row_count", 0),
-        "DB_PART_NO": instruction.get("part_number", ""),
-        "DB_PART_REV": instruction.get("revision", ""),
-        "PART_DESCRIPTION": instruction.get("part_description", ""),
-        "PRIMARY_MODULE": instruction.get("primary_module", ""),
-        "DATA_PACK_STATUS": instruction.get("data_pack_status", ""),
-        "OWNER": instruction.get("owner", ""),
-        "PDF_REQUESTED": "YES" if pdf_requested else "NO",
-        "PDF_RESULT": "PENDING" if pdf_requested else "NOT_REQUESTED",
-        "PDF_FILE_COUNT": 0,
-        "PDF_FILES": "",
-        "STEP_REQUESTED": "YES" if step_requested else "NO",
-        "STEP_RESULT": "PENDING" if step_requested else "NOT_REQUESTED",
-        "STEP_FILE": "",
-        "LOADED_REVISION": "",
-        "OVERALL_RESULT": "PENDING",
-        "MESSAGE": "",
-        "DURATION_SECONDS": "0.000",
-    }
-
-
-def _invalid_result(run_timestamp, invalid_row):
-    result = _new_result(run_timestamp, invalid_row)
-    if invalid_row.get("pdf_requested"):
-        result["PDF_RESULT"] = "INVALID_INPUT"
-    if invalid_row.get("step_requested"):
-        result["STEP_RESULT"] = "INVALID_INPUT"
-    result["OVERALL_RESULT"] = "INVALID_INPUT"
-    result["MESSAGE"] = " | ".join(invalid_row.get("warnings", []))
-    return result
-
-
-def write_result_csv(report_path, results):
-    with open(report_path, "w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=_RESULT_COLUMNS,
-            extrasaction="ignore",
-        )
-        writer.writeheader()
-        writer.writerows(results)
-
-
-# ---------------------------------------------------------------------------
-# NX assembly and attribute helpers
-# ---------------------------------------------------------------------------
-
-def get_string_attribute(nx_object, attribute_name):
-    if nx_object is None or not attribute_name:
-        return ""
+def session_is_managed(session):
     try:
-        return nx_object.GetStringAttribute(attribute_name).strip()
+        value = session.IsManagedMode
+        return bool(value() if callable(value) else value)
+    except Exception:
+        return False
+
+
+def safe_part_name(part, fallback="part"):
+    for name in ("FullPath", "Leaf", "Name"):
+        try:
+            value = normalize_text(getattr(part, name))
+            if value:
+                if name == "FullPath":
+                    value = os.path.splitext(os.path.basename(value))[0]
+                return value
+        except Exception:
+            pass
+    return fallback
+
+
+def object_identity(nx_object):
+    try:
+        return ("TAG", str(nx_object.Tag))
+    except Exception:
+        pass
+    try:
+        path = normalize_text(nx_object.FullPath)
+        if path:
+            return ("PATH", path.upper())
+    except Exception:
+        pass
+    return ("OBJECT", id(nx_object))
+
+
+def get_string_attribute(nx_object, name, fallback=""):
+    if nx_object is None:
+        return fallback
+    try:
+        return normalize_text(nx_object.GetStringAttribute(name))
     except Exception:
         pass
     try:
         attribute = nx_object.GetUserAttribute(
-            attribute_name,
+            name,
             NXOpen.NXObject.AttributeType.String,
             -1,
         )
-        return attribute.StringValue.strip()
+        return normalize_text(attribute.StringValue)
     except Exception:
-        return ""
+        return fallback
 
 
 def get_part_identity(part, component=None):
-    part_number = (
+    number = (
         get_string_attribute(part, "DB_PART_NO")
         or get_string_attribute(component, "DB_PART_NO")
         or get_string_attribute(part, "PART_NUMBER")
@@ -512,62 +240,220 @@ def get_part_identity(part, component=None):
         or get_string_attribute(part, "REVISION")
         or get_string_attribute(component, "REVISION")
     )
-    return normalize_text(part_number), normalize_text(revision)
+    return normalize_text(number), normalize_text(revision)
 
 
-def get_root_component(work_part):
-    try:
-        return work_part.ComponentAssembly.RootComponent
-    except Exception:
-        return None
+# ---------------------------------------------------------------------------
+# CSV input and reports
+# ---------------------------------------------------------------------------
+
+def resolve_headers(fieldnames):
+    if not fieldnames:
+        raise ValueError("The input CSV does not contain a header row.")
+
+    normalized = [(name, normalize_header(name)) for name in fieldnames]
+    resolved = {}
+    warnings = []
+
+    for logical_name, aliases in _HEADER_ALIASES.items():
+        matches = []
+        for alias in aliases:
+            wanted = normalize_header(alias)
+            for original, current in normalized:
+                if current == wanted and original not in matches:
+                    matches.append(original)
+        if matches:
+            resolved[logical_name] = matches[0]
+            if len(matches) > 1:
+                warnings.append(
+                    "Multiple columns match {0}; using '{1}' and ignoring: {2}".format(
+                        logical_name,
+                        matches[0],
+                        ", ".join(matches[1:]),
+                    )
+                )
+
+    missing = [name for name in _REQUIRED_HEADERS if name not in resolved]
+    if missing:
+        raise ValueError(
+            "Missing required logical CSV column(s): {0}".format(
+                ", ".join(missing)
+            )
+        )
+    return resolved, warnings
 
 
-def _object_identity(nx_object):
-    try:
-        tag = nx_object.Tag
-        if tag is not None:
-            return ("TAG", str(tag))
-    except Exception:
-        pass
-    try:
-        full_path = nx_object.FullPath
-        if full_path:
-            return ("PATH", str(full_path).upper())
-    except Exception:
-        pass
-    return ("OBJECT", id(nx_object))
+def row_value(row, headers, logical_name):
+    field = headers.get(logical_name)
+    return normalize_text(row.get(field, "")) if field else ""
 
 
-def _component_label(component):
-    for attribute_name in ("DisplayName", "Name"):
-        try:
-            value = normalize_text(getattr(component, attribute_name))
-            if value:
-                return value
-        except Exception:
-            pass
-    return "<unidentified component>"
+def parse_control(value, label, row_number):
+    normalized = normalize_text(value).upper()
+    if normalized in TRUE_VALUES:
+        return True, ""
+    if normalized in FALSE_VALUES:
+        return False, ""
+    return False, (
+        "Source row {0}: unknown {1} control value '{2}'; treated as disabled"
+        .format(row_number, label, normalize_text(value))
+    )
 
 
-def walk_components(component):
-    """Iteratively yield occurrences, isolating GetChildren errors by branch."""
-    if component is None:
-        return
-    stack = [component]
-    while stack:
-        current = stack.pop()
-        yield current
-        try:
-            children = list(current.GetChildren())
-        except Exception:
-            continue
-        for child in reversed(children):
-            stack.append(child)
+def row_is_blank(row):
+    for value in row.values():
+        if isinstance(value, list):
+            if any(normalize_text(item) for item in value):
+                return False
+        elif normalize_text(value):
+            return False
+    return True
 
+
+def read_export_scope(csv_path):
+    merged = {}
+    invalid = []
+    ignored = 0
+    input_rows = 0
+
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        headers, header_warnings = resolve_headers(reader.fieldnames)
+
+        for row_number, row in enumerate(reader, start=2):
+            if row_is_blank(row):
+                continue
+            input_rows += 1
+
+            pdf, pdf_warning = parse_control(
+                row_value(row, headers, "pdf"), "PDF", row_number
+            )
+            step, step_warning = parse_control(
+                row_value(row, headers, "step"), "STEP", row_number
+            )
+            warnings = [item for item in (pdf_warning, step_warning) if item]
+
+            if not pdf and not step and not warnings:
+                ignored += 1
+                continue
+
+            number = row_value(row, headers, "part_number")
+            revision = row_value(row, headers, "revision")
+            optional = {
+                "part_description": row_value(row, headers, "part_description"),
+                "primary_module": row_value(row, headers, "primary_module"),
+                "data_pack_status": row_value(row, headers, "data_pack_status"),
+                "owner": row_value(row, headers, "owner"),
+            }
+
+            errors = []
+            if not number:
+                errors.append("Part number is blank")
+            if not revision:
+                errors.append("Revision is blank")
+            if not pdf and not step:
+                errors.append("No valid PDF or STEP request remains")
+
+            item = {
+                "source_rows": [row_number],
+                "source_row_count": 1,
+                "merged_row_count": 0,
+                "part_number": number,
+                "revision": revision,
+                "normalized_key": (number.upper(), revision.upper()),
+                "pdf_requested": pdf,
+                "step_requested": step,
+                "warnings": warnings,
+                **optional,
+            }
+
+            if errors:
+                item["warnings"].append(
+                    "Source row {0}: {1}".format(row_number, "; ".join(errors))
+                )
+                invalid.append(item)
+                continue
+
+            key = item["normalized_key"]
+            current = merged.get(key)
+            if current is None:
+                merged[key] = item
+                continue
+
+            current["source_rows"].append(row_number)
+            current["source_row_count"] += 1
+            current["merged_row_count"] = current["source_row_count"] - 1
+            current["pdf_requested"] = current["pdf_requested"] or pdf
+            current["step_requested"] = current["step_requested"] or step
+            for name, value in optional.items():
+                if value and not current[name]:
+                    current[name] = value
+            for warning in warnings:
+                append_unique(current["warnings"], warning)
+
+    return {
+        "instructions": sorted(merged.values(), key=lambda item: item["normalized_key"]),
+        "invalid_rows": invalid,
+        "ignored_row_count": ignored,
+        "input_row_count": input_rows,
+        "header_warnings": header_warnings,
+    }
+
+
+def new_result(timestamp, instruction):
+    pdf = bool(instruction.get("pdf_requested"))
+    step = bool(instruction.get("step_requested"))
+    return {
+        "RUN_TIMESTAMP": timestamp,
+        "SOURCE_ROW_COUNT": instruction.get("source_row_count", 1),
+        "MERGED_ROW_COUNT": instruction.get("merged_row_count", 0),
+        "DB_PART_NO": instruction.get("part_number", ""),
+        "DB_PART_REV": instruction.get("revision", ""),
+        "PART_DESCRIPTION": instruction.get("part_description", ""),
+        "PRIMARY_MODULE": instruction.get("primary_module", ""),
+        "DATA_PACK_STATUS": instruction.get("data_pack_status", ""),
+        "OWNER": instruction.get("owner", ""),
+        "PDF_REQUESTED": "YES" if pdf else "NO",
+        "PDF_RESULT": "PENDING" if pdf else "NOT_REQUESTED",
+        "PDF_FILE_COUNT": 0,
+        "PDF_FILES": "",
+        "STEP_REQUESTED": "YES" if step else "NO",
+        "STEP_RESULT": "PENDING" if step else "NOT_REQUESTED",
+        "STEP_FILE": "",
+        "LOADED_REVISION": "",
+        "OVERALL_RESULT": "PENDING",
+        "MESSAGE": "",
+        "DURATION_SECONDS": "",
+    }
+
+
+def invalid_result(timestamp, instruction):
+    result = new_result(timestamp, instruction)
+    if result["PDF_REQUESTED"] == "YES":
+        result["PDF_RESULT"] = "INVALID_INPUT"
+    if result["STEP_REQUESTED"] == "YES":
+        result["STEP_RESULT"] = "INVALID_INPUT"
+    result["OVERALL_RESULT"] = "INVALID_INPUT"
+    result["MESSAGE"] = " | ".join(instruction.get("warnings", []))
+    result["DURATION_SECONDS"] = "0.000"
+    return result
+
+
+def write_result_csv(path, results):
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_RESULT_COLUMNS)
+        writer.writeheader()
+        for result in results:
+            writer.writerow({name: result.get(name, "") for name in _RESULT_COLUMNS})
+
+
+# ---------------------------------------------------------------------------
+# Loaded assembly traversal
+# ---------------------------------------------------------------------------
 
 def build_loaded_part_map(work_part):
-    exact_part_map = {}
-    revisions_by_part_number = {}
+    exact = {}
+    revisions = {}
     diagnostics = {
         "unresolved_components": [],
         "suppressed_component_count": 0,
@@ -575,55 +461,64 @@ def build_loaded_part_map(work_part):
         "duplicate_loaded_key_count": 0,
         "collision_keys": set(),
     }
-    prototype_keys = {}
+    seen = set()
 
-    def add_candidate(part, component=None):
+    def add_part(part, component=None):
         if part is None:
             return False
-
-        prototype_identity = _object_identity(part)
-        if prototype_identity in prototype_keys:
+        identity = object_identity(part)
+        if identity in seen:
             return True
+        seen.add(identity)
 
-        part_number, revision = get_part_identity(part, component)
-        if not part_number or not revision:
+        number, revision = get_part_identity(part, component)
+        if not number or not revision:
             return False
 
-        key = (part_number.upper(), revision.upper())
-        prototype_keys[prototype_identity] = key
-        revisions_by_part_number.setdefault(key[0], set()).add(key[1])
-
-        existing = exact_part_map.get(key)
-        if existing is None:
-            exact_part_map[key] = part
-        elif _object_identity(existing) != prototype_identity:
+        key = (number.upper(), revision.upper())
+        revisions.setdefault(key[0], set()).add(key[1])
+        if key not in exact:
+            exact[key] = part
+        elif object_identity(exact[key]) != identity:
             diagnostics["duplicate_loaded_key_count"] += 1
             diagnostics["collision_keys"].add(key)
         return True
 
     if INCLUDE_ROOT_WORK_PART:
-        add_candidate(work_part)
+        add_part(work_part)
 
-    root = get_root_component(work_part)
+    try:
+        root = work_part.ComponentAssembly.RootComponent
+    except Exception:
+        root = None
+    if root is None:
+        return exact, revisions, diagnostics
+
     stack = [root]
     while stack:
         component = stack.pop()
-        label = _component_label(component)
+        label = "<component>"
+        for name in ("DisplayName", "Name"):
+            try:
+                value = normalize_text(getattr(component, name))
+                if value:
+                    label = value
+                    break
+            except Exception:
+                pass
 
         if SKIP_SUPPRESSED_COMPONENTS:
             try:
                 if component.IsSuppressed:
                     diagnostics["suppressed_component_count"] += 1
                     continue
-            except Exception as error:
-                diagnostics["unresolved_components"].append(
-                    "{0}: could not read suppression state ({1})".format(label, error)
-                )
+            except Exception:
+                pass
 
-        prototype = None
         try:
             prototype = component.Prototype
         except Exception as error:
+            prototype = None
             diagnostics["prototype_error_count"] += 1
             diagnostics["unresolved_components"].append(
                 "{0}: could not access prototype ({1})".format(label, error)
@@ -633,7 +528,7 @@ def build_loaded_part_map(work_part):
             diagnostics["unresolved_components"].append(
                 "{0}: no usable loaded prototype".format(label)
             )
-        elif not add_candidate(prototype, component):
+        elif not add_part(prototype, component):
             diagnostics["unresolved_components"].append(
                 "{0}: prototype has no usable part number/revision".format(label)
             )
@@ -645,29 +540,18 @@ def build_loaded_part_map(work_part):
                 "{0}: could not read child branch ({1})".format(label, error)
             )
             continue
+        stack.extend(reversed(children))
 
-        for child in reversed(children):
-            stack.append(child)
-
-    return exact_part_map, revisions_by_part_number, diagnostics
+    return exact, revisions, diagnostics
 
 
-def _safe_part_name(part, fallback="part"):
+# ---------------------------------------------------------------------------
+# Drawing discovery and PDF export
+# ---------------------------------------------------------------------------
+
+def drawing_sheet_count(part):
     try:
-        full_path = part.FullPath
-        if full_path:
-            return os.path.splitext(os.path.basename(full_path))[0] or fallback
-    except Exception:
-        pass
-    try:
-        return normalize_text(part.Leaf) or fallback
-    except Exception:
-        return fallback
-
-
-def count_drawing_sheets(part):
-    try:
-        return part.DrawingSheets.Count
+        return int(part.DrawingSheets.Count)
     except Exception:
         pass
     try:
@@ -676,71 +560,411 @@ def count_drawing_sheets(part):
         return 0
 
 
-# ---------------------------------------------------------------------------
-# NX export helpers
-# ---------------------------------------------------------------------------
+def part_identifiers(part):
+    values = []
+    for name in ("FullPath", "Leaf", "Name"):
+        try:
+            value = normalize_text(getattr(part, name))
+            if value:
+                values.append(value)
+        except Exception:
+            pass
+    return values
 
-def build_step_filename(part_number, revision):
-    return "{0}_REV{1}.stp".format(
-        clean_filename_token(part_number),
-        clean_filename_token(revision, fallback=""),
+
+def drawing_index(part):
+    for identifier in part_identifiers(part):
+        match = _DRAWING_SUFFIX_RE.search(identifier.upper())
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                pass
+    return None
+
+
+def drawing_matches(part, number, revision):
+    if part is None or drawing_sheet_count(part) <= 0:
+        return False
+
+    text = " | ".join(part_identifiers(part)).upper()
+    expected = "{0}-{1}-DWG".format(number.upper(), revision.upper())
+    if expected in text:
+        return True
+
+    loaded_number, loaded_revision = get_part_identity(part)
+    return (
+        loaded_number.upper() == number.upper()
+        and loaded_revision.upper() == revision.upper()
+        and "DWG" in text
     )
+
+
+def loaded_drawing_parts(session, number, revision):
+    try:
+        session_parts = list(session.Parts)
+    except Exception:
+        session_parts = []
+    try:
+        display = session.Parts.Display
+    except Exception:
+        display = None
+
+    ordered = ([display] if display is not None else []) + session_parts
+    results = []
+    seen = set()
+    for part in ordered:
+        if part is None or object_identity(part) in seen:
+            continue
+        seen.add(object_identity(part))
+        if drawing_matches(part, number, revision):
+            results.append({
+                "part": part,
+                "opened_by_journal": False,
+                "drawing_index": drawing_index(part),
+                "source": "loaded session",
+            })
+
+    return sorted(
+        results,
+        key=lambda item: (
+            item["drawing_index"] is None,
+            item["drawing_index"] or 9999,
+            safe_part_name(item["part"]).upper(),
+        ),
+    )
+
+
+def unwrap_open_result(value):
+    if isinstance(value, tuple):
+        return (
+            value[0] if value else None,
+            value[1] if len(value) > 1 else None,
+        )
+    return value, None
+
+
+def teamcenter_specs(number, revision, index):
+    dataset_name = "{0}-{1}-dwg{2}".format(number, revision, index)
+    return [
+        "@DB/{0}/{1}/{2}/{3}".format(
+            number,
+            revision,
+            TEAMCENTER_DRAWING_DATASET_TYPE,
+            dataset_name,
+        ),
+        "@DB/{0}/{1}/{2}/dwg{3}".format(
+            number,
+            revision,
+            TEAMCENTER_DRAWING_DATASET_TYPE,
+            index,
+        ),
+        "@DB/{0}/{1}/dwg{2}".format(number, revision, index),
+    ]
+
+
+def close_part_best_effort(part):
+    if part is None:
+        return
+    try:
+        part.Close(
+            NXOpen.BasePart.CloseWholeTree.FalseValue,
+            NXOpen.BasePart.CloseModified.CloseModified,
+            None,
+        )
+    except Exception:
+        pass
+
+
+def resolve_drawing_parts(session, number, revision, log_buffer):
+    resolved = loaded_drawing_parts(session, number, revision)
+    seen = {object_identity(item["part"]) for item in resolved}
+    known_indices = {
+        item["drawing_index"]
+        for item in resolved
+        if item["drawing_index"] is not None
+    }
+    attempts = []
+
+    for item in resolved:
+        log_line(
+            session,
+            "  Drawing already loaded: {0}".format(safe_part_name(item["part"])),
+            log_buffer,
+        )
+
+    if not session_is_managed(session):
+        return resolved, attempts
+
+    for index in range(1, MAX_DRAWING_DATASET_INDEX + 1):
+        if index in known_indices:
+            continue
+
+        for specification in teamcenter_specs(number, revision, index):
+            attempts.append(specification)
+            log_line(session, "  Attempt drawing open: " + specification, log_buffer)
+
+            part = None
+            status = None
+            try:
+                part, status = unwrap_open_result(session.Parts.OpenBase(specification))
+            except Exception as error:
+                log_line(session, "    Not opened: {0}".format(error), log_buffer)
+                continue
+            finally:
+                dispose(status)
+
+            if part is None:
+                continue
+            identity = object_identity(part)
+            if identity in seen:
+                known_indices.add(index)
+                break
+
+            count = drawing_sheet_count(part)
+            if count <= 0:
+                log_line(
+                    session,
+                    "    Opened but no drawing sheets: {0}".format(safe_part_name(part)),
+                    log_buffer,
+                )
+                close_part_best_effort(part)
+                continue
+
+            seen.add(identity)
+            known_indices.add(index)
+            resolved.append({
+                "part": part,
+                "opened_by_journal": True,
+                "drawing_index": index,
+                "source": specification,
+            })
+            log_line(
+                session,
+                "    Drawing opened: {0}; sheets: {1}".format(
+                    safe_part_name(part), count
+                ),
+                log_buffer,
+            )
+            break
+
+    return sorted(
+        resolved,
+        key=lambda item: (
+            item["drawing_index"] is None,
+            item["drawing_index"] or 9999,
+            safe_part_name(item["part"]).upper(),
+        ),
+    ), attempts
+
+
+def set_display_part(session, part):
+    result = session.Parts.SetDisplay(part, False, True)
+    if isinstance(result, tuple) and len(result) > 1:
+        dispose(result[1])
+
+
+def drawing_token(part, index):
+    if index is not None:
+        return "DWG{0}".format(index)
+    for identifier in part_identifiers(part):
+        match = _DRAWING_SUFFIX_RE.search(identifier.upper())
+        if match:
+            return "DWG{0}".format(match.group(1))
+    return "DRAWING"
 
 
 def build_pdf_filename(
     part,
-    part_number,
+    number,
     revision,
+    token,
     sheet,
     sheet_index,
     sheet_count,
+    drawing_count,
 ):
     drawing_number = get_string_attribute(part, "DRAWING_NUMBER")
-    base_identifier = (
-        drawing_number or normalize_text(part_number) or _safe_part_name(part)
-    )
-    base_name = "{0}_REV{1}".format(
-        clean_filename_token(base_identifier),
+    base = drawing_number or number or safe_part_name(part)
+    name = "{0}_REV{1}".format(
+        clean_filename_token(base),
         clean_filename_token(revision, fallback=""),
     )
 
+    # Prevent dwg1/dwg2 filename collisions.
+    if drawing_count > 1 or not drawing_number:
+        name += "_" + clean_filename_token(token)
+
     if sheet_count > 1:
-        base_name += "_SHEET{0:02d}".format(sheet_index)
+        name += "_SHEET{0:02d}".format(sheet_index)
         try:
             sheet_name = normalize_text(sheet.Name)
         except Exception:
             sheet_name = ""
         if sheet_name:
-            base_name += "_" + clean_filename_token(sheet_name, fallback="")
+            name += "_" + clean_filename_token(sheet_name, fallback="")
+    return name + ".pdf"
 
-    return base_name + ".pdf"
+
+def export_one_sheet_pdf(part, sheet, output_path):
+    builder = part.PlotManager.CreatePrintPdfbuilder()
+    try:
+        # Critical in Teamcenter managed mode: write a native Windows PDF,
+        # rather than creating or overwriting a Teamcenter PDF dataset.
+        builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
+        builder.Filename = output_path
+        builder.Append = False
+        builder.SourceBuilder.SetSheets([sheet])
+        builder.Commit()
+    finally:
+        builder.Destroy()
 
 
-def export_step(session, part, output_folder, part_number, revision):
+def export_pdfs(
+    session,
+    output_folder,
+    number,
+    revision,
+    original_display,
+    original_work,
+    log_buffer,
+):
+    drawing_items, attempts = resolve_drawing_parts(
+        session, number, revision, log_buffer
+    )
+    if not drawing_items:
+        return {
+            "result": "SKIPPED_NO_DRAWING",
+            "paths": [],
+            "message": "No drawing specification with sheets was found. Attempted: {0}".format(
+                "; ".join(attempts)
+            ),
+            "failures": [],
+        }
+
+    successes = []
+    failures = []
+    drawing_count = len(drawing_items)
+
+    try:
+        for item in drawing_items:
+            part = item["part"]
+            token = drawing_token(part, item["drawing_index"])
+            try:
+                set_display_part(session, part)
+                sheets = list(part.DrawingSheets)
+            except Exception as error:
+                failures.append({
+                    "kind": "ERROR",
+                    "message": "{0}: unable to display/enumerate sheets: {1}".format(
+                        token, error
+                    ),
+                    "traceback": traceback.format_exc(),
+                })
+                continue
+
+            log_line(
+                session,
+                "  Exporting {0}: {1} sheet(s)".format(token, len(sheets)),
+                log_buffer,
+            )
+
+            for sheet_index, sheet in enumerate(sheets, start=1):
+                filename = build_pdf_filename(
+                    part,
+                    number,
+                    revision,
+                    token,
+                    sheet,
+                    sheet_index,
+                    len(sheets),
+                    drawing_count,
+                )
+                output_path = os.path.join(output_folder, filename)
+                try:
+                    if os.path.exists(output_path):
+                        raise RuntimeError("PDF output already exists: " + output_path)
+                    sheet.Open()
+                    export_one_sheet_pdf(part, sheet, output_path)
+                    if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
+                        failures.append({
+                            "kind": "NO_OUTPUT",
+                            "message": "{0} sheet {1}: builder committed but no PDF was created".format(
+                                token, sheet_index
+                            ),
+                        })
+                    else:
+                        successes.append(output_path)
+                        log_line(session, "    PDF created: " + output_path, log_buffer)
+                except Exception as error:
+                    failures.append({
+                        "kind": "ERROR",
+                        "message": "{0} sheet {1}: {2}".format(
+                            token, sheet_index, error
+                        ),
+                        "traceback": traceback.format_exc(),
+                    })
+    finally:
+        if original_display is not None:
+            try:
+                set_display_part(session, original_display)
+            except Exception:
+                pass
+        if original_work is not None:
+            try:
+                session.Parts.SetWork(original_work)
+            except Exception:
+                pass
+        for item in drawing_items:
+            if item["opened_by_journal"]:
+                close_part_best_effort(item["part"])
+
+    if successes and not failures:
+        result = "SUCCESS"
+    elif successes:
+        result = "PARTIAL_SUCCESS"
+    elif failures and all(item["kind"] == "NO_OUTPUT" for item in failures):
+        result = "FAILED_NO_OUTPUT_FILE"
+    else:
+        result = "FAILED"
+
+    return {
+        "result": result,
+        "paths": successes,
+        "message": " | ".join(item["message"] for item in failures),
+        "failures": failures,
+    }
+
+
+# ---------------------------------------------------------------------------
+# STEP export
+# ---------------------------------------------------------------------------
+
+def export_step(session, part, output_folder, number, revision):
     session.Parts.SetWork(part)
     output_path = os.path.join(
         output_folder,
-        build_step_filename(part_number, revision),
+        "{0}_REV{1}.stp".format(
+            clean_filename_token(number),
+            clean_filename_token(revision, fallback=""),
+        ),
     )
     if os.path.exists(output_path):
-        raise RuntimeError("STEP output path already exists: {0}".format(output_path))
+        raise RuntimeError("STEP output already exists: " + output_path)
 
     exporter = session.DexManager.CreateStepCreator()
     try:
-        # Define the source file and destination path explicitly
-        exporter.InputFile = part.FullPath
+        try:
+            exporter.InputFile = part.FullPath
+        except Exception:
+            pass
         exporter.OutputFile = output_path
-        
-        # Configure common object filter types to export
         exporter.ObjectTypes.Solids = True
         exporter.ObjectTypes.Surfaces = True
         exporter.ObjectTypes.Curves = True
-        
         if STEP_FORMAT != "AP214":
-            raise RuntimeError("Unsupported STEP_FORMAT: {0}".format(STEP_FORMAT))
+            raise RuntimeError("Unsupported STEP_FORMAT: " + STEP_FORMAT)
         exporter.ExportAs = NXOpen.StepCreator.ExportAsOption.Ap214
-        
-        # Force NX to wait until the STEP file finishes writing before continuing the loop
         exporter.ProcessHoldFlag = True
         exporter.Commit()
     finally:
@@ -751,269 +975,74 @@ def export_step(session, part, output_folder, part_number, revision):
             "result": "FAILED_NO_OUTPUT_FILE",
             "path": "",
             "size": "",
-            "message": "STEP exporter committed but no output file was created",
+            "message": "STEP builder committed but no file was created",
         }
-
     try:
-        file_size = os.path.getsize(output_path)
+        size = os.path.getsize(output_path)
     except Exception:
-        file_size = ""
+        size = ""
     return {
         "result": "SUCCESS",
         "path": output_path,
-        "size": file_size,
+        "size": size,
         "message": "",
     }
 
 
-def _export_current_sheet(part, sheet, output_path):
-    # Initialize PDF builder using the part's PlotManager
-    pdf_builder = part.PlotManager.CreatePrintPdfbuilder()
-    try:
-        pdf_builder.Filename = output_path
-        
-        # TEAMCENTER FIX: Populate DatasetName so TC managed mode doesn't throw "Empty dataset name"
-        base_name = os.path.splitext(os.path.basename(output_path))[0]
-        try:
-            pdf_builder.DatasetName = base_name
-        except Exception:
-            pass
+# ---------------------------------------------------------------------------
+# Processing and entry point
+# ---------------------------------------------------------------------------
 
-        # Pass the drawing sheet to the builder
-        pdf_builder.SourceBuilder.SetSheets([sheet])
-        
-        # Commit PDF creation
-        pdf_builder.Commit()
-    finally:
-        pdf_builder.Destroy()
-
-
-def export_pdfs(session, part, output_folder, part_number, revision):
-    dwg_part = None
-    expected_dwg_token = "{0}-{1}-DWG1".format(part_number, revision).upper()
-    
-    # -----------------------------------------------------------------------
-    # 1. Search currently loaded session parts for the matching drawing dataset
-    # -----------------------------------------------------------------------
-    for loaded_part in session.Parts:
-        try:
-            identifiers = []
-            if hasattr(loaded_part, "FullPath") and loaded_part.FullPath:
-                identifiers.append(loaded_part.FullPath.upper())
-            if hasattr(loaded_part, "Leaf") and loaded_part.Leaf:
-                identifiers.append(loaded_part.Leaf.upper())
-            if hasattr(loaded_part, "Name") and loaded_part.Name:
-                identifiers.append(loaded_part.Name.upper())
-                
-            full_ident_str = " | ".join(identifiers)
-            
-            # Match if both the part number and "DWG" exist in the dataset identifier
-            if (part_number.upper() in full_ident_str and "DWG" in full_ident_str):
-                dwg_part = loaded_part
-                break
-        except Exception:
-            continue
-
-    # -----------------------------------------------------------------------
-    # 2. If not already loaded, attempt to open the drawing dataset
-    # -----------------------------------------------------------------------
-    if dwg_part is None:
-        try:
-            if session.IsManagedMode:
-                # Teamcenter Managed Mode database specs
-                tc_specs = [
-                    "@DB/{0}/{1}/dwg1".format(part_number, revision),
-                    "@DB/{0}/{1}/UGPART/dwg1".format(part_number, revision),
-                    "@DB/{0}/{1}/manifest".format(part_number, revision),
-                ]
-                for spec in tc_specs:
-                    try:
-                        dwg_part, _ = session.Parts.OpenBase(spec)
-                        if dwg_part is not None:
-                            break
-                    except Exception:
-                        continue
-            else:
-                # Native mode fallback paths
-                three_d_dir = os.path.dirname(part.FullPath) if part.FullPath else ""
-                native_paths = [
-                    os.path.join(three_d_dir, "{0}-{1}-dwg1.prt".format(part_number, revision)),
-                    os.path.join(three_d_dir, "{0}-{1}-dwg.prt".format(part_number, revision)),
-                ]
-                for npath in native_paths:
-                    if os.path.exists(npath):
-                        dwg_part, _ = session.Parts.OpenBase(npath)
-                        if dwg_part is not None:
-                            break
-        except Exception as e:
-            return {
-                "result": "SKIPPED_NO_DRAWING",
-                "paths": [],
-                "message": "Error attempting to open drawing file: {0}".format(e),
-            }
-
-    # -----------------------------------------------------------------------
-    # 3. If drawing dataset cannot be resolved anywhere
-    # -----------------------------------------------------------------------
-    if dwg_part is None:
-        return {
-            "result": "SKIPPED_NO_DRAWING",
-            "paths": [],
-            "message": "Drawing dataset '{0}' not found in loaded session or Teamcenter.".format(expected_dwg_token),
-        }
-
-    # Switch display window to the drawing dataset so sheets render correctly
-    session.Parts.SetDisplay(
-        dwg_part,
-        False,
-        True
-    )
-
-    try:
-        drawing_sheets = dwg_part.DrawingSheets
-        sheets = list(drawing_sheets)
-    except Exception as error:
-        raise RuntimeError("Unable to enumerate drawing sheets: {0}".format(error))
-
-    if not sheets:
-        return {
-            "result": "SKIPPED_NO_DRAWING",
-            "paths": [],
-            "message": "No drawing sheets were found inside '{0}'".format(dwg_part.Leaf),
-        }
-
-    successful_paths = []
-    failures = []
-    sheet_count = len(sheets)
-    for sheet_index, sheet in enumerate(sheets, start=1):
-        pdf_name = build_pdf_filename(
-            dwg_part,
-            part_number,
-            revision,
-            sheet,
-            sheet_index,
-            sheet_count,
-        )
-        output_path = os.path.join(output_folder, pdf_name)
-
-        try:
-            if os.path.exists(output_path):
-                raise RuntimeError(
-                    "PDF output path already exists: {0}".format(output_path)
-                )
-            sheet.Open()
-            _export_current_sheet(dwg_part, sheet, output_path)
-            
-            if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
-                failures.append(
-                    {
-                        "kind": "NO_OUTPUT",
-                        "message": "Sheet {0}: exporter committed but no output file was created".format(
-                            sheet_index
-                        ),
-                    }
-                )
-            else:
-                successful_paths.append(output_path)
-        except Exception as error:
-            failures.append(
-                {
-                    "kind": "ERROR",
-                    "message": "Sheet {0}: {1}".format(sheet_index, error),
-                    "traceback": traceback.format_exc(),
-                }
-            )
-
-    if len(successful_paths) == sheet_count:
-        result = "SUCCESS"
-    elif successful_paths:
-        result = "PARTIAL_SUCCESS"
-    elif failures and all(item["kind"] == "NO_OUTPUT" for item in failures):
-        result = "FAILED_NO_OUTPUT_FILE"
-    else:
-        result = "FAILED"
-
-    return {
-        "result": result,
-        "paths": successful_paths,
-        "message": " | ".join(item["message"] for item in failures),
-        "failures": failures,
-    }
-
-
-def determine_overall_result(
-    pdf_requested,
-    pdf_result,
-    step_requested,
-    step_result,
-):
-    requested_results = []
+def overall_result(pdf_requested, pdf_result, step_requested, step_result):
+    requested = []
     if pdf_requested:
-        requested_results.append(pdf_result)
+        requested.append(pdf_result)
     if step_requested:
-        requested_results.append(step_result)
-
-    if requested_results and all(result == "SUCCESS" for result in requested_results):
+        requested.append(step_result)
+    if requested and all(item == "SUCCESS" for item in requested):
         return "SUCCESS"
-
-    has_success = any(
-        result in ("SUCCESS", "PARTIAL_SUCCESS") for result in requested_results
-    )
-    if has_success:
+    if any(item in ("SUCCESS", "PARTIAL_SUCCESS") for item in requested):
         return "PARTIAL_SUCCESS"
+    if requested and all(item == "SKIPPED_NO_DRAWING" for item in requested):
+        return "SKIPPED_NO_DRAWING"
     return "FAILED"
 
 
-def _set_resolution_failure(result, status, loaded_revision, message):
-    if result["PDF_REQUESTED"] == "YES":
-        result["PDF_RESULT"] = status
-    if result["STEP_REQUESTED"] == "YES":
-        result["STEP_RESULT"] = status
-    result["LOADED_REVISION"] = loaded_revision
-    result["OVERALL_RESULT"] = status
-    result["MESSAGE"] = message
-
-
-def _process_instruction(
+def process_instruction(
     session,
     instruction,
-    exact_part_map,
-    revisions_by_part_number,
+    exact_parts,
+    revisions,
     collision_keys,
-    pdf_folder,
-    step_folder,
-    run_timestamp,
+    folders,
+    timestamp,
+    original_display,
+    original_work,
     log_buffer,
 ):
     started = datetime.datetime.now()
-    result = _new_result(run_timestamp, instruction)
+    result = new_result(timestamp, instruction)
     messages = list(instruction.get("warnings", []))
     key = instruction["normalized_key"]
+    part = exact_parts.get(key)
 
-    part = exact_part_map.get(key)
     if part is None:
-        loaded_revisions = sorted(revisions_by_part_number.get(key[0], set()))
-        if loaded_revisions:
-            loaded_text = ";".join(loaded_revisions)
-            message = "Requested revision {0}; loaded revisions: {1}".format(
-                instruction["revision"],
-                ", ".join(loaded_revisions),
+        loaded_revisions = sorted(revisions.get(key[0], set()))
+        status = "REVISION_MISMATCH" if loaded_revisions else "NOT_FOUND"
+        message = (
+            "Requested revision {0}; loaded revisions: {1}".format(
+                instruction["revision"], ", ".join(loaded_revisions)
             )
-            _set_resolution_failure(
-                result,
-                "REVISION_MISMATCH",
-                loaded_text,
-                message,
-            )
-        else:
-            _set_resolution_failure(
-                result,
-                "NOT_FOUND",
-                "",
-                "Part number was not present in the loaded assembly",
-            )
-        if messages:
-            result["MESSAGE"] = " | ".join(messages + [result["MESSAGE"]])
+            if loaded_revisions
+            else "Part number was not present in the loaded assembly"
+        )
+        if result["PDF_REQUESTED"] == "YES":
+            result["PDF_RESULT"] = status
+        if result["STEP_REQUESTED"] == "YES":
+            result["STEP_RESULT"] = status
+        result["LOADED_REVISION"] = ";".join(loaded_revisions)
+        result["OVERALL_RESULT"] = status
+        result["MESSAGE"] = " | ".join(messages + [message])
         result["DURATION_SECONDS"] = "{0:.3f}".format(
             (datetime.datetime.now() - started).total_seconds()
         )
@@ -1021,68 +1050,62 @@ def _process_instruction(
 
     result["LOADED_REVISION"] = key[1]
     if key in collision_keys:
-        _append_unique(
+        append_unique(
             messages,
-            "Multiple loaded prototypes share this key; the first usable prototype was used",
+            "Multiple loaded prototypes share this key; first prototype used",
         )
 
-    try:
-        if instruction["pdf_requested"]:
-            try:
-                pdf_export = export_pdfs(
-                    session,
-                    part,
-                    pdf_folder,
-                    instruction["part_number"],
-                    instruction["revision"],
-                )
-                result["PDF_RESULT"] = pdf_export["result"]
-                result["PDF_FILE_COUNT"] = len(pdf_export["paths"])
-                result["PDF_FILES"] = ";".join(pdf_export["paths"])
-                _append_unique(messages, pdf_export.get("message", ""))
-                for failure in pdf_export.get("failures", []):
-                    if failure.get("traceback"):
-                        log_line(session, failure["traceback"], log_buffer)
-            except Exception as error:
-                result["PDF_RESULT"] = "FAILED"
-                _append_unique(messages, "PDF export failed: {0}".format(error))
-                log_line(session, traceback.format_exc(), log_buffer)
-
-        if instruction["step_requested"]:
-            try:
-                step_export = export_step(
-                    session,
-                    part,
-                    step_folder,
-                    instruction["part_number"],
-                    instruction["revision"],
-                )
-                result["STEP_RESULT"] = step_export["result"]
-                result["STEP_FILE"] = step_export["path"]
-                _append_unique(messages, step_export.get("message", ""))
-                if step_export.get("size") != "":
-                    _append_unique(
-                        messages,
-                        "STEP file size: {0} bytes".format(step_export["size"]),
-                    )
-            except Exception as error:
-                result["STEP_RESULT"] = "FAILED"
-                _append_unique(messages, "STEP export failed: {0}".format(error))
-                log_line(session, traceback.format_exc(), log_buffer)
-    except Exception as error:
-        if result["PDF_RESULT"] == "PENDING":
+    if instruction["pdf_requested"]:
+        try:
+            exported = export_pdfs(
+                session,
+                folders["pdf"],
+                instruction["part_number"],
+                instruction["revision"],
+                original_display,
+                original_work,
+                log_buffer,
+            )
+            result["PDF_RESULT"] = exported["result"]
+            result["PDF_FILE_COUNT"] = len(exported["paths"])
+            result["PDF_FILES"] = ";".join(exported["paths"])
+            append_unique(messages, exported.get("message", ""))
+            for failure in exported.get("failures", []):
+                if failure.get("traceback"):
+                    log_line(session, failure["traceback"], log_buffer)
+        except Exception as error:
             result["PDF_RESULT"] = "FAILED"
-        if result["STEP_RESULT"] == "PENDING":
+            append_unique(messages, "PDF export failed: {0}".format(error))
+            log_line(session, traceback.format_exc(), log_buffer)
+
+    if instruction["step_requested"]:
+        try:
+            exported = export_step(
+                session,
+                part,
+                folders["step"],
+                instruction["part_number"],
+                instruction["revision"],
+            )
+            result["STEP_RESULT"] = exported["result"]
+            result["STEP_FILE"] = exported["path"]
+            append_unique(messages, exported.get("message", ""))
+            if exported.get("size") != "":
+                append_unique(
+                    messages,
+                    "STEP file size: {0} bytes".format(exported["size"]),
+                )
+        except Exception as error:
             result["STEP_RESULT"] = "FAILED"
-        _append_unique(messages, "Part processing failed: {0}".format(error))
-        log_line(session, traceback.format_exc(), log_buffer)
+            append_unique(messages, "STEP export failed: {0}".format(error))
+            log_line(session, traceback.format_exc(), log_buffer)
 
     if result["PDF_RESULT"] == "PENDING":
         result["PDF_RESULT"] = "FAILED"
     if result["STEP_RESULT"] == "PENDING":
         result["STEP_RESULT"] = "FAILED"
 
-    result["OVERALL_RESULT"] = determine_overall_result(
+    result["OVERALL_RESULT"] = overall_result(
         instruction["pdf_requested"],
         result["PDF_RESULT"],
         instruction["step_requested"],
@@ -1095,279 +1118,157 @@ def _process_instruction(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Journal entry point
-# ---------------------------------------------------------------------------
-
-def _restore_original_parts(session, original_display_part, original_work_part, log_buffer):
-    if original_display_part is not None:
+def restore_parts(session, display, work, log_buffer):
+    if display is not None:
         try:
-            session.Parts.SetDisplay(
-                original_display_part,
-                False,
-                True
-            )
+            set_display_part(session, display)
         except Exception as error:
-            log_line(
-                session,
-                "ERROR: Could not restore original display part: {0}".format(error),
-                log_buffer,
-            )
-
-    if original_work_part is not None:
+            log_line(session, "ERROR restoring display part: {0}".format(error), log_buffer)
+    if work is not None:
         try:
-            session.Parts.SetWork(original_work_part)
+            session.Parts.SetWork(work)
         except Exception as error:
-            log_line(
-                session,
-                "ERROR: Could not restore original work part: {0}".format(error),
-                log_buffer,
-            )
-
-
-def _log_final_summary(session, results, report_path, diagnostics, request_count, log_buffer):
-    counts = {}
-    for result in results:
-        status = result["OVERALL_RESULT"]
-        counts[status] = counts.get(status, 0) + 1
-
-    pdf_file_count = sum(int(result["PDF_FILE_COUNT"]) for result in results)
-    step_file_count = sum(1 for result in results if result["STEP_FILE"])
-
-    lines = [
-        "Export complete",
-        "Requested unique parts: {0}".format(request_count),
-        "Full success: {0}".format(counts.get("SUCCESS", 0)),
-        "Partial success: {0}".format(counts.get("PARTIAL_SUCCESS", 0)),
-        "Not found: {0}".format(counts.get("NOT_FOUND", 0)),
-        "Revision mismatch: {0}".format(counts.get("REVISION_MISMATCH", 0)),
-        "Invalid input: {0}".format(counts.get("INVALID_INPUT", 0)),
-        "Failed: {0}".format(counts.get("FAILED", 0)),
-        "PDF files: {0}".format(pdf_file_count),
-        "STEP files: {0}".format(step_file_count),
-        "Suppressed components skipped: {0}".format(
-            diagnostics.get("suppressed_component_count", 0)
-        ),
-        "Unresolved component diagnostics: {0}".format(
-            len(diagnostics.get("unresolved_components", []))
-        ),
-        "Prototype access errors: {0}".format(
-            diagnostics.get("prototype_error_count", 0)
-        ),
-        "Loaded-key collisions: {0}".format(
-            diagnostics.get("duplicate_loaded_key_count", 0)
-        ),
-        "Result report: {0}".format(report_path),
-    ]
-    for line in lines:
-        log_line(session, line, log_buffer)
+            log_line(session, "ERROR restoring work part: {0}".format(error), log_buffer)
 
 
 def main():
     session = NXOpen.Session.GetSession()
     log_buffer = []
-    run_folders = None
-    report_path = ""
+    folders = None
     results = []
+    report_path = ""
     report_written = False
-    diagnostics = {
-        "unresolved_components": [],
-        "suppressed_component_count": 0,
-        "prototype_error_count": 0,
-        "duplicate_loaded_key_count": 0,
-        "collision_keys": set(),
-    }
-
-    log_line(session, "DataPack PDF/STEP Export", log_buffer)
 
     try:
-        io_root = resolve_io_root()
-        csv_path = resolve_input_csv(io_root)
-        log_line(session, "Input: {0}".format(csv_path), log_buffer)
-
         work_part = session.Parts.Work
         if work_part is None:
-            log_line(session, "ERROR: No work part is loaded.", log_buffer)
-            return
+            raise RuntimeError("No NX work part is loaded.")
 
-        root_component = get_root_component(work_part)
-        if root_component is None:
-            log_line(
-                session,
-                "ERROR: The active work part is not an assembly.",
-                log_buffer,
-            )
-            return
+        original_work = session.Parts.Work
+        original_display = session.Parts.Display
+        io_root = resolve_io_root()
+        input_csv = os.path.join(io_root, INPUT_FILENAME)
 
-        if not os.path.isfile(csv_path):
-            log_line(
-                session,
-                "ERROR: Input CSV not found: {0}".format(csv_path),
-                log_buffer,
-            )
-            return
+        log_line(session, "Journal 07 - DataPack PDF + STEP export", log_buffer)
+        log_line(session, "Input CSV: " + input_csv, log_buffer)
+        log_line(session, "Managed mode: {0}".format(session_is_managed(session)), log_buffer)
 
-        try:
-            scope = read_export_scope(csv_path)
-        except Exception as error:
-            log_line(
-                session,
-                "ERROR: Input CSV validation failed: {0}".format(error),
-                log_buffer,
-            )
-            return
+        if not os.path.isfile(input_csv):
+            raise FileNotFoundError("Input CSV not found: " + input_csv)
 
-        instructions = scope["instructions"]
-        for warning in scope["header_warnings"]:
-            log_line(session, "WARNING: {0}".format(warning), log_buffer)
-        log_line(
-            session,
-            "Valid unique requests: {0}".format(len(instructions)),
-            log_buffer,
+        parsed = read_export_scope(input_csv)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        folders = create_run_folders(io_root, timestamp)
+        report_path = os.path.join(
+            folders["reports"], "EXPORT_RESULT_{0}.csv".format(timestamp)
         )
+        log_path = os.path.join(
+            folders["logs"], "EXPORT_LOG_{0}.txt".format(timestamp)
+        )
+
+        for warning in parsed["header_warnings"]:
+            log_line(session, "WARNING: " + warning, log_buffer)
+        for item in parsed["invalid_rows"]:
+            results.append(invalid_result(timestamp, item))
+
+        exact_parts, revisions, diagnostics = build_loaded_part_map(work_part)
+        instructions = parsed["instructions"]
         log_line(
             session,
-            "Ignored rows with no requested output: {0}".format(
-                scope["ignored_row_count"]
+            "Input rows: {0}; unique requests: {1}; ignored: {2}; invalid: {3}".format(
+                parsed["input_row_count"],
+                len(instructions),
+                parsed["ignored_row_count"],
+                len(parsed["invalid_rows"]),
             ),
             log_buffer,
         )
 
-        exact_part_map = {}
-        revisions_by_part_number = {}
-        if instructions:
-            exact_part_map, revisions_by_part_number, diagnostics = (
-                build_loaded_part_map(work_part)
-            )
-        log_line(
-            session,
-            "Loaded assembly keys: {0}".format(len(exact_part_map)),
-            log_buffer,
-        )
-
-        run_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         try:
-            run_folders = _create_run_folders(io_root, run_timestamp)
-        except FileExistsError:
-            log_line(
-                session,
-                "ERROR: Output run already exists for timestamp {0}; no files were overwritten.".format(
-                    run_timestamp
-                ),
-                log_buffer,
-            )
-            return
-
-        report_path = os.path.join(
-            run_folders["reports"],
-            "EXPORT_RESULT_{0}.csv".format(run_timestamp),
-        )
-        log_path = os.path.join(
-            run_folders["logs"],
-            "EXPORT_LOG_{0}.txt".format(run_timestamp),
-        )
-        log_line(session, "Output: {0}".format(run_folders["run"]), log_buffer)
-
-        for invalid_row in scope["invalid_rows"]:
-            results.append(_invalid_result(run_timestamp, invalid_row))
-
-        original_work_part = session.Parts.Work
-        original_display_part = session.Parts.Display
-        try:
-            total = len(instructions)
             for index, instruction in enumerate(instructions, start=1):
                 log_line(
                     session,
                     "[{0}/{1}] {2} / {3}".format(
                         index,
-                        total,
+                        len(instructions),
                         instruction["part_number"],
                         instruction["revision"],
                     ),
                     log_buffer,
                 )
-                result = _process_instruction(
+                result = process_instruction(
                     session,
                     instruction,
-                    exact_part_map,
-                    revisions_by_part_number,
+                    exact_parts,
+                    revisions,
                     diagnostics["collision_keys"],
-                    run_folders["pdf"],
-                    run_folders["step"],
-                    run_timestamp,
+                    folders,
+                    timestamp,
+                    original_display,
+                    original_work,
                     log_buffer,
                 )
                 results.append(result)
                 log_line(
                     session,
-                    "  PDF: {0}{1}".format(
-                        result["PDF_RESULT"],
-                        " ({0} file(s))".format(result["PDF_FILE_COUNT"])
-                        if result["PDF_REQUESTED"] == "YES"
-                        else "",
+                    "  PDF: {0} ({1} file(s))".format(
+                        result["PDF_RESULT"], result["PDF_FILE_COUNT"]
                     ),
                     log_buffer,
                 )
-                log_line(
-                    session,
-                    "  STEP: {0}".format(result["STEP_RESULT"]),
-                    log_buffer,
-                )
+                log_line(session, "  STEP: " + result["STEP_RESULT"], log_buffer)
         finally:
-            _restore_original_parts(
-                session,
-                original_display_part,
-                original_work_part,
-                log_buffer,
-            )
+            restore_parts(session, original_display, original_work, log_buffer)
 
         write_result_csv(report_path, results)
         report_written = True
 
-        for collision_key in sorted(diagnostics["collision_keys"]):
-            log_line(
-                session,
-                "WARNING: Loaded-key collision for {0} / {1}; the first usable prototype was retained.".format(
-                    collision_key[0],
-                    collision_key[1],
-                ),
-                log_buffer,
-            )
-        for diagnostic in diagnostics["unresolved_components"]:
-            log_line(session, "WARNING: {0}".format(diagnostic), log_buffer)
+        counts = {}
+        for result in results:
+            status = result["OVERALL_RESULT"]
+            counts[status] = counts.get(status, 0) + 1
 
-        _log_final_summary(
+        log_line(session, "Export complete", log_buffer)
+        log_line(session, "Success: {0}".format(counts.get("SUCCESS", 0)), log_buffer)
+        log_line(session, "Partial: {0}".format(counts.get("PARTIAL_SUCCESS", 0)), log_buffer)
+        log_line(session, "Failed: {0}".format(counts.get("FAILED", 0)), log_buffer)
+        log_line(
             session,
-            results,
-            report_path,
-            diagnostics,
-            len(instructions),
+            "PDF files: {0}".format(
+                sum(int(item["PDF_FILE_COUNT"]) for item in results)
+            ),
             log_buffer,
         )
+        log_line(
+            session,
+            "STEP files: {0}".format(
+                sum(1 for item in results if item["STEP_FILE"])
+            ),
+            log_buffer,
+        )
+        log_line(session, "Result report: " + report_path, log_buffer)
 
-        _write_text_log(log_path, log_buffer)
+        for diagnostic in diagnostics["unresolved_components"]:
+            log_line(session, "WARNING: " + diagnostic, log_buffer)
+
+        write_text_log(log_path, log_buffer)
+
     except Exception:
         log_line(session, "ERROR: Unhandled journal exception.", log_buffer)
         log_line(session, traceback.format_exc(), log_buffer)
     finally:
-        if run_folders is not None:
+        if folders is not None:
             if report_path and not report_written:
                 try:
                     write_result_csv(report_path, results)
-                except Exception as error:
-                    log_line(
-                        session,
-                        "ERROR: Could not write result report: {0}".format(error),
-                        log_buffer,
-                    )
+                except Exception:
+                    pass
             try:
-                fallback_log_path = os.path.join(
-                    run_folders["logs"],
-                    "EXPORT_LOG_{0}.txt".format(
-                        os.path.basename(run_folders["run"])
-                    ),
+                fallback = os.path.join(
+                    folders["logs"],
+                    "EXPORT_LOG_{0}.txt".format(os.path.basename(folders["run"])),
                 )
-                _write_text_log(fallback_log_path, log_buffer)
+                write_text_log(fallback, log_buffer)
             except Exception:
                 pass
 
