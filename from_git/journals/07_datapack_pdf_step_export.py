@@ -16,6 +16,17 @@ OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
 MAX_DWG = 9
 VERIFY_FILES = True
 CLOSE_OPENED_PARTS = True
+STEP_LAYER_MASK = "1-256"
+STEP_BODY_TOKENS = (
+    "MANIFOLD_SOLID_BREP",
+    "BREP_WITH_VOIDS",
+    "FACETED_BREP",
+    "SHELL_BASED_SURFACE_MODEL",
+    "CLOSED_SHELL",
+    "OPEN_SHELL",
+    "ADVANCED_FACE",
+    "TESSELLATED_SHAPE_REPRESENTATION",
+)
 TRUE = {"YES", "Y", "TRUE", "1", "X"}
 FALSE = {"", "NO", "N", "FALSE", "0"}
 BAD_FILENAME = '<>:"/\\|?*'
@@ -497,6 +508,25 @@ def open_master(session, pn, rev, lines):
     return None, False
 
 
+def step_body_signature_count(path):
+    signatures = 0
+    in_data = False
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            upper = line.upper()
+            stripped = upper.strip()
+            if stripped == "DATA;":
+                in_data = True
+                continue
+            if in_data and stripped == "ENDSEC;":
+                in_data = False
+            if not in_data:
+                continue
+            for token in STEP_BODY_TOKENS:
+                signatures += upper.count(token)
+    return signatures
+
+
 def export_step(session, item, folder, display, work, lines):
     part, opened = open_master(session, item["pn"], item["rev"], lines)
     if part is None:
@@ -507,11 +537,16 @@ def export_step(session, item, folder, display, work, lines):
         session.Parts.SetWork(part)
         creator = session.DexManager.CreateStepCreator()
         try:
-            try:
-                creator.InputFile = part.FullPath
-            except Exception:
-                pass
             creator.OutputFile = path
+            # Journal 10 proved this exact display/scope/layer combination
+            # exports the gasket body that InputFile mode silently omitted.
+            creator.ExportFrom = (
+                NXOpen.StepCreator.ExportFromOption.DisplayPart
+            )
+            creator.ExportSelectionBlock.SelectionScope = (
+                NXOpen.ObjectSelector.Scope.EntirePart
+            )
+            creator.LayerMask = STEP_LAYER_MASK
             creator.ObjectTypes.Solids = True
             creator.ObjectTypes.Surfaces = True
             creator.ObjectTypes.Curves = True
@@ -522,6 +557,19 @@ def export_step(session, item, folder, display, work, lines):
             creator.Destroy()
         if VERIFY_FILES and not os.path.isfile(path):
             return "FAILED_NO_OUTPUT_FILE", "", "STEP builder created no file"
+        if VERIFY_FILES:
+            signatures = step_body_signature_count(path)
+            if signatures <= 0:
+                try:
+                    size = os.path.getsize(path)
+                except Exception:
+                    size = ""
+                return (
+                    "FAILED_ZERO_GEOMETRY",
+                    path,
+                    "STEP output contains no body geometry signatures "
+                    "(size={0} bytes)".format(size),
+                )
         log(session, "    STEP created: " + path, lines)
         return "SUCCESS", path, ""
     finally:
