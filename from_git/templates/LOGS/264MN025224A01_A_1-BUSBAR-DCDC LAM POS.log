@@ -1,0 +1,128 @@
+﻿UG to STEP
+! INFO-     NX STEP AP214 - V2312.9101
+! INFO-      
+! INFO-     Start of Translation: 23-JUL-2026  3:28:07 PM
+! INFO-      
+! STATUS-   Converting Part: @DB/264MN025224A01/A
+! SUMMARY-   
+! SUMMARY-  Summary of Unigraphics Part Entities
+! SUMMARY-  For Part: @DB/264MN025224A01/A 
+! SUMMARY-  Entities Processed             Count
+! SUMMARY-  ------------------             -----
+! SUMMARY-  Part Attribute ..............:     1
+! SUMMARY-  Font ........................:     1
+! SUMMARY-  Color Table .................:     2
+! SUMMARY-  Coordinate System ...........:     1
+! SUMMARY-  Parameter ...................:     1
+! SUMMARY-  Matrix ......................:     1
+! SUMMARY-  Component ...................:     3
+! SUMMARY-                                 -----
+! SUMMARY-  Total                             10
+! SUMMARY-   
+! SUMMARY-  Summary of Unigraphics Part Entities
+! SUMMARY-  For Part: %UGMGR=V3.2 PH=AyCAglgAp_A3dA PRH=AyGAglgAp_A3dA PN=264MN025225A01 PRN=A RT="has shape" AT="UG master part file"  
+! SUMMARY-  Entities Processed             Count
+! SUMMARY-  ------------------             -----
+! SUMMARY-  Part Attribute ..............:     1
+! SUMMARY-  Font ........................:     1
+! SUMMARY-  Color Table .................:     2
+! SUMMARY-  Coordinate System ...........:     1
+! SUMMARY-  Parameter ...................:     1
+! SUMMARY-  Matrix ......................:     1
+! SUMMARY-  Reference Set ...............:     1
+! SUMMARY-  Solid/Sheet .................:
+! SUMMARY-     Body .....................:     1
+! SUMMARY-                                 -----
+! SUMMARY-  Total                              9
+! SUMMARY-   
+! SUMMARY-  Summary of Unigraphics Part Entities
+! SUMMARY-  For Part: %UGMGR=V3.2 PH=QKNAglgAp_A3dA PRH=QOBAglgAp_A3dA PN=264MN025226A01 PRN=A RT="has shape" AT="UG master part file"  
+! SUMMARY-  Entities Processed             Count
+! SUMMARY-  ------------------             -----
+! SUMMARY-  Part Attribute ..............:     1
+! SUMMARY-  Font ........................:     1
+! SUMMARY-  Color Table .................:     2
+! SUMMARY-  Coordinate System ...........:     1
+! SUMMARY-  Parameter ...................:     1
+! SUMMARY-  Matrix ......................:     1
+! SUMMARY-  Reference Set ...............:     1
+! SUMMARY-  Solid/Sheet .................:
+! SUMMARY-     Body .....................:     1
+! SUMMARY-                                 -----
+! SUMMARY-  Total                              9
+! STATUS-    
+! STATUS-   Converting to Output Form (Phase 2 of 3): 23-JUL-2026 3:28:11 PM
+! STATUS-    
+! STATUS-    
+! STATUS-   Generating UG geometry and placing them in parts
+! STATUS-    
+! SUMMARY-   
+! SUMMARY-    STEP Header Information
+! SUMMARY-   
+! SUMMARY-  Description      Unknown
+! SUMMARY-  Imp_Level        1
+! SUMMARY-  File_Name        264MN025224A01_A_1-BUSBAR-DCDC LAM POS.stp
+! SUMMARY-  Date             2026-07-23T15:28:11+08:00
+! SUMMARY-  Author           Unknown
+! SUMMARY-  Organization     Unknown
+! SUMMARY-  Pre_Version      ST-DEVELOPER v20
+! SUMMARY-  Orig_System      SIEMENS PLM Software NX2312.9101
+! SUMMARY-  Authorization    Unknown
+! SUMMARY-  Schema_ID        step_merged_ap_schema
+! SUMMARY-   
+! SUMMARY-    Summary of STEP Entities
+! SUMMARY-   
+! SUMMARY-  Entity Type                                                   Count
+! SUMMARY-  -----------                                                   ------
+! SUMMARY-  advanced_face ..............................................:    214
+! SUMMARY-  application_context ........................................:      1
+! SUMMARY-  axis2_placement_3d .........................................:    518
+! SUMMARY-  cartesian_point ............................................:   1268
+! SUMMARY-  circle .....................................................:    300
+! SUMMARY-  closed_shell ...............................................:      2
+! SUMMARY-  context_dependent_shape_representation .....................:      3
+! SUMMARY-  conversion_based_unit_and_plane_angle_unit .................:      1
+! SUMMARY-  cylindrical_surface ........................................:    150
+! SUMMARY-  dimensional_exponents ......................................:      1
+! SUMMARY-  direction ..................................................:   1366
+! SUMMARY-  edge_curve .................................................:    630
+! SUMMARY-  edge_loop ..................................................:    316
+! SUMMARY-  face_bound .................................................:    106
+! SUMMARY-  face_outer_bound ...........................................:    210
+! SUMMARY-  geometric_representation_context_and_global_uncertainty_a ..:      3
+! SUMMARY-  item_defined_transformation ................................:      3
+! SUMMARY-  length_unit_and_si_unit ....................................:      1
+! SUMMARY-  line .......................................................:    330
+! SUMMARY-  manifold_solid_brep ........................................:      2
+! SUMMARY-  next_assembly_usage_occurrence .............................:      3
+! SUMMARY-  oriented_edge ..............................................:   1260
+! SUMMARY-  plane ......................................................:     64
+! SUMMARY-  plane_angle_measure_with_unit ..............................:      1
+! SUMMARY-  plane_angle_unit_and_si_unit ...............................:      1
+! SUMMARY-  product ....................................................:      3
+! SUMMARY-  product_context ............................................:      3
+! SUMMARY-  product_definition .........................................:      3
+! SUMMARY-  product_definition_context .................................:      3
+! SUMMARY-  product_definition_formation_with_specified_source .........:      3
+! SUMMARY-  product_definition_shape ...................................:      6
+! SUMMARY-  product_related_product_category ...........................:      3
+! SUMMARY-  representation_relationship_with_transformation_and_shape ..:      3
+! SUMMARY-  shape_representation .......................................:      3
+! SUMMARY-  si_unit_and_solid_angle_unit ...............................:      1
+! SUMMARY-  uncertainty_measure_with_unit ..............................:      3
+! SUMMARY-  vector .....................................................:    330
+! SUMMARY-  vertex_point ...............................................:    420
+! SUMMARY-                                                               -------
+! SUMMARY-  Total                                                           7538
+! INFO-     Bspline aprx. value in effect for this translation :0.025400 millimeter
+! INFO-      
+! INFO-     Total number of solids input for this translation  :       2
+! INFO-      
+! INFO-     Number of solids processed without problems        :       2
+! INFO-      
+! INFO-     Number of solids with problems output as sheets    :       0
+! INFO-      
+! INFO-     Number of solids not processed                     :       0
+! INFO-      
+! INFO-     End of Translation: 23-JUL-2026  3:28:11 PM
+! INFO-      
