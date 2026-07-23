@@ -35,6 +35,17 @@ INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
+STEP_LAYER_MASK = "1-256"
+STEP_BODY_TOKENS = (
+    "MANIFOLD_SOLID_BREP",
+    "BREP_WITH_VOIDS",
+    "FACETED_BREP",
+    "SHELL_BASED_SURFACE_MODEL",
+    "CLOSED_SHELL",
+    "OPEN_SHELL",
+    "ADVANCED_FACE",
+    "TESSELLATED_SHAPE_REPRESENTATION",
+)
 
 MAX_DRAWING_DATASET_INDEX = 9
 TEAMCENTER_DRAWING_DATASET_TYPE = "UGPART"
@@ -1217,6 +1228,25 @@ def resolve_master_candidate(session, number, revision, log_buffer):
     return None, attempts
 
 
+def step_body_signature_count(path):
+    signatures = 0
+    in_data = False
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            upper = line.upper()
+            stripped = upper.strip()
+            if stripped == "DATA;":
+                in_data = True
+                continue
+            if in_data and stripped == "ENDSEC;":
+                in_data = False
+            if not in_data:
+                continue
+            for token in STEP_BODY_TOKENS:
+                signatures += upper.count(token)
+    return signatures
+
+
 def export_step_from_part(
     session,
     part,
@@ -1242,12 +1272,16 @@ def export_step_from_part(
 
     exporter = session.DexManager.CreateStepCreator()
     try:
-        try:
-            exporter.InputFile = part.FullPath
-        except Exception:
-            pass
-
         exporter.OutputFile = output_path
+        # Journal 10 proved this exact display/scope/layer combination:
+        # the gasket changes from zero input solids to one processed solid.
+        exporter.ExportFrom = (
+            NXOpen.StepCreator.ExportFromOption.DisplayPart
+        )
+        exporter.ExportSelectionBlock.SelectionScope = (
+            NXOpen.ObjectSelector.Scope.EntirePart
+        )
+        exporter.LayerMask = STEP_LAYER_MASK
         exporter.ObjectTypes.Solids = True
         exporter.ObjectTypes.Surfaces = True
         exporter.ObjectTypes.Curves = True
@@ -1277,6 +1311,19 @@ def export_step_from_part(
         file_size = os.path.getsize(output_path)
     except Exception:
         file_size = ""
+
+    if VERIFY_OUTPUT_FILES:
+        signatures = step_body_signature_count(output_path)
+        if signatures <= 0:
+            return {
+                "result": "FAILED_ZERO_GEOMETRY",
+                "path": output_path,
+                "size": file_size,
+                "message": (
+                    "STEP output contains no body geometry signatures; "
+                    "the header-only file was retained for diagnosis"
+                ),
+            }
 
     return {
         "result": "SUCCESS",
@@ -1322,13 +1369,23 @@ def export_step_for_instruction(
             number,
             revision,
         )
-        log_line(
-            session,
-            "    STEP created: {0}".format(
-                exported.get("path", "")
-            ),
-            log_buffer,
-        )
+        if exported.get("result") == "SUCCESS":
+            log_line(
+                session,
+                "    STEP created: {0}".format(
+                    exported.get("path", "")
+                ),
+                log_buffer,
+            )
+        else:
+            log_line(
+                session,
+                "    STEP rejected: {0} - {1}".format(
+                    exported.get("result", "FAILED"),
+                    exported.get("message", ""),
+                ),
+                log_buffer,
+            )
         return exported
     finally:
         restore_parts(
