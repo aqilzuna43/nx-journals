@@ -1,0 +1,363 @@
+
+==============================================================================
+Journal 10 - STEP Zero-Geometry Diagnostic
+==============================================================================
+Target: 264MN020016A01 / A
+Specification: @DB/264MN020016A01/A
+Output folder: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457
+Teamcenter operation: read/open only; no save
+
+==============================================================================
+OpenBase reproduction
+==============================================================================
+OpenBase returned: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+Opened by diagnostic: True
+Snapshot: Immediately after OpenBase
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_A - Current Journal 07 settings immediately after OpenBase
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=264MN020016A01/A
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_A_before_full_load.stp
+File: exists=True, size=2339, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator: solids input=0, processed=0, as sheets=0, not processed=0, UG body count=
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_A_before_full_load.log
+Snapshot: TRIAL_A post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+Explicit full-load request
+==============================================================================
+Full-load request: SUCCESS
+Snapshot: After explicit full load
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+Direct body diagnostics
+==============================================================================
+Body 1: tag=71123, type=NXOpen.Body
+  solid=True, sheet=False, convergent=False
+  layer=1 (0), blanked=False
+  owning part=264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET, owner matches target=True
+  faces=9, edges=24, facets=, vertices=
+  reference sets: MODEL
+Body report: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\STEP_DIAGNOSTIC_BODIES_20260723_160335_363457.csv
+Installed AP214 settings candidate: C:\Program Files\Siemens\NX2312\STEP214UG\step214ug.def
+
+==============================================================================
+TRIAL_A2 - Current Journal 07 settings after full load
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=264MN020016A01/A
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_A2_after_full_load.stp
+File: exists=True, size=2339, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator: solids input=0, processed=0, as sheets=0, not processed=0, UG body count=
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_A2_after_full_load.log
+Snapshot: TRIAL_A2 post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_B - Canonical @DB InputFile after full load
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=@DB/264MN020016A01/A
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_B_canonical_input.stp
+File: exists=True, size=2337, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator: solids input=0, processed=0, as sheets=0, not processed=0, UG body count=
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_B_canonical_input.log
+Snapshot: TRIAL_B post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_C - DisplayPart + EntirePart
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_C_display_entire_part.stp
+File: exists=True, size=2345, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator: solids input=0, processed=0, as sheets=0, not processed=0, UG body count=
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_C_display_entire_part.log
+Snapshot: TRIAL_C post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_D - DisplayPart + EntirePart + all layers
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=1-256, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_D_entire_part_all_layers.stp
+File: exists=True, size=21986, DATA entities=446
+STEP signatures: body geometry=12, assembly=0
+Has body geometry: True
+Translator: solids input=1, processed=1, as sheets=0, not processed=0, UG body count=1
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_D_entire_part_all_layers.log
+Snapshot: TRIAL_D post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_I - EntirePart + all layers + installed AP214 settings
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=1-256, FileSaveFlag=False, SettingsFile=C:\Program Files\Siemens\NX2312\STEP214UG\step214ug.def
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_I_installed_ap214_settings.stp
+File: exists=False, size=, DATA entities=0
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Snapshot: TRIAL_I post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_E - EntirePart + all layers + all body representations
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=1-256, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=True, FacetBodies=True, Tessellation=True, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_E_entire_all_body_types.stp
+File: exists=True, size=2349, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator: solids input=0, processed=0, as sheets=0, not processed=0, UG body count=
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_E_entire_all_body_types.log
+Snapshot: TRIAL_E post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_F - Explicit direct-body selection with standard types
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=1-256, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=1, SelectionSize=1, tags=71123
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_F_selected_standard_types.stp
+File: exists=True, size=15870, DATA entities=343
+STEP signatures: body geometry=12, assembly=0
+Has body geometry: True
+Translator: solids input=1, processed=1, as sheets=0, not processed=0, UG body count=1
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_F_selected_standard_types.log
+Snapshot: TRIAL_F post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_G - Explicit selection + all body representations
+==============================================================================
+STEP builder defaults:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=<empty>, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=0, SelectionSize=0, tags=<none>
+  ObjectTypes: Solids=False, Surfaces=False, Curves=False, ConvergentBodies=False, FacetBodies=False, Tessellation=False, Structures=False
+STEP builder final state:
+  ExportFrom=0, InputFile=<empty>
+  LayerMask=1-256, FileSaveFlag=False, SettingsFile=<empty>
+  SelectionScope=1, SelectionSize=1, tags=71123
+  ObjectTypes: Solids=True, Surfaces=True, Curves=True, ConvergentBodies=True, FacetBodies=True, Tessellation=True, Structures=False
+Builder Validate(): True
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_G_selected_all_body_types.stp
+File: exists=True, size=15870, DATA entities=343
+STEP signatures: body geometry=12, assembly=0
+Has body geometry: True
+Translator: solids input=1, processed=1, as sheets=0, not processed=0, UG body count=1
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\TRIAL_G_selected_all_body_types.log
+Snapshot: TRIAL_G post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+Temporary display-state normalization
+==============================================================================
+Restoring temporary body visibility/layer state...
+
+==============================================================================
+Unhandled diagnostic failure
+==============================================================================
+NXOpen.NXException: No work layer has been defined; ErrorCode=3515001
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NX2312\NXBIN\python\10_diagnose_step_export_source.py", line 1973, in main
+    make_bodies_visible_and_selectable(
+  File "C:\Program Files\Siemens\NX2312\NXBIN\python\10_diagnose_step_export_source.py", line 720, in make_bodies_visible_and_selectable
+    part.Layers.SetState(
+NXOpen.NXException: No work layer has been defined
+
+Restoring original NX state...
+  Display restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+  Work part restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+Restoring original NX state...
+  Display restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+  Work part restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+Diagnostic-opened top-level part closed.
+Final classification: INCONCLUSIVE
+Text report: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_160335_363457\STEP_DIAGNOSTIC_20260723_160335_363457.txt
