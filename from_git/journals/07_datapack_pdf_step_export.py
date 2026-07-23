@@ -898,53 +898,68 @@ def drawing_token(part, index):
     return "DRAWING"
 
 
+def unique_drawing_tokens(candidates):
+    preferred = [
+        drawing_token(
+            candidate["part"],
+            candidate.get("drawing_index"),
+        )
+        for candidate in candidates
+    ]
+    reserved = {
+        token.upper()
+        for token in preferred
+        if token.upper() != "DRAWING"
+    }
+    used = set()
+    result = []
+    next_index = 1
+
+    for token in preferred:
+        key = token.upper()
+        if key != "DRAWING" and key not in used:
+            resolved = token
+        else:
+            while True:
+                resolved = "DWG{0}".format(next_index)
+                next_index += 1
+                resolved_key = resolved.upper()
+                if resolved_key not in reserved and resolved_key not in used:
+                    break
+        used.add(resolved.upper())
+        result.append(resolved)
+
+    return result
+
+
 def build_pdf_filename(
-    drawing_part,
     number,
     revision,
     token,
-    sheet,
-    sheet_index,
-    sheet_count,
     drawing_count,
 ):
-    drawing_number = get_string_attribute(
-        drawing_part,
-        "DRAWING_NUMBER",
-    )
-    base_identifier = drawing_number or number or safe_part_name(drawing_part)
-
     filename = "{0}_REV{1}".format(
-        clean_filename_token(base_identifier),
+        clean_filename_token(number),
         clean_filename_token(revision, fallback=""),
     )
 
-    if drawing_count > 1 or not drawing_number:
+    if drawing_count > 1:
         filename += "_" + clean_filename_token(token)
-
-    if sheet_count > 1:
-        filename += "_SHEET{0:02d}".format(sheet_index)
-        try:
-            sheet_name = normalize_text(sheet.Name)
-        except Exception:
-            sheet_name = ""
-
-        if sheet_name:
-            filename += "_" + clean_filename_token(
-                sheet_name,
-                fallback="",
-            )
 
     return filename + ".pdf"
 
 
-def export_one_sheet_pdf(drawing_part, sheet, output_path):
+def export_drawing_pdf(drawing_part, sheets, output_path):
+    if not sheets:
+        raise RuntimeError("Drawing contains no sheets to export.")
+
+    sheets[0].Open()
     builder = drawing_part.PlotManager.CreatePrintPdfbuilder()
     try:
         builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
         builder.Filename = output_path
         builder.Append = False
-        builder.SourceBuilder.SetSheets([sheet])
+        builder.SourceBuilder.SetSheets(sheets)
         builder.Commit()
     finally:
         builder.Destroy()
@@ -980,14 +995,11 @@ def export_pdfs_for_instruction(
     successful_paths = []
     failures = []
     drawing_count = len(candidates)
+    output_tokens = unique_drawing_tokens(candidates)
 
     try:
-        for candidate in candidates:
+        for candidate, token in zip(candidates, output_tokens):
             drawing_part = candidate["part"]
-            token = drawing_token(
-                drawing_part,
-                candidate.get("drawing_index"),
-            )
 
             try:
                 set_display_part(session, drawing_part)
@@ -1040,63 +1052,59 @@ def export_pdfs_for_instruction(
                 log_buffer,
             )
 
-            for sheet_index, sheet in enumerate(sheets, start=1):
-                filename = build_pdf_filename(
-                    drawing_part,
-                    number,
-                    revision,
-                    token,
-                    sheet,
-                    sheet_index,
-                    len(sheets),
-                    drawing_count,
-                )
-                output_path = os.path.join(output_folder, filename)
+            filename = build_pdf_filename(
+                number,
+                revision,
+                token,
+                drawing_count,
+            )
+            output_path = os.path.join(output_folder, filename)
 
-                try:
-                    if os.path.exists(output_path):
-                        raise RuntimeError(
-                            "PDF output already exists: {0}".format(
-                                output_path
-                            )
+            try:
+                if os.path.exists(output_path):
+                    raise RuntimeError(
+                        "PDF output already exists: {0}".format(
+                            output_path
                         )
-
-                    sheet.Open()
-                    export_one_sheet_pdf(
-                        drawing_part,
-                        sheet,
-                        output_path,
                     )
 
-                    if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
-                        failures.append(
-                            {
-                                "kind": "NO_OUTPUT",
-                                "message": (
-                                    "{0} sheet {1}: PDF builder committed "
-                                    "but no file was created"
-                                ).format(token, sheet_index),
-                            }
-                        )
-                    else:
-                        successful_paths.append(output_path)
-                        log_line(
-                            session,
-                            "    PDF created: {0}".format(output_path),
-                            log_buffer,
-                        )
-                except Exception as error:
+                export_drawing_pdf(
+                    drawing_part,
+                    sheets,
+                    output_path,
+                )
+
+                if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
                     failures.append(
                         {
-                            "kind": "ERROR",
-                            "message": "{0} sheet {1}: {2}".format(
-                                token,
-                                sheet_index,
-                                error,
-                            ),
-                            "traceback": traceback.format_exc(),
+                            "kind": "NO_OUTPUT",
+                            "message": (
+                                "{0}: PDF builder committed but no "
+                                "combined file was created"
+                            ).format(token),
                         }
                     )
+                else:
+                    successful_paths.append(output_path)
+                    log_line(
+                        session,
+                        "    PDF created: {0} ({1} sheets)".format(
+                            output_path,
+                            len(sheets),
+                        ),
+                        log_buffer,
+                    )
+            except Exception as error:
+                failures.append(
+                    {
+                        "kind": "ERROR",
+                        "message": "{0}: {1}".format(
+                            token,
+                            error,
+                        ),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
     finally:
         restore_parts(
             session,
