@@ -1,0 +1,139 @@
+
+==============================================================================
+Journal 10 - STEP Zero-Geometry Diagnostic
+==============================================================================
+Target: 264MN020016A01 / A
+Specification: @DB/264MN020016A01/A
+Output folder: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661
+Teamcenter operation: read/open only; no save
+
+==============================================================================
+OpenBase reproduction
+==============================================================================
+OpenBase returned: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+Opened by diagnostic: True
+Snapshot: Immediately after OpenBase
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_A - Current Journal 07 settings immediately after OpenBase
+==============================================================================
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_A_before_full_load.stp
+File: exists=True, size=2339, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator solids input: 0
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_A_before_full_load.log
+Snapshot: TRIAL_A post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+Explicit full-load request
+==============================================================================
+Full-load request: SUCCESS
+Snapshot: After explicit full load
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_B - Current Journal 07 settings after full load
+==============================================================================
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_B_after_full_load.stp
+File: exists=True, size=2337, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator solids input: 0
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_B_after_full_load.log
+Snapshot: TRIAL_B post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_C - DisplayPart + EntirePart after full load
+==============================================================================
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_C_display_entire_part.stp
+File: exists=True, size=2345, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator solids input: 0
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_C_display_entire_part.log
+Snapshot: TRIAL_C post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+TRIAL_D - DisplayPart + EntirePart + Structures after full load
+==============================================================================
+Commit result: COMMITTED
+Output: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_D_display_entire_part_structures.stp
+File: exists=True, size=2367, DATA entities=23
+STEP signatures: body geometry=0, assembly=0
+Has body geometry: False
+Translator solids input: 0
+Translator log: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\TRIAL_D_display_entire_part_structures.log
+Snapshot: TRIAL_D post-export
+  Runtime type: NXOpen.Part
+  Name: 264MN020016A01/A;1-PRT-PDC-ISOLATOR PANEL GASKET
+  JournalIdentifier: @DB/264MN020016A01/A
+  FullPath: 264MN020016A01/A
+  Load state: 0
+  Is fully loaded: True
+  Direct bodies: 1 (solid=1, sheet=0, unknown=0)
+  Assembly: root=False, occurrences=0, unique prototypes=0, loaded prototypes=0
+  Descendant occurrence bodies: 0 (solid=0, sheet=0)
+
+==============================================================================
+Diagnostic conclusion
+==============================================================================
+ROOT_CAUSE_CLASSIFICATION: INCONCLUSIVE
+NX reports exportable bodies after loading, but none of the controlled STEP configurations produced body geometry.
+CSV report: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\STEP_DIAGNOSTIC_TRIALS_20260723_151925_355661.csv
+Restoring original NX state...
+  Display restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+  Work part restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+Restoring original NX state...
+  Display restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+  Work part restored: 264MN032224A01/A;1-ASY, BLAZE BUSBAR CONNECTION, POS, DCDC
+Diagnostic-opened top-level part closed.
+Final classification: INCONCLUSIVE
+Text report: C:\Users\my62022696\Desktop\NX_STEP_DIAGNOSTIC\20260723_151925_355661\STEP_DIAGNOSTIC_20260723_151925_355661.txt
