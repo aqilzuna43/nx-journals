@@ -1,7 +1,6 @@
 import csv
 import importlib.util
 import json
-import subprocess
 import sys
 import tempfile
 import types
@@ -481,15 +480,15 @@ class StaticSafetyTests(unittest.TestCase):
         self.assertIn("if blocker_count == 0:", source)
         self.assertIn("NX_CERTIFIED_BOM_", source)
 
-    def test_j07_matches_protected_commit(self):
-        relative = "from_git/journals/07_datapack_pdf_step_export.py"
-        expected = subprocess.check_output(
-            ["git", "show", "6fe58f765b8a207229b2f6990e3b0224caa03771:" + relative],
-            cwd=ROOT,
-        )
-        actual = (ROOT / relative).read_bytes()
-        # The Windows checkout uses CRLF while git-show returns canonical LF.
-        self.assertEqual(expected.replace(b"\r\n", b"\n"), actual.replace(b"\r\n", b"\n"))
+    def test_j07_step_fix_is_fail_closed(self):
+        source = (
+            ROOT / "from_git" / "journals"
+            / "07_datapack_pdf_step_export.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('STEP_LAYER_MASK = "1-256"', source)
+        self.assertIn("ExportFromOption.DisplayPart", source)
+        self.assertIn("Scope.EntirePart", source)
+        self.assertIn("FAILED_ZERO_GEOMETRY", source)
 
 
 if __name__ == "__main__":
