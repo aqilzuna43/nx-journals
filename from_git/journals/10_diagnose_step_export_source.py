@@ -2,9 +2,10 @@
 Journal 10 - Teamcenter STEP Zero-Geometry Diagnostic
 
 This journal diagnoses why Journal 07 can create a very small AP214 STEP file
-whose translator log reports zero input solids. It deliberately runs four
-controlled exports so that load-state, export-scope, and assembly-structure
-effects can be separated.
+whose translator log reports zero input solids even though NX reports a solid
+body and a manual STEP export succeeds. It runs a table-driven export matrix
+that isolates source identity, layer filtering, body representation, explicit
+selection, and display-state effects.
 
 The journal does not save or modify Teamcenter data. It restores the original
 display/work parts and closes only the top-level part that it opened.
@@ -33,6 +34,7 @@ import re
 import traceback
 
 import NXOpen
+import NXOpen.Layer
 
 
 DEFAULT_PART_NUMBER = "264MN020016A01"
@@ -40,6 +42,17 @@ DEFAULT_REVISION = "A"
 OUTPUT_FOLDER_NAME = "NX_STEP_DIAGNOSTIC"
 KEEP_OPEN_AFTER_TEST = False
 MAX_COMPONENT_OCCURRENCES = 20000
+ALL_LAYER_MASK = "1-256"
+
+OBJECT_TYPE_NAMES = (
+    "Solids",
+    "Surfaces",
+    "Curves",
+    "ConvergentBodies",
+    "FacetBodies",
+    "Tessellation",
+    "Structures",
+)
 
 BODY_GEOMETRY_TOKENS = (
     "MANIFOLD_SOLID_BREP",
@@ -67,6 +80,7 @@ CSV_COLUMNS = (
     "COMMIT_RESULT",
     "ERROR",
     "OUTPUT_FILE",
+    "FORMAT",
     "FILE_EXISTS",
     "FILE_SIZE_BYTES",
     "DATA_ENTITY_LINES",
@@ -74,6 +88,26 @@ CSV_COLUMNS = (
     "ASSEMBLY_SIGNATURES",
     "HAS_BODY_GEOMETRY",
     "TRANSLATOR_SOLIDS_INPUT",
+    "TRANSLATOR_SOLIDS_PROCESSED",
+    "TRANSLATOR_SOLIDS_AS_SHEETS",
+    "TRANSLATOR_SOLIDS_NOT_PROCESSED",
+    "TRANSLATOR_UG_BODY_COUNT",
+    "TRANSLATOR_LOG",
+    "BUILDER_VALIDATE_RESULT",
+    "EXPORT_FROM",
+    "INPUT_FILE",
+    "LAYER_MASK",
+    "FILE_SAVE_FLAG",
+    "SETTINGS_FILE",
+    "SELECTION_SCOPE",
+    "SELECTION_SIZE",
+    "SOLIDS_ENABLED",
+    "SURFACES_ENABLED",
+    "CURVES_ENABLED",
+    "CONVERGENT_BODIES_ENABLED",
+    "FACET_BODIES_ENABLED",
+    "TESSELLATION_ENABLED",
+    "STRUCTURES_ENABLED",
     "PART_LOAD_STATE",
     "PART_IS_FULLY_LOADED",
     "DIRECT_BODY_COUNT",
@@ -83,6 +117,27 @@ CSV_COLUMNS = (
     "UNIQUE_PROTOTYPE_COUNT",
     "DESCENDANT_BODY_OCCURRENCE_COUNT",
     "DESCENDANT_SOLID_BODY_OCCURRENCE_COUNT",
+)
+
+BODY_CSV_COLUMNS = (
+    "INDEX",
+    "TAG",
+    "RUNTIME_TYPE",
+    "NAME",
+    "JOURNAL_IDENTIFIER",
+    "OWNING_PART",
+    "OWNING_PART_MATCHES_TARGET",
+    "LAYER",
+    "LAYER_STATE",
+    "IS_BLANKED",
+    "IS_SOLID_BODY",
+    "IS_SHEET_BODY",
+    "IS_CONVERGENT_BODY",
+    "FACE_COUNT",
+    "EDGE_COUNT",
+    "FACET_COUNT",
+    "VERTEX_COUNT",
+    "REFERENCE_SETS",
 )
 
 
@@ -253,6 +308,150 @@ def body_counts(part):
         except Exception:
             record["unknown_body_type_count"] += 1
     return record
+
+
+def safe_method_count(value, method_name):
+    try:
+        result = getattr(value, method_name)()
+        try:
+            return len(result)
+        except Exception:
+            pass
+        return int(result)
+    except Exception:
+        return ""
+
+
+def reference_sets_for_body(part, body):
+    names = []
+    try:
+        reference_sets = list(part.GetAllReferenceSets())
+    except Exception:
+        reference_sets = []
+
+    body_key = object_key(body)
+    for reference_set in reference_sets:
+        members = []
+        for method_name in (
+            "AskAllDirectMembers",
+            "AskMembersInReferenceSet",
+        ):
+            try:
+                members = list(getattr(reference_set, method_name)())
+                break
+            except Exception:
+                pass
+        if any(object_key(member) == body_key for member in members):
+            names.append(
+                clean(safe_property(reference_set, "Name"))
+                or clean(safe_property(reference_set, "JournalIdentifier"))
+                or "<unnamed>"
+            )
+    return names
+
+
+def direct_bodies(part):
+    try:
+        return collection_values(part.Bodies)
+    except Exception:
+        return []
+
+
+def body_diagnostics(part):
+    records = []
+    target_key = object_key(part)
+    for index, body in enumerate(direct_bodies(part), start=1):
+        layer = safe_property(body, "Layer", "")
+        try:
+            layer_state = enum_text(part.Layers.GetState(int(layer)))
+        except Exception:
+            layer_state = ""
+        owning_part = safe_property(body, "OwningPart", None)
+        records.append({
+            "index": index,
+            "body": body,
+            "tag": clean(safe_property(body, "Tag")),
+            "runtime_type": type_name(body),
+            "name": clean(safe_property(body, "Name")),
+            "journal_identifier": clean(
+                safe_property(body, "JournalIdentifier")
+            ),
+            "owning_part": part_name(owning_part) if owning_part else "",
+            "owning_part_matches_target": (
+                object_key(owning_part) == target_key
+                if owning_part is not None else False
+            ),
+            "layer": layer,
+            "layer_state": layer_state,
+            "is_blanked": safe_property(body, "IsBlanked", ""),
+            "is_solid_body": safe_property(body, "IsSolidBody", ""),
+            "is_sheet_body": safe_property(body, "IsSheetBody", ""),
+            "is_convergent_body": safe_property(
+                body,
+                "IsConvergentBody",
+                "",
+            ),
+            "face_count": safe_method_count(body, "GetFaces"),
+            "edge_count": safe_method_count(body, "GetEdges"),
+            "facet_count": safe_method_count(
+                body,
+                "GetNumberOfFacets",
+            ),
+            "vertex_count": safe_method_count(
+                body,
+                "GetNumberOfVertices",
+            ),
+            "reference_sets": reference_sets_for_body(part, body),
+        })
+    return records
+
+
+def log_body_diagnostics(logger, records):
+    logger.section("Direct body diagnostics")
+    if not records:
+        logger.write("No direct bodies were available.")
+        return
+    for record in records:
+        logger.write(
+            "Body {0}: tag={1}, type={2}".format(
+                record["index"],
+                record["tag"],
+                record["runtime_type"],
+            )
+        )
+        logger.write(
+            "  solid={0}, sheet={1}, convergent={2}".format(
+                record["is_solid_body"],
+                record["is_sheet_body"],
+                record["is_convergent_body"],
+            )
+        )
+        logger.write(
+            "  layer={0} ({1}), blanked={2}".format(
+                record["layer"],
+                record["layer_state"],
+                record["is_blanked"],
+            )
+        )
+        logger.write(
+            "  owning part={0}, owner matches target={1}".format(
+                record["owning_part"],
+                record["owning_part_matches_target"],
+            )
+        )
+        logger.write(
+            "  faces={0}, edges={1}, facets={2}, vertices={3}".format(
+                record["face_count"],
+                record["edge_count"],
+                record["facet_count"],
+                record["vertex_count"],
+            )
+        )
+        logger.write(
+            "  reference sets: {0}".format(
+                ", ".join(record["reference_sets"]) or "<none>"
+            )
+        )
 
 
 def component_children(component):
@@ -486,6 +685,82 @@ def activate_part(session, part):
     session.Parts.SetWork(part)
 
 
+def capture_body_display_state(part, bodies):
+    states = []
+    for body in bodies:
+        layer = safe_property(body, "Layer", "")
+        try:
+            layer_state = part.Layers.GetState(int(layer))
+        except Exception:
+            layer_state = None
+        states.append({
+            "body": body,
+            "layer": layer,
+            "layer_state": layer_state,
+            "is_blanked": bool(safe_property(body, "IsBlanked", False)),
+        })
+    return states
+
+
+def make_bodies_visible_and_selectable(part, states, logger):
+    for state in states:
+        body = state["body"]
+        layer = state["layer"]
+        if state["is_blanked"]:
+            body.Unblank()
+            logger.write(
+                "Temporarily unblanked body tag={0}".format(
+                    clean(safe_property(body, "Tag"))
+                )
+            )
+        if (
+            layer != ""
+            and enum_text(state["layer_state"]) != "WorkLayer"
+        ):
+            part.Layers.SetState(
+                int(layer),
+                NXOpen.Layer.State.Selectable,
+            )
+            logger.write(
+                "Temporarily made layer {0} selectable.".format(layer)
+            )
+
+
+def restore_body_display_state(part, states, logger):
+    if not states:
+        return
+    logger.write("Restoring temporary body visibility/layer state...")
+    restored_layers = set()
+    for state in states:
+        body = state["body"]
+        try:
+            if state["is_blanked"]:
+                body.Blank()
+            else:
+                body.Unblank()
+        except Exception as error:
+            logger.write(
+                "  WARNING: body display restore failed: {0}".format(
+                    exception_details(error)
+                )
+            )
+
+        layer = state["layer"]
+        layer_state = state["layer_state"]
+        if layer == "" or layer_state is None or layer in restored_layers:
+            continue
+        try:
+            part.Layers.SetState(int(layer), layer_state)
+            restored_layers.add(layer)
+        except Exception as error:
+            logger.write(
+                "  WARNING: layer {0} restore failed: {1}".format(
+                    layer,
+                    exception_details(error),
+                )
+            )
+
+
 def output_base_folder():
     configured = clean(os.environ.get("NX_JOURNALS_IO_DIR"))
     if configured:
@@ -562,39 +837,149 @@ def inspect_step_file(path):
     return result
 
 
-def parse_translator_solid_count(output_path):
+def parse_translator_log(output_path):
+    result = {
+        "path": "",
+        "solids_input": "",
+        "solids_processed": "",
+        "solids_as_sheets": "",
+        "solids_not_processed": "",
+        "ug_body_count": "",
+    }
     folder = os.path.dirname(output_path)
     output_name = os.path.basename(output_path).upper()
+    output_stem = os.path.splitext(output_name)[0]
     candidates = []
     try:
         for name in os.listdir(folder):
             if name.lower().endswith(".log"):
                 candidates.append(os.path.join(folder, name))
     except Exception:
-        return "", ""
+        return result
 
     preferred = []
-    others = []
     for path in candidates:
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
                 content = handle.read()
-            if output_name in content.upper():
+            if (
+                output_name in content.upper()
+                or output_stem in os.path.basename(path).upper()
+            ):
                 preferred.append((path, content))
-            else:
-                others.append((path, content))
         except Exception:
             pass
 
-    for path, content in preferred + others:
-        match = re.search(
-            r"Total\s+number\s+of\s+solids\s+input.*?:\s*(\d+)",
+    def modified_time(item):
+        try:
+            return os.path.getmtime(item[0])
+        except Exception:
+            return 0
+
+    preferred.sort(key=modified_time, reverse=True)
+    patterns = {
+        "solids_input": (
+            r"Total\s+number\s+of\s+solids\s+input.*?:\s*(\d+)"
+        ),
+        "solids_processed": (
+            r"Number\s+of\s+solids\s+processed\s+without\s+"
+            r"problems.*?:\s*(\d+)"
+        ),
+        "solids_as_sheets": (
+            r"Number\s+of\s+solids.*?(?:output|processed)\s+as\s+"
+            r"sheets.*?:\s*(\d+)"
+        ),
+        "solids_not_processed": (
+            r"Number\s+of\s+solids\s+not\s+processed.*?:\s*(\d+)"
+        ),
+    }
+
+    for path, content in preferred:
+        matched = False
+        parsed = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                parsed[key] = match.group(1)
+                matched = True
+        body_matches = re.findall(
+            r"SUMMARY-\s*Body\s*\.*\s*:\s*(\d+)",
             content,
             re.IGNORECASE,
         )
-        if match:
-            return match.group(1), path
-    return "", ""
+        if body_matches:
+            parsed["ug_body_count"] = str(sum(
+                int(value) for value in body_matches
+            ))
+            matched = True
+        if matched:
+            result.update(parsed)
+            result["path"] = path
+            return result
+    return result
+
+
+def selection_objects(selector):
+    try:
+        return list(selector.GetArray())
+    except Exception:
+        return []
+
+
+def builder_state(creator):
+    selector = creator.ExportSelectionBlock
+    selection = selector.SelectionComp
+    object_types = {}
+    for name in OBJECT_TYPE_NAMES:
+        object_types[name] = safe_property(creator.ObjectTypes, name, "")
+    return {
+        "export_from": enum_text(safe_property(creator, "ExportFrom")),
+        "input_file": clean(safe_property(creator, "InputFile")),
+        "layer_mask": clean(safe_property(creator, "LayerMask")),
+        "file_save_flag": safe_property(creator, "FileSaveFlag", ""),
+        "settings_file": clean(safe_property(creator, "SettingsFile")),
+        "selection_scope": enum_text(
+            safe_property(selector, "SelectionScope")
+        ),
+        "selection_size": safe_property(selection, "Size", ""),
+        "selection_tags": [
+            clean(safe_property(value, "Tag"))
+            for value in selection_objects(selection)
+        ],
+        "object_types": object_types,
+    }
+
+
+def log_builder_state(logger, title, state):
+    logger.write(title)
+    logger.write(
+        "  ExportFrom={0}, InputFile={1}".format(
+            state["export_from"],
+            state["input_file"] or "<empty>",
+        )
+    )
+    logger.write(
+        "  LayerMask={0}, FileSaveFlag={1}, SettingsFile={2}".format(
+            state["layer_mask"] or "<empty>",
+            state["file_save_flag"],
+            state["settings_file"] or "<empty>",
+        )
+    )
+    logger.write(
+        "  SelectionScope={0}, SelectionSize={1}, tags={2}".format(
+            state["selection_scope"],
+            state["selection_size"],
+            ", ".join(state["selection_tags"]) or "<none>",
+        )
+    )
+    logger.write(
+        "  ObjectTypes: {0}".format(
+            ", ".join(
+                "{0}={1}".format(name, state["object_types"][name])
+                for name in OBJECT_TYPE_NAMES
+            )
+        )
+    )
 
 
 def configure_common_step_options(creator, output_path):
@@ -606,17 +991,74 @@ def configure_common_step_options(creator, output_path):
     creator.ProcessHoldFlag = True
 
 
+def enable_all_body_types(creator):
+    creator.ObjectTypes.ConvergentBodies = True
+    creator.ObjectTypes.FacetBodies = True
+    creator.ObjectTypes.Tessellation = True
+
+
+def discover_step_settings_file():
+    candidates = []
+    for variable in ("UGII_BASE_DIR", "UGII_ROOT_DIR"):
+        root = clean(os.environ.get(variable))
+        if not root:
+            continue
+        candidates.extend((
+            os.path.join(root, "STEP214UG", "step214ug.def"),
+            os.path.join(root, "step214ug", "step214ug.def"),
+            os.path.join(root, "translators", "step214ug.def"),
+        ))
+    seen = set()
+    for path in candidates:
+        normalized = os.path.normcase(os.path.abspath(path))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def set_selected_bodies(creator, bodies):
+    selector = creator.ExportSelectionBlock
+    selector.SelectionScope = NXOpen.ObjectSelector.Scope.SelectedObjects
+    selection = selector.SelectionComp
+    try:
+        selection.SetArray(bodies)
+    except Exception:
+        try:
+            selection.Clear()
+        except Exception:
+            pass
+        for body in bodies:
+            selection.Add(body)
+
+    selected = selection_objects(selection)
+    size = safe_property(selection, "Size", len(selected))
+    try:
+        size_value = int(size)
+    except Exception:
+        size_value = len(selected)
+    if not bodies:
+        raise RuntimeError("No direct bodies are available for selection.")
+    if size_value <= 0 and not selected:
+        raise RuntimeError(
+            "STEP selected-object list stayed empty after adding bodies."
+        )
+
+
 def run_step_trial(
     session,
     part,
+    specification,
+    bodies,
     run_folder,
-    trial_id,
-    label,
-    phase,
-    mode,
-    structures,
+    trial_spec,
     logger,
 ):
+    trial_id = trial_spec["trial"]
+    label = trial_spec["label"]
+    phase = trial_spec["phase"]
     logger.section("{0} - {1}".format(trial_id, label))
     output_path = os.path.join(
         run_folder,
@@ -630,8 +1072,11 @@ def run_step_trial(
         "error": "",
         "traceback": "",
         "output_file": output_path,
-        "mode": mode,
-        "structures": structures,
+        "format": "STEP",
+        "builder_defaults": {},
+        "builder_final": {},
+        "builder_validate_result": "NOT_RUN",
+        "translator": {},
     }
 
     if os.path.exists(output_path):
@@ -645,20 +1090,59 @@ def run_step_trial(
         # Journal 07 activates the resolved part before creating the builder.
         activate_part(session, part)
         creator = session.DexManager.CreateStepCreator()
+        record["builder_defaults"] = builder_state(creator)
+        log_builder_state(
+            logger,
+            "STEP builder defaults:",
+            record["builder_defaults"],
+        )
         configure_common_step_options(creator, output_path)
 
-        if mode == "CURRENT_J07":
+        input_mode = trial_spec.get("input_mode")
+        if input_mode == "FULL_PATH":
             creator.InputFile = part.FullPath
-        elif mode == "DISPLAY_ENTIRE_PART":
+        elif input_mode == "CANONICAL":
+            creator.InputFile = specification
+        elif input_mode:
+            raise RuntimeError("Unknown STEP input mode: " + input_mode)
+
+        scope = trial_spec.get("scope")
+        if scope:
             creator.ExportFrom = (
                 NXOpen.StepCreator.ExportFromOption.DisplayPart
             )
+        if scope == "ENTIRE":
             creator.ExportSelectionBlock.SelectionScope = (
                 NXOpen.ObjectSelector.Scope.EntirePart
             )
-            creator.ObjectTypes.Structures = bool(structures)
-        else:
-            raise RuntimeError("Unknown diagnostic trial mode: " + mode)
+        elif scope == "SELECTED":
+            set_selected_bodies(creator, bodies)
+        elif scope:
+            raise RuntimeError("Unknown STEP selection scope: " + scope)
+
+        if trial_spec.get("layer_mask"):
+            creator.LayerMask = trial_spec["layer_mask"]
+        if trial_spec.get("settings_file"):
+            creator.SettingsFile = trial_spec["settings_file"]
+        if trial_spec.get("all_body_types"):
+            enable_all_body_types(creator)
+        if "structures" in trial_spec:
+            creator.ObjectTypes.Structures = bool(
+                trial_spec["structures"]
+            )
+
+        record["builder_final"] = builder_state(creator)
+        log_builder_state(
+            logger,
+            "STEP builder final state:",
+            record["builder_final"],
+        )
+        record["builder_validate_result"] = clean(creator.Validate())
+        logger.write(
+            "Builder Validate(): {0}".format(
+                record["builder_validate_result"]
+            )
+        )
 
         creator.Commit()
         record["commit_result"] = "COMMITTED"
@@ -679,9 +1163,7 @@ def run_step_trial(
                     )
 
     record["inspection"] = inspect_step_file(output_path)
-    solid_count, translator_log = parse_translator_solid_count(output_path)
-    record["translator_solids_input"] = solid_count
-    record["translator_log"] = translator_log
+    record["translator"] = parse_translator_log(output_path)
     record["snapshot"] = part_snapshot(
         session,
         part,
@@ -709,9 +1191,19 @@ def run_step_trial(
     logger.write("Has body geometry: {0}".format(
         inspection["has_body_geometry"]
     ))
-    if solid_count:
-        logger.write("Translator solids input: {0}".format(solid_count))
-        logger.write("Translator log: {0}".format(translator_log))
+    translator = record["translator"]
+    if translator.get("path"):
+        logger.write(
+            "Translator: solids input={0}, processed={1}, as sheets={2}, "
+            "not processed={3}, UG body count={4}".format(
+                translator["solids_input"],
+                translator["solids_processed"],
+                translator["solids_as_sheets"],
+                translator["solids_not_processed"],
+                translator["ug_body_count"],
+            )
+        )
+        logger.write("Translator log: {0}".format(translator["path"]))
     if inspection["inspection_error"]:
         logger.write("Inspection error: {0}".format(
             inspection["inspection_error"]
@@ -720,39 +1212,280 @@ def run_step_trial(
     return record
 
 
+def run_parasolid_control(
+    session,
+    part,
+    bodies,
+    run_folder,
+    logger,
+):
+    trial_id = "CONTROL_P"
+    label = "Selected direct bodies through Parasolid exporter"
+    phase = "selected_body_parasolid"
+    logger.section("{0} - {1}".format(trial_id, label))
+    output_path = os.path.join(run_folder, "{0}_{1}.x_t".format(
+        trial_id,
+        phase,
+    ))
+    record = {
+        "trial": trial_id,
+        "label": label,
+        "phase": phase,
+        "commit_result": "NOT_RUN",
+        "error": "",
+        "traceback": "",
+        "output_file": output_path,
+        "format": "PARASOLID",
+        "builder_defaults": {},
+        "builder_final": {},
+        "builder_validate_result": "NOT_RUN",
+        "translator": {},
+    }
+
+    exporter = None
+    try:
+        activate_part(session, part)
+        exporter = session.DexManager.CreateParasolidExporter()
+        exporter.OutputFile = output_path
+        exporter.ExportFrom = (
+            NXOpen.ParasolidExporter.ExportFromOption.DisplayedPart
+        )
+        exporter.ExportSelectionBlock.SelectionScope = (
+            NXOpen.ObjectSelector.Scope.SelectedObjects
+        )
+        exporter.ObjectTypes.Solids = True
+        exporter.ObjectTypes.Surfaces = True
+        selection = exporter.ExportSelectionBlock.SelectionComp
+        try:
+            selection.SetArray(bodies)
+        except Exception:
+            for body in bodies:
+                selection.Add(body)
+        if not bodies:
+            raise RuntimeError(
+                "No direct bodies are available for Parasolid control."
+            )
+        selected = selection_objects(selection)
+        size = safe_property(selection, "Size", len(selected))
+        if not selected and clean(size) in ("", "0"):
+            raise RuntimeError(
+                "Parasolid selected-object list stayed empty."
+            )
+        record["builder_final"] = {
+            "selection_scope": enum_text(
+                exporter.ExportSelectionBlock.SelectionScope
+            ),
+            "selection_size": size,
+            "selection_tags": [
+                clean(safe_property(value, "Tag")) for value in selected
+            ],
+            "export_from": enum_text(exporter.ExportFrom),
+        }
+        record["builder_validate_result"] = clean(exporter.Validate())
+        exporter.Commit()
+        record["commit_result"] = "COMMITTED"
+    except Exception as error:
+        record["commit_result"] = "FAILED"
+        record["error"] = exception_details(error)
+        record["traceback"] = traceback.format_exc()
+    finally:
+        if exporter is not None:
+            try:
+                exporter.Destroy()
+            except Exception:
+                pass
+
+    exists = os.path.isfile(output_path)
+    try:
+        size_bytes = os.path.getsize(output_path) if exists else ""
+    except Exception:
+        size_bytes = ""
+    parasolid_body_signatures = 0
+    if exists:
+        try:
+            with open(
+                output_path,
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as handle:
+                parasolid_body_signatures = len(re.findall(
+                    r"\bbody\b",
+                    handle.read(),
+                    re.IGNORECASE,
+                ))
+        except Exception:
+            pass
+    has_geometry = parasolid_body_signatures > 0
+    record["inspection"] = {
+        "exists": exists,
+        "size_bytes": size_bytes,
+        "data_entity_lines": "",
+        "body_geometry_signatures": parasolid_body_signatures,
+        "assembly_signatures": "",
+        "has_body_geometry": has_geometry,
+        "inspection_error": "",
+    }
+    record["snapshot"] = part_snapshot(
+        session,
+        part,
+        "{0} post-export".format(trial_id),
+    )
+    logger.write("Commit result: {0}".format(record["commit_result"]))
+    if record["error"]:
+        logger.write("Error: {0}".format(record["error"]))
+    logger.write(
+        "Parasolid control: exists={0}, size={1}, body signatures={2}".format(
+            exists,
+            size_bytes,
+            parasolid_body_signatures,
+        )
+    )
+    logger.write(
+        "Selection size={0}, tags={1}".format(
+            record["builder_final"].get("selection_size", ""),
+            ", ".join(
+                record["builder_final"].get("selection_tags", [])
+            ) or "<none>",
+        )
+    )
+    return record
+
+
 def trial_has_geometry(trial):
     try:
-        return bool(trial["inspection"]["has_body_geometry"])
+        if bool(trial["inspection"]["has_body_geometry"]):
+            return True
+        solids_input = trial.get("translator", {}).get(
+            "solids_input",
+            "",
+        )
+        return solids_input != "" and int(solids_input) > 0
     except Exception:
         return False
 
 
-def determine_conclusion(trials, before_load, after_load, load_result):
-    by_id = {trial["trial"]: trial for trial in trials}
-    a = trial_has_geometry(by_id.get("TRIAL_A", {}))
-    b = trial_has_geometry(by_id.get("TRIAL_B", {}))
-    c = trial_has_geometry(by_id.get("TRIAL_C", {}))
-    d = trial_has_geometry(by_id.get("TRIAL_D", {}))
+def body_flag(records, name):
+    return any(bool(record.get(name)) for record in records)
 
-    if not a and b:
+
+def determine_conclusion(trials, body_records, after_load, load_result):
+    by_id = {trial["trial"]: trial for trial in trials}
+    success = {
+        trial_id: trial_has_geometry(by_id.get(trial_id, {}))
+        for trial_id in (
+            "TRIAL_A",
+            "TRIAL_A2",
+            "TRIAL_B",
+            "TRIAL_C",
+            "TRIAL_D",
+            "TRIAL_I",
+            "TRIAL_E",
+            "TRIAL_F",
+            "TRIAL_G",
+            "TRIAL_H",
+            "CONTROL_P",
+        )
+    }
+
+    if success["TRIAL_A"]:
+        return (
+            "NOT_REPRODUCED",
+            "The unchanged Journal 07 configuration produced body geometry. "
+            "Do not patch Journal 07 from this run.",
+        )
+    if success["TRIAL_A2"]:
         return (
             "LOAD_STATE_CAUSE",
-            "The Journal 07 configuration exported geometry only after a "
-            "full-load request that included assembly children.",
+            "The unchanged Journal 07 configuration first produced geometry "
+            "after the explicit full-load request. Journal 07 should ensure "
+            "the target part is fully loaded before creating StepCreator.",
         )
-    if not b and c:
+    if success["TRIAL_B"]:
         return (
-            "EXPORT_SCOPE_CAUSE",
-            "The fully loaded part exported geometry only after switching "
-            "from InputFile mode to explicit DisplayPart/EntirePart scope.",
+            "CANONICAL_INPUT_PATH_CAUSE",
+            "The first successful STEP differs only by using the canonical "
+            "Teamcenter specification as StepCreator.InputFile. Journal 07 "
+            "should pass the resolved @DB specification, not Part.FullPath.",
         )
-    if not c and d:
+    if success["TRIAL_C"]:
         return (
-            "ASSEMBLY_STRUCTURE_CAUSE",
-            "Geometry appeared only when STEP assembly Structures were enabled.",
+            "EXPORT_SOURCE_SCOPE_CAUSE",
+            "The first successful STEP explicitly uses DisplayPart with "
+            "EntirePart scope. Journal 07 should use that source/scope for "
+            "this Teamcenter part.",
+        )
+    if success["TRIAL_D"]:
+        return (
+            "LAYER_MASK_CAUSE",
+            "The first successful STEP adds LayerMask='1-256'. Journal 07 "
+            "should explicitly export all layers.",
+        )
+    if success["TRIAL_I"]:
+        return (
+            "SETTINGS_FILE_CAUSE",
+            "The first successful STEP differs from the all-layer baseline "
+            "only by explicitly assigning the installed AP214 settings file. "
+            "Journal 07 should set that SettingsFile.",
+        )
+    if success["TRIAL_F"]:
+        return (
+            "ENTIRE_PART_SELECTION_CAUSE",
+            "The same standard STEP body types work when the direct body is "
+            "explicitly selected. Journal 07 should populate SelectionComp "
+            "and verify its size before Commit().",
+        )
+    if success["TRIAL_E"]:
+        if body_flag(body_records, "is_convergent_body"):
+            return (
+                "CONVERGENT_BODY_FILTER_CAUSE",
+                "The body is convergent and STEP succeeds only after "
+                "ConvergentBodies/FacetBodies/Tessellation are enabled.",
+            )
+        return (
+            "STEP_FILTER_CONFIGURATION_CAUSE",
+            "STEP succeeds only after all supported body representation "
+            "filters are enabled. Apply those ObjectTypes to Journal 07.",
+        )
+    if success["TRIAL_G"]:
+        if body_flag(body_records, "is_convergent_body"):
+            return (
+                "SELECTION_AND_BODY_TYPE_CAUSE",
+                "The convergent body requires both explicit selection and "
+                "the convergent/facet/tessellation STEP filters.",
+            )
+        return (
+            "SELECTION_AND_BODY_TYPE_CAUSE",
+            "The body requires explicit selection plus the expanded STEP "
+            "body representation filters.",
+        )
+    if success["TRIAL_H"]:
+        display_filtered = body_flag(body_records, "is_blanked") or any(
+            clean(record.get("layer_state")).upper() == "HIDDEN"
+            for record in body_records
+        )
+        if display_filtered:
+            return (
+                "BLANKED_BODY_FILTER_CAUSE",
+                "STEP succeeds only after temporarily unblanking the body "
+                "and making its layer selectable. Journal 07 must restore "
+                "those display states after export.",
+            )
+        return (
+            "DISPLAY_STATE_FILTER_CAUSE",
+            "STEP succeeds only after normalizing the body visibility/layer "
+            "state, although the recorded initial flags were non-obvious.",
+        )
+    if success["CONTROL_P"]:
+        return (
+            "STEP_API_VS_UI_MISMATCH",
+            "The selected direct body exports through the Parasolid API, "
+            "while every STEP API configuration still reports zero geometry. "
+            "The next evidence required is an NX UI-recorded STEP journal for "
+            "the exact gasket; do not guess a Journal 07 setting.",
         )
 
-    if not d:
+    if not success["CONTROL_P"]:
         available_bodies = (
             int(after_load.get("body_count", 0))
             + int(after_load.get("descendant_body_occurrence_count", 0))
@@ -764,20 +1497,14 @@ def determine_conclusion(trials, before_load, after_load, load_result):
             return (
                 "EMPTY_OR_WRONG_MASTER_DATASET",
                 "The fully loaded Teamcenter result contains no direct or "
-                "descendant bodies, and none of the STEP configurations "
-                "produced body geometry.",
+                "descendant bodies.",
             )
         return (
-            "INCONCLUSIVE",
-            "NX reports exportable bodies after loading, but none of the "
-            "controlled STEP configurations produced body geometry.",
-        )
-
-    if a:
-        return (
-            "INCONCLUSIVE",
-            "The current Journal 07 configuration produced body geometry in "
-            "this run, so the uploaded zero-solid failure was not reproduced.",
+            "BODY_GEOMETRY_CONTROL_FAILURE",
+            "NX reports bodies, but neither STEP nor the selected-body "
+            "Parasolid control produced a non-empty geometry file. Inspect "
+            "the recorded body topology and exporter errors before changing "
+            "Journal 07.",
         )
 
     return (
@@ -790,6 +1517,9 @@ def determine_conclusion(trials, before_load, after_load, load_result):
 def trial_csv_row(trial):
     inspection = trial.get("inspection", {})
     snapshot = trial.get("snapshot", {})
+    translator = trial.get("translator", {})
+    builder = trial.get("builder_final", {})
+    object_types = builder.get("object_types", {})
     return {
         "TRIAL": trial.get("trial", ""),
         "LABEL": trial.get("label", ""),
@@ -797,6 +1527,7 @@ def trial_csv_row(trial):
         "COMMIT_RESULT": trial.get("commit_result", ""),
         "ERROR": trial.get("error", ""),
         "OUTPUT_FILE": trial.get("output_file", ""),
+        "FORMAT": trial.get("format", ""),
         "FILE_EXISTS": inspection.get("exists", ""),
         "FILE_SIZE_BYTES": inspection.get("size_bytes", ""),
         "DATA_ENTITY_LINES": inspection.get("data_entity_lines", ""),
@@ -805,7 +1536,42 @@ def trial_csv_row(trial):
         ),
         "ASSEMBLY_SIGNATURES": inspection.get("assembly_signatures", ""),
         "HAS_BODY_GEOMETRY": inspection.get("has_body_geometry", ""),
-        "TRANSLATOR_SOLIDS_INPUT": trial.get("translator_solids_input", ""),
+        "TRANSLATOR_SOLIDS_INPUT": translator.get("solids_input", ""),
+        "TRANSLATOR_SOLIDS_PROCESSED": translator.get(
+            "solids_processed",
+            "",
+        ),
+        "TRANSLATOR_SOLIDS_AS_SHEETS": translator.get(
+            "solids_as_sheets",
+            "",
+        ),
+        "TRANSLATOR_SOLIDS_NOT_PROCESSED": translator.get(
+            "solids_not_processed",
+            "",
+        ),
+        "TRANSLATOR_UG_BODY_COUNT": translator.get("ug_body_count", ""),
+        "TRANSLATOR_LOG": translator.get("path", ""),
+        "BUILDER_VALIDATE_RESULT": trial.get(
+            "builder_validate_result",
+            "",
+        ),
+        "EXPORT_FROM": builder.get("export_from", ""),
+        "INPUT_FILE": builder.get("input_file", ""),
+        "LAYER_MASK": builder.get("layer_mask", ""),
+        "FILE_SAVE_FLAG": builder.get("file_save_flag", ""),
+        "SETTINGS_FILE": builder.get("settings_file", ""),
+        "SELECTION_SCOPE": builder.get("selection_scope", ""),
+        "SELECTION_SIZE": builder.get("selection_size", ""),
+        "SOLIDS_ENABLED": object_types.get("Solids", ""),
+        "SURFACES_ENABLED": object_types.get("Surfaces", ""),
+        "CURVES_ENABLED": object_types.get("Curves", ""),
+        "CONVERGENT_BODIES_ENABLED": object_types.get(
+            "ConvergentBodies",
+            "",
+        ),
+        "FACET_BODIES_ENABLED": object_types.get("FacetBodies", ""),
+        "TESSELLATION_ENABLED": object_types.get("Tessellation", ""),
+        "STRUCTURES_ENABLED": object_types.get("Structures", ""),
         "PART_LOAD_STATE": snapshot.get("load_state", ""),
         "PART_IS_FULLY_LOADED": snapshot.get("is_fully_loaded", ""),
         "DIRECT_BODY_COUNT": snapshot.get("body_count", ""),
@@ -832,6 +1598,44 @@ def write_csv_report(path, trials):
         writer.writeheader()
         for trial in trials:
             writer.writerow(trial_csv_row(trial))
+
+
+def write_body_csv(path, records):
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=BODY_CSV_COLUMNS)
+        writer.writeheader()
+        for record in records:
+            writer.writerow({
+                "INDEX": record.get("index", ""),
+                "TAG": record.get("tag", ""),
+                "RUNTIME_TYPE": record.get("runtime_type", ""),
+                "NAME": record.get("name", ""),
+                "JOURNAL_IDENTIFIER": record.get(
+                    "journal_identifier",
+                    "",
+                ),
+                "OWNING_PART": record.get("owning_part", ""),
+                "OWNING_PART_MATCHES_TARGET": record.get(
+                    "owning_part_matches_target",
+                    "",
+                ),
+                "LAYER": record.get("layer", ""),
+                "LAYER_STATE": record.get("layer_state", ""),
+                "IS_BLANKED": record.get("is_blanked", ""),
+                "IS_SOLID_BODY": record.get("is_solid_body", ""),
+                "IS_SHEET_BODY": record.get("is_sheet_body", ""),
+                "IS_CONVERGENT_BODY": record.get(
+                    "is_convergent_body",
+                    "",
+                ),
+                "FACE_COUNT": record.get("face_count", ""),
+                "EDGE_COUNT": record.get("edge_count", ""),
+                "FACET_COUNT": record.get("facet_count", ""),
+                "VERTEX_COUNT": record.get("vertex_count", ""),
+                "REFERENCE_SETS": "; ".join(
+                    record.get("reference_sets", [])
+                ),
+            })
 
 
 def write_text_report(path, logger):
@@ -944,11 +1748,14 @@ def main():
     session = NXOpen.Session.GetSession()
     logger = Logger(session)
     trials = []
+    body_records = []
+    temporary_display_states = []
     part = None
     opened_by_test = False
     run_folder = ""
     text_report = ""
     csv_report = ""
+    body_report = ""
     conclusion = "INCONCLUSIVE"
 
     part_number = (
@@ -986,6 +1793,10 @@ def main():
             run_folder,
             "STEP_DIAGNOSTIC_TRIALS_{0}.csv".format(timestamp),
         )
+        body_report = os.path.join(
+            run_folder,
+            "STEP_DIAGNOSTIC_BODIES_{0}.csv".format(timestamp),
+        )
 
         logger.section("Journal 10 - STEP Zero-Geometry Diagnostic")
         logger.write("Target: {0} / {1}".format(part_number, revision))
@@ -1020,12 +1831,18 @@ def main():
             run_step_trial(
                 session,
                 part,
+                specification,
+                direct_bodies(part),
                 run_folder,
-                "TRIAL_A",
-                "Current Journal 07 settings immediately after OpenBase",
-                "before_full_load",
-                "CURRENT_J07",
-                False,
+                {
+                    "trial": "TRIAL_A",
+                    "label": (
+                        "Current Journal 07 settings immediately after "
+                        "OpenBase"
+                    ),
+                    "phase": "before_full_load",
+                    "input_mode": "FULL_PATH",
+                },
                 logger,
             )
         )
@@ -1039,49 +1856,168 @@ def main():
         )
         log_snapshot(logger, after_load)
 
-        trials.append(
-            run_step_trial(
-                session,
+        body_records = body_diagnostics(part)
+        bodies = [record["body"] for record in body_records]
+        log_body_diagnostics(logger, body_records)
+        write_body_csv(body_report, body_records)
+        logger.write("Body report: {0}".format(body_report))
+
+        settings_file = discover_step_settings_file()
+        if settings_file:
+            logger.write(
+                "Installed AP214 settings candidate: {0}".format(
+                    settings_file
+                )
+            )
+        else:
+            logger.write(
+                "No installed AP214 settings file was found from "
+                "UGII_BASE_DIR/UGII_ROOT_DIR; TRIAL_I will be skipped."
+            )
+
+        trial_specs = [
+            {
+                "trial": "TRIAL_A2",
+                "label": "Current Journal 07 settings after full load",
+                "phase": "after_full_load",
+                "input_mode": "FULL_PATH",
+            },
+            {
+                "trial": "TRIAL_B",
+                "label": "Canonical @DB InputFile after full load",
+                "phase": "canonical_input",
+                "input_mode": "CANONICAL",
+            },
+            {
+                "trial": "TRIAL_C",
+                "label": "DisplayPart + EntirePart",
+                "phase": "display_entire_part",
+                "scope": "ENTIRE",
+                "structures": False,
+            },
+            {
+                "trial": "TRIAL_D",
+                "label": "DisplayPart + EntirePart + all layers",
+                "phase": "entire_part_all_layers",
+                "scope": "ENTIRE",
+                "layer_mask": ALL_LAYER_MASK,
+                "structures": False,
+            },
+        ]
+        if settings_file:
+            trial_specs.append({
+                "trial": "TRIAL_I",
+                "label": (
+                    "EntirePart + all layers + installed AP214 settings"
+                ),
+                "phase": "installed_ap214_settings",
+                "scope": "ENTIRE",
+                "layer_mask": ALL_LAYER_MASK,
+                "settings_file": settings_file,
+                "structures": False,
+            })
+        trial_specs.extend((
+            {
+                "trial": "TRIAL_E",
+                "label": (
+                    "EntirePart + all layers + all body representations"
+                ),
+                "phase": "entire_all_body_types",
+                "scope": "ENTIRE",
+                "layer_mask": ALL_LAYER_MASK,
+                "all_body_types": True,
+                "structures": False,
+            },
+            {
+                "trial": "TRIAL_F",
+                "label": (
+                    "Explicit direct-body selection with standard types"
+                ),
+                "phase": "selected_standard_types",
+                "scope": "SELECTED",
+                "layer_mask": ALL_LAYER_MASK,
+                "structures": False,
+            },
+            {
+                "trial": "TRIAL_G",
+                "label": (
+                    "Explicit selection + all body representations"
+                ),
+                "phase": "selected_all_body_types",
+                "scope": "SELECTED",
+                "layer_mask": ALL_LAYER_MASK,
+                "all_body_types": True,
+                "structures": False,
+            },
+        ))
+
+        for trial_spec in trial_specs:
+            trials.append(
+                run_step_trial(
+                    session,
+                    part,
+                    specification,
+                    bodies,
+                    run_folder,
+                    trial_spec,
+                    logger,
+                )
+            )
+
+        logger.section("Temporary display-state normalization")
+        temporary_display_states = capture_body_display_state(
+            part,
+            bodies,
+        )
+        try:
+            make_bodies_visible_and_selectable(
                 part,
-                run_folder,
-                "TRIAL_B",
-                "Current Journal 07 settings after full load",
-                "after_full_load",
-                "CURRENT_J07",
-                False,
+                temporary_display_states,
                 logger,
             )
-        )
-        trials.append(
-            run_step_trial(
-                session,
+            trials.append(
+                run_step_trial(
+                    session,
+                    part,
+                    specification,
+                    bodies,
+                    run_folder,
+                    {
+                        "trial": "TRIAL_H",
+                        "label": (
+                            "Selected all body types after unblank/layer "
+                            "normalization"
+                        ),
+                        "phase": "selected_visible_selectable",
+                        "scope": "SELECTED",
+                        "layer_mask": ALL_LAYER_MASK,
+                        "all_body_types": True,
+                        "structures": False,
+                    },
+                    logger,
+                )
+            )
+        finally:
+            restore_body_display_state(
                 part,
-                run_folder,
-                "TRIAL_C",
-                "DisplayPart + EntirePart after full load",
-                "display_entire_part",
-                "DISPLAY_ENTIRE_PART",
-                False,
+                temporary_display_states,
                 logger,
             )
-        )
+            temporary_display_states = []
+
         trials.append(
-            run_step_trial(
+            run_parasolid_control(
                 session,
                 part,
+                bodies,
                 run_folder,
-                "TRIAL_D",
-                "DisplayPart + EntirePart + Structures after full load",
-                "display_entire_part_structures",
-                "DISPLAY_ENTIRE_PART",
-                True,
                 logger,
             )
         )
 
         conclusion, explanation = determine_conclusion(
             trials,
-            before_load,
+            body_records,
             after_load,
             load_result,
         )
@@ -1098,6 +2034,19 @@ def main():
         logger.write(traceback.format_exc())
 
     finally:
+        if part is not None and temporary_display_states:
+            try:
+                restore_body_display_state(
+                    part,
+                    temporary_display_states,
+                    logger,
+                )
+            except Exception as error:
+                logger.write(
+                    "WARNING: emergency body-state restore failed: {0}".format(
+                        exception_details(error)
+                    )
+                )
         restore_original_state(
             session,
             original_display,
@@ -1121,6 +2070,15 @@ def main():
                     logger.write("WARNING: CSV report write failed: {0}".format(
                         exception_details(error)
                     ))
+            if body_records and body_report:
+                try:
+                    write_body_csv(body_report, body_records)
+                except Exception as error:
+                    logger.write(
+                        "WARNING: body CSV report write failed: {0}".format(
+                            exception_details(error)
+                        )
+                    )
             logger.write("Final classification: {0}".format(conclusion))
             logger.write("Text report: {0}".format(text_report))
             try:
