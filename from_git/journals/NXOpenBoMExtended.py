@@ -1,13 +1,11 @@
-#Level	Item Number	Part Description	Item Rev	Lifecycle	Qty	UOM	Mfr. Name	Mfr. Part Number	Reference Notes	WAE_VERSION	NX_MATERIAL	NX_FINISH	NX_MASS	NX_MassPropRollupMass	COMPONENT_CLASS	LIFED	SERIAL_NUMBERED_PART	Temperature_Sensitive	Hazardous	Dimensions	COMMODITYTYPE	Commodity_Code	Serviceable_item_flag	Export_Control_Number	Country_of_Origin
-#Look at the Attribute xml, we need to add WAE_VERSION. Thanks's important
-
 import NXOpen
 import csv
 import os
 import datetime
 
 # --- CONFIGURATION ---
-# Exact output contract from docs/FZ-PowerSystem_v1_22Jun.csv.
+# The first ten fields follow docs/FZ-PowerSystem_v1_22Jun.csv. The remaining
+# fields are the extended columns requested in commit 25105de.
 FZ_COLUMNS = [
     "Level",
     "Item Number",
@@ -19,9 +17,25 @@ FZ_COLUMNS = [
     "Mfr. Name",
     "Mfr. Part Number",
     "Reference Notes",
+    "WAE_VERSION",
+    "NX_MATERIAL",
+    "NX_FINISH",
+    "NX_MASS",
+    "NX_MassPropRollupMass",
+    "COMPONENT_CLASS",
+    "LIFED",
+    "SERIAL_NUMBERED_PART",
+    "Temperature_Sensitive",
+    "Hazardous",
+    "Dimensions",
+    "COMMODITYTYPE",
+    "Commodity_Code",
+    "Serviceable_item_flag",
+    "Export_Control_Number",
+    "Country_of_Origin",
 ]
 
-# FZ column -> exact internal NX/Teamcenter title -> NX attribute type.
+# CSV column -> exact internal NX/Teamcenter title -> NX attribute type.
 FZ_ATTRIBUTE_SPECS = [
     ("Part Description", "DB_PART_NAME", "String"),
     ("Item Rev", "DB_PART_REV", "String"),
@@ -30,6 +44,22 @@ FZ_ATTRIBUTE_SPECS = [
     ("Mfr. Name", "MFG", "String"),
     ("Mfr. Part Number", "MPN", "String"),
     ("Reference Notes", "Stocking_Type", "String"),
+    ("WAE_VERSION", "WAE_VERSION", "String"),
+    ("NX_MATERIAL", "NX_MATERIAL", "String"),
+    ("NX_FINISH", "NX_FINISH", "String"),
+    ("NX_MASS", "NX_Mass", "Number"),
+    ("NX_MassPropRollupMass", "NX_MassPropRollupMass", "Number"),
+    ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
+    ("LIFED", "LIFED", "String"),
+    ("SERIAL_NUMBERED_PART", "SERIAL_NUMBERED_PART", "String"),
+    ("Temperature_Sensitive", "Temperature_Sensitive", "String"),
+    ("Hazardous", "WAE_Hazardous", "String"),
+    ("Dimensions", "Dimensions", "String"),
+    ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
+    ("Commodity_Code", "Commodity_Code", "String"),
+    ("Serviceable_item_flag", "Serviceable_item_flag", "String"),
+    ("Export_Control_Number", "Export_Control_Number", "String"),
+    ("Country_of_Origin", "Country_of_Origin", "String"),
 ]
 
 # The attribute used as the primary identifier (Source of Truth).
@@ -81,21 +111,21 @@ def walk_assembly_tree(component, level, csv_writer, quantity=1):
         db_part_no = component.DisplayName
 
     values = fz_attribute_values(component)
-    part_description = values["Part Description"] or part_name
-    lifecycle = values["Lifecycle"] or DEFAULT_LIFECYCLE
-    row_data = [
-        level,
-        db_part_no,
-        part_description,
-        values["Item Rev"] or "",
-        lifecycle,
-        quantity,
-        values["UOM"] or "",
-        values["Mfr. Name"] or "",
-        values["Mfr. Part Number"] or "",
-        values["Reference Notes"] or "",
-    ]
-    csv_writer.writerow(row_data)
+    row = {
+        "Level": level,
+        "Item Number": db_part_no,
+        "Qty": quantity,
+    }
+    for column, _attr_name, _attr_type in FZ_ATTRIBUTE_SPECS:
+        value = values[column]
+        row[column] = "" if value is None else value
+
+    if not row["Part Description"]:
+        row["Part Description"] = part_name
+    if not row["Lifecycle"]:
+        row["Lifecycle"] = DEFAULT_LIFECYCLE
+
+    csv_writer.writerow([row[column] for column in FZ_COLUMNS])
     
     # Get children and run recursively
     try:

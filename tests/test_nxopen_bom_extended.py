@@ -5,6 +5,7 @@ import sys
 import tempfile
 import types
 import unittest
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 
@@ -12,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EXTENDED_BOM_PATH = ROOT / "from_git" / "journals" / "NXOpenBoMExtended.py"
 JOURNAL_04_PATH = ROOT / "from_git" / "journals" / "04_assembly_attribute_audit.py"
 FZ_TEMPLATE_PATH = ROOT / "docs" / "FZ-PowerSystem_v1_22Jun.csv"
-EXPECTED_FZ_COLUMNS = [
+ATTRIBUTE_XML_PATH = ROOT / "tests" / "NXPartAttribute_FZ.xml"
+EXPECTED_EXTENDED_COLUMNS = [
     "Level",
     "Item Number",
     "Part Description",
@@ -23,6 +25,22 @@ EXPECTED_FZ_COLUMNS = [
     "Mfr. Name",
     "Mfr. Part Number",
     "Reference Notes",
+    "WAE_VERSION",
+    "NX_MATERIAL",
+    "NX_FINISH",
+    "NX_MASS",
+    "NX_MassPropRollupMass",
+    "COMPONENT_CLASS",
+    "LIFED",
+    "SERIAL_NUMBERED_PART",
+    "Temperature_Sensitive",
+    "Hazardous",
+    "Dimensions",
+    "COMMODITYTYPE",
+    "Commodity_Code",
+    "Serviceable_item_flag",
+    "Export_Control_Number",
+    "Country_of_Origin",
 ]
 
 
@@ -89,13 +107,13 @@ class ExtendedBomAttributeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = load_with_fake_nxopen("extended_bom_under_test", EXTENDED_BOM_PATH)
 
-    def test_csv_header_contract_matches_fz_template_exactly(self):
-        self.assertEqual(EXPECTED_FZ_COLUMNS, self.module.FZ_COLUMNS)
+    def test_extended_header_matches_feedback_and_retains_fz_prefix(self):
+        self.assertEqual(EXPECTED_EXTENDED_COLUMNS, self.module.FZ_COLUMNS)
 
         if FZ_TEMPLATE_PATH.exists():
             with FZ_TEMPLATE_PATH.open(encoding="utf-8-sig", newline="") as handle:
                 template_columns = next(csv.reader(handle))
-            self.assertEqual(template_columns, self.module.FZ_COLUMNS)
+            self.assertEqual(template_columns, self.module.FZ_COLUMNS[:len(template_columns)])
         self.assertEqual(
             [
                 ("Part Description", "DB_PART_NAME", "String"),
@@ -105,9 +123,42 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 ("Mfr. Name", "MFG", "String"),
                 ("Mfr. Part Number", "MPN", "String"),
                 ("Reference Notes", "Stocking_Type", "String"),
+                ("WAE_VERSION", "WAE_VERSION", "String"),
+                ("NX_MATERIAL", "NX_MATERIAL", "String"),
+                ("NX_FINISH", "NX_FINISH", "String"),
+                ("NX_MASS", "NX_Mass", "Number"),
+                ("NX_MassPropRollupMass", "NX_MassPropRollupMass", "Number"),
+                ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
+                ("LIFED", "LIFED", "String"),
+                ("SERIAL_NUMBERED_PART", "SERIAL_NUMBERED_PART", "String"),
+                ("Temperature_Sensitive", "Temperature_Sensitive", "String"),
+                ("Hazardous", "WAE_Hazardous", "String"),
+                ("Dimensions", "Dimensions", "String"),
+                ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
+                ("Commodity_Code", "Commodity_Code", "String"),
+                ("Serviceable_item_flag", "Serviceable_item_flag", "String"),
+                ("Export_Control_Number", "Export_Control_Number", "String"),
+                ("Country_of_Origin", "Country_of_Origin", "String"),
             ],
             self.module.FZ_ATTRIBUTE_SPECS,
         )
+
+    def test_xml_backed_columns_use_exact_internal_titles_and_types(self):
+        templates = ElementTree.parse(ATTRIBUTE_XML_PATH).getroot().findall("Template")
+        xml_types = {
+            template.attrib["title"]: template.attrib["type"]
+            for template in templates
+        }
+        configured_types = {
+            attribute_title: attribute_type
+            for _column, attribute_title, attribute_type in self.module.FZ_ATTRIBUTE_SPECS
+            if attribute_title in xml_types
+        }
+
+        for attribute_title, attribute_type in configured_types.items():
+            self.assertEqual(xml_types[attribute_title], attribute_type)
+        self.assertEqual("String", configured_types["WAE_VERSION"])
+        self.assertIn(("Hazardous", "WAE_Hazardous", "String"), self.module.FZ_ATTRIBUTE_SPECS)
 
     def test_typed_reads_preserve_numeric_zero_and_missing_values(self):
         nx_object = FakeNxObject(
@@ -162,6 +213,24 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 "MFG": "CELESTICA",
                 "MPN": "264MN180801A01",
                 "Stocking_Type": "MAKE",
+                "WAE_VERSION": "22.1",
+                "NX_MATERIAL": "Copper",
+                "NX_FINISH": "TIN",
+                "COMPONENT_CLASS": "A",
+                "LIFED": "N",
+                "SERIAL_NUMBERED_PART": "SERIAL",
+                "Temperature_Sensitive": "N",
+                "WAE_Hazardous": "Y",
+                "Dimensions": "10 x 20 x 30",
+                "COMMODITYTYPE": "Assembly",
+                "Commodity_Code": "123",
+                "Serviceable_item_flag": "Y",
+                "Export_Control_Number": "EAR99",
+                "Country_of_Origin": "MY",
+            },
+            numbers={
+                "NX_Mass": 1.25,
+                "NX_MassPropRollupMass": 2.5,
             },
             name="ROOT",
             display_name="ROOT DISPLAY",
@@ -183,6 +252,22 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 "CELESTICA",
                 "264MN180801A01",
                 "MAKE",
+                "22.1",
+                "Copper",
+                "TIN",
+                "1.25",
+                "2.5",
+                "A",
+                "N",
+                "SERIAL",
+                "N",
+                "Y",
+                "10 x 20 x 30",
+                "Assembly",
+                "123",
+                "Y",
+                "EAR99",
+                "MY",
             ]],
             list(csv.reader(io.StringIO(output.getvalue()))),
         )
