@@ -1,4 +1,4 @@
-# NX2312 Runtime Folder
+# NX 2312 / NX X 2506 Runtime Folder
 
 This folder is the deployable NX journal payload.
 
@@ -12,7 +12,7 @@ from_git/
   utils/
 ```
 
-Run journals from `from_git/journals` in NX 2312.
+Run journals from `from_git/journals` in NX 2312 or NX X 2506.
 
 Available production journals:
 
@@ -24,6 +24,9 @@ Available production journals:
 05_bulk_attribute_updater.py   Pull/push attribute CSV workflow
 06_auto_pdf_step_export.py     Active work part STEP + drawing PDF export
 07_datapack_pdf_step_export.py DataPack-controlled assembly PDF + STEP export
+08_list_loaded_drawings.py     Loaded-drawing Teamcenter identity probe
+09_test_teamcenter_specification_open.py Closed-drawing specification-open test
+10_test_step_export.py         STEP export and body-validation diagnostic
 ```
 
 `05_bulk_attribute_updater.py` is intentionally self-contained to avoid NX2312
@@ -42,12 +45,27 @@ J07 is self-contained. Prepare `NX_EXPORT_SCOPE.csv` from
 on the user's Desktop, fully load the required parts under the active NX
 assembly, and play `journals/07_datapack_pdf_step_export.py`. It matches exact
 part-number/revision pairs and writes a timestamped `NX_BULK_EXPORT` run with
-per-sheet PDFs, AP214 STEP files, a UTF-8-BOM result CSV, and a text log.
+one combined multipage PDF per drawing, AP214 STEP files, a UTF-8-BOM result
+CSV, and a text log.
 
 J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
 duplicate part/revision requests, reports invalid input, missing parts, and
 revision mismatches, and verifies that each expected export file exists. It
-does not query Teamcenter, open missing revisions, modify or save NX parts, or
-require a JSON configuration file.
+reuses loaded drawings or opens the canonical Teamcenter specification
+`@DB/<part>/<revision>/specification/<part>-<revision>-dwg<n>`. It does not
+search for a different revision, modify or save NX parts, or require a JSON
+configuration file.
+
+For the NX X 2506 closed-drawing test, deploy this complete folder, fully close
+`264MN028607A01/A/dwg1`, and run
+`journals/09_test_teamcenter_specification_open.py`. Require three returned
+sheets, the canonical `/specification/` identifier, and
+`FINAL STATUS: SUCCESS`. Journal 07 must identify the deployed implementation
+with:
+
+```text
+Journal build: J07-NX2506-CANONICAL-SPEC-OPEN-V1
+Drawing resolver: canonical Teamcenter specification identifier
+```
 
 No third-party Python packages are required.

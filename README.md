@@ -1,7 +1,9 @@
 # NX Open Python Journals
 
-NX Open Python journals for **Siemens NX 2312** + Teamcenter productivity.
-Run via **NX > Tools > Journal > Play** (`Alt+F8`). The deployable runtime is the `from_git/` folder, which targets NX 2312 embedded Python 3.10 and avoids third-party Python packages.
+NX Open Python journals for **Siemens NX 2312 and NX X 2506** + Teamcenter productivity.
+Run via **NX > Tools > Journal > Play** (`Alt+F8`). The deployable runtime is
+the `from_git/` folder, supports the embedded Python runtimes in both NX
+versions, and avoids third-party Python packages.
 
 ## Deployment Layout
 
@@ -36,10 +38,13 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 | 05 | `from_git/journals/05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
 | 06 | `from_git/journals/06_auto_pdf_step_export.py` | Exports the active work part to STEP and its drawing sheets to PDF in one run |
 | 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Exports DataPack-controlled drawing PDFs and AP214 STEP files from the loaded assembly |
+| 08 | `from_git/journals/08_list_loaded_drawings.py` | Reports exact Teamcenter identities for drawings already loaded in NX |
+| 09 | `from_git/journals/09_test_teamcenter_specification_open.py` | Tests automatic opening of one canonical Teamcenter drawing specification |
+| 10 | `from_git/journals/10_test_step_export.py` | Diagnoses STEP export and validates body geometry |
 
 ## Key Runtime Notes
 
-- Deployment target: NX 2312 embedded Python 3.10.
+- Deployment target: NX 2312 or NX X 2506 embedded Python.
 - Required external Python packages: none.
 - Config format: JSON.
 - Report format: CSV with UTF-8 BOM so Excel opens it cleanly.
@@ -54,8 +59,13 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 Journal 07 reads a manually prepared DataPack scope and exports only the PDF
 and STEP outputs explicitly enabled in that CSV. It matches each request by the
 normalized combination of `DB_PART_NO` and `DB_PART_REV`; it does not decide
-which parts are BTP, determine drawing readiness, search Teamcenter, or select a
-different revision.
+which parts are BTP, determine drawing readiness, or select a different
+revision. It reuses a loaded drawing when possible and otherwise attempts to
+open its canonical Teamcenter specification:
+
+```text
+@DB/<part>/<revision>/specification/<part>-<revision>-dwg<n>
+```
 
 ### Prepare the input
 
@@ -90,17 +100,26 @@ merged, with PDF and STEP enabled when any contributing row requests them.
 ### Prepare NX and run
 
 Before playing the journal, open the correct top-level HLA assembly in managed
-NX 2312, apply the intended Teamcenter revision rule, fully load the required
-components, and confirm the expected revisions in Assembly Navigator. Then run:
+NX 2312 or NX X 2506, apply the intended Teamcenter revision rule, fully load
+the required components, and confirm the expected revisions in Assembly
+Navigator. Then run:
 
 ```text
 NX > Tools > Journal > Play
 from_git\journals\07_datapack_pdf_step_export.py
 ```
 
-The first version can use only prototype parts already available through the
-loaded assembly. It does not query Teamcenter, open missing revisions, save or
-modify NX parts, create datasets, or upload generated files.
+The journal uses only prototype revisions already available through the loaded
+assembly. It may open a drawing specification for that exact revision, but it
+does not search for another revision, save or modify NX parts, create datasets,
+or upload generated files.
+
+The listing window must identify the current deployment before export:
+
+```text
+Journal build: J07-NX2506-CANONICAL-SPEC-OPEN-V1
+Drawing resolver: canonical Teamcenter specification identifier
+```
 
 ### Journal 07 outputs
 
@@ -114,10 +133,11 @@ Each run creates an audit-preserving folder:
   LOGS\EXPORT_LOG_YYYYMMDD_HHMMSS.txt
 ```
 
-STEP files use `<DB_PART_NO>_REV<DB_PART_REV>.stp` and AP214. PDF files use
-`DRAWING_NUMBER` when available, otherwise the requested part number, and add a
-deterministic `_SHEET01`, `_SHEET02`, and so on for multi-sheet drawings.
-Journal 07 creates one PDF per drawing sheet; it does not create a combined PDF.
+STEP files use `<DB_PART_NO>_REV<DB_PART_REV>.stp` and AP214. Journal 07
+creates one combined multipage PDF per resolved drawing. PDF files use
+`DRAWING_NUMBER` when available, otherwise the requested part number. When
+multiple drawing items resolve, the drawing index is appended as `_DWG<n>` to
+avoid collisions.
 
 The UTF-8-BOM result CSV contains one row per valid unique request plus each
 invalid input row. Principal results are `SUCCESS`, `PARTIAL_SUCCESS`,
@@ -130,6 +150,20 @@ produces a report but performs no conversion.
 The NX Listing Window shows progress, traversal diagnostics, collisions, and a
 final file-count summary. Journal 07 restores the original display and work
 parts even when an individual export fails.
+
+### NX X 2506 closed-drawing acceptance
+
+1. Deploy the complete current `from_git` directory; do not copy only Journal 07.
+2. Close `264MN028607A01/A/dwg1` completely so it is absent from the NX session.
+3. Run Journal 09 with its defaults.
+4. Require the canonical `/specification/` identifier, `Drawing sheets returned: 3`, and `FINAL STATUS: SUCCESS`.
+5. Run Journal 07 with PDF and STEP enabled.
+6. Require the Journal 07 build and resolver banners, one multipage PDF, successful STEP body validation, and restored display/work parts.
+7. Repeat Journal 07 with the drawing preloaded and compare the resulting PDF.
+
+Journal 09 can be redirected without editing the file by setting
+`NX_TEST_PART_NO`, `NX_TEST_PART_REV`, `NX_TEST_DWG_INDEX`, or
+`NX_TEST_EXPECTED_SHEET_COUNT` in the NX environment.
 
 ## Recommended Workflow
 
@@ -198,8 +232,8 @@ Step 3  Review PUSH_REPORT_<timestamp>.csv, then spot-check values in NX.
 ## Notes
 
 - All journals operate directly on NX part files through `GetUserAttribute` and `SetUserAttribute`.
-- No Teamcenter connection is made at journal runtime.
+- Journals use the active NX Teamcenter connection and do not create a separate Teamcenter login.
 - Legacy parts may have `PART_NUMBER` / `REVISION`; journals fall back to those when TC names are missing.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
-- J07 is self-contained and needs no shared utility or JSON configuration file. It only processes exact part-number/revision matches already loaded under the active assembly.
+- J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.

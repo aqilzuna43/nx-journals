@@ -117,6 +117,17 @@ class PdfGroupingTests(unittest.TestCase):
             ],
         )
 
+    def test_runtime_identity_marks_canonical_nx2506_build(self):
+        self.assertEqual(
+            self.journal.JOURNAL_BUILD_ID,
+            "J07-NX2506-CANONICAL-SPEC-OPEN-V1",
+        )
+        self.assertTrue(
+            self.journal.runtime_source_path().endswith(
+                "07_datapack_pdf_step_export.py"
+            )
+        )
+
     def test_drawing_open_uses_open_display(self):
         class Status:
             def __init__(self):
@@ -151,6 +162,75 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertTrue(status.disposed)
         parts.OpenDisplay.assert_called_once()
         parts.OpenBase.assert_not_called()
+
+    def test_closed_dwg1_opens_when_later_drawings_are_missing(self):
+        drawing = types.SimpleNamespace(
+            Tag=42,
+            Name="drawing",
+            JournalIdentifier=(
+                "@DB/264MN020016A01/A/specification/"
+                "264MN020016A01-A-dwg1"
+            ),
+            DrawingSheets=[object(), object(), object()],
+        )
+
+        class Parts:
+            Display = None
+
+            def __iter__(self):
+                return iter(())
+
+            def OpenDisplay(self, specification):
+                if specification.endswith("-dwg1"):
+                    return drawing, None
+                raise RuntimeError("drawing does not exist")
+
+        candidates, attempts = self.journal.resolve_drawing_candidates(
+            types.SimpleNamespace(Parts=Parts()),
+            "264MN020016A01",
+            "A",
+            [],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertIs(candidates[0]["part"], drawing)
+        self.assertEqual(candidates[0]["drawing_index"], 1)
+        self.assertEqual(len(attempts), 9)
+
+    def test_preloaded_drawing_is_reused_without_reopening_dwg1(self):
+        drawing = types.SimpleNamespace(
+            Tag=42,
+            Name="drawing",
+            JournalIdentifier=(
+                "@DB/264MN020016A01/A/specification/"
+                "264MN020016A01-A-dwg1"
+            ),
+            DrawingSheets=[object(), object(), object()],
+        )
+        open_display = mock.Mock(side_effect=RuntimeError("missing"))
+
+        class Parts:
+            Display = drawing
+
+            def __iter__(self):
+                return iter((drawing,))
+
+            OpenDisplay = open_display
+
+        candidates, attempts = self.journal.resolve_drawing_candidates(
+            types.SimpleNamespace(Parts=Parts()),
+            "264MN020016A01",
+            "A",
+            [],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertIs(candidates[0]["part"], drawing)
+        self.assertEqual(len(attempts), 8)
+        self.assertEqual(open_display.call_count, 8)
+        self.assertFalse(
+            any(specification.endswith("-dwg1") for specification in attempts)
+        )
 
     def test_duplicate_or_missing_tokens_are_made_unique(self):
         candidates = [
@@ -224,6 +304,9 @@ class PdfGroupingTests(unittest.TestCase):
 
     def run_grouped_export(self, candidates):
         session = types.SimpleNamespace()
+        original_display = object()
+        original_work = object()
+        logs = []
 
         def create_pdf(_part, _sheets, output_path):
             Path(output_path).write_bytes(b"%PDF-test")
@@ -240,7 +323,7 @@ class PdfGroupingTests(unittest.TestCase):
         ), mock.patch.object(
             self.journal,
             "restore_parts",
-        ), mock.patch.object(
+        ) as restorer, mock.patch.object(
             self.journal,
             "export_drawing_pdf",
             side_effect=create_pdf,
@@ -250,10 +333,18 @@ class PdfGroupingTests(unittest.TestCase):
                 folder.name,
                 "264MN020016A01",
                 "A",
-                None,
-                None,
-                [],
+                original_display,
+                original_work,
+                logs,
             )
+        restorer.assert_called_once()
+        restored_session, restored_display, restored_work, restored_logs = (
+            restorer.call_args.args
+        )
+        self.assertIs(restored_session, session)
+        self.assertIs(restored_display, original_display)
+        self.assertIs(restored_work, original_work)
+        self.assertIs(restored_logs, logs)
         return result, exporter
 
     def test_three_sheet_drawing_returns_one_pdf_path(self):

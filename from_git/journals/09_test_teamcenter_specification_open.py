@@ -14,6 +14,7 @@ Set the constants below or override them with environment variables:
     NX_TEST_PART_NO
     NX_TEST_PART_REV
     NX_TEST_DWG_INDEX
+    NX_TEST_EXPECTED_SHEET_COUNT
     NX_TEST_KEEP_OPEN=1
 
 Target: NX 2312 and NX X 2506 embedded Python
@@ -26,9 +27,11 @@ import traceback
 import NXOpen
 
 
-TEST_PART_NUMBER = "264MN024619A01"
+JOURNAL_BUILD_ID = "J09-NX2506-CLOSED-SPEC-OPEN-V1"
+TEST_PART_NUMBER = "264MN028607A01"
 TEST_REVISION = "A"
 TEST_DRAWING_INDEX = 1
+EXPECTED_DRAWING_SHEET_COUNT = 3
 KEEP_OPEN_AFTER_SUCCESS = False
 
 OUTPUT_FOLDER_NAME = "NX_X_SPEC_OPEN_TEST"
@@ -41,6 +44,13 @@ def clean(value):
         return str(value).strip()
     except Exception:
         return ""
+
+
+def runtime_source_path():
+    try:
+        return os.path.abspath(__file__)
+    except Exception:
+        return "<unknown>"
 
 
 def env_bool(name, default=False):
@@ -242,8 +252,62 @@ def resolve_test_scope():
         drawing_index = int(TEST_DRAWING_INDEX)
     if drawing_index < 1:
         drawing_index = 1
+
+    expected_sheet_text = clean(
+        os.environ.get("NX_TEST_EXPECTED_SHEET_COUNT")
+    )
+    try:
+        expected_sheet_count = (
+            int(expected_sheet_text)
+            if expected_sheet_text
+            else int(EXPECTED_DRAWING_SHEET_COUNT)
+        )
+    except Exception:
+        expected_sheet_count = int(EXPECTED_DRAWING_SHEET_COUNT)
+    if expected_sheet_count < 1:
+        expected_sheet_count = 1
+
     keep_open = env_bool("NX_TEST_KEEP_OPEN", KEEP_OPEN_AFTER_SUCCESS)
-    return part_number, revision, drawing_index, keep_open
+    return (
+        part_number,
+        revision,
+        drawing_index,
+        expected_sheet_count,
+        keep_open,
+    )
+
+
+def evaluate_opened_drawing(
+    expected_identifier,
+    returned_identifier,
+    sheet_count,
+    expected_sheet_count,
+):
+    if sheet_count != expected_sheet_count:
+        return (
+            "FAILED_UNEXPECTED_SHEET_COUNT",
+            "Expected {0} drawing sheet(s), but NX returned {1}.".format(
+                expected_sheet_count,
+                sheet_count,
+            ),
+        )
+
+    if returned_identifier.upper() != expected_identifier.upper():
+        return (
+            "WARNING_IDENTIFIER_DIFFERENT",
+            (
+                "The drawing opened with the expected sheet count, but NX "
+                "returned a different canonical JournalIdentifier."
+            ),
+        )
+
+    return (
+        "SUCCESS",
+        (
+            "The canonical /specification/ identifier opened a usable "
+            "drawing with the expected sheet count."
+        ),
+    )
 
 
 def main():
@@ -257,7 +321,13 @@ def main():
         folder, "SPECIFICATION_OPEN_TEST_{0}.txt".format(timestamp)
     )
 
-    part_number, revision, drawing_index, keep_open = resolve_test_scope()
+    (
+        part_number,
+        revision,
+        drawing_index,
+        expected_sheet_count,
+        keep_open,
+    ) = resolve_test_scope()
     drawing_name = "{0}-{1}-dwg{2}".format(
         part_number, revision, drawing_index
     )
@@ -279,10 +349,15 @@ def main():
     logger.write("=" * 78)
     logger.write("JOURNAL 09 - SAFE TEAMCENTER SPECIFICATION OPEN TEST")
     logger.write("=" * 78)
+    logger.write("Journal build: {0}".format(JOURNAL_BUILD_ID))
+    logger.write("Journal source: {0}".format(runtime_source_path()))
     logger.write("Log: {0}".format(log_path))
     logger.write("Part number: {0}".format(part_number))
     logger.write("Revision: {0}".format(revision))
     logger.write("Drawing index: {0}".format(drawing_index))
+    logger.write(
+        "Expected drawing sheet count: {0}".format(expected_sheet_count)
+    )
     logger.write("Expected identifier: {0}".format(expected_identifier))
     logger.write("Original display: {0}".format(part_name(original_display)))
     logger.write("Original work: {0}".format(part_name(original_work)))
@@ -322,7 +397,7 @@ def main():
         logger.write("OpenDisplay returned successfully.")
         logger.write("Returned name: {0}".format(part_name(opened_part)))
         logger.write("Returned identifier: {0}".format(returned_identifier))
-        logger.write("Drawing sheet count: {0}".format(sheet_count))
+        logger.write("Drawing sheets returned: {0}".format(sheet_count))
         logger.write("Newly loaded by this test: {0}".format(opened_by_test))
 
         identifier_matches = (
@@ -330,24 +405,13 @@ def main():
         )
         logger.write("Identifier matches request: {0}".format(identifier_matches))
 
-        if sheet_count < 1:
-            final_status = "FAILED_OPENED_WITHOUT_DRAWING_SHEETS"
-            logger.write(
-                "FAILED: the opened part has no drawing sheets. "
-                "The identifier resolved, but not to a usable drawing."
-            )
-        elif not identifier_matches:
-            final_status = "WARNING_IDENTIFIER_DIFFERENT"
-            logger.write(
-                "WARNING: the drawing opened and has sheets, but NX returned a "
-                "different canonical JournalIdentifier."
-            )
-        else:
-            final_status = "SUCCESS"
-            logger.write(
-                "SUCCESS: the canonical /specification/ identifier opened a "
-                "usable drawing."
-            )
+        final_status, evaluation_message = evaluate_opened_drawing(
+            expected_identifier,
+            returned_identifier,
+            sheet_count,
+            expected_sheet_count,
+        )
+        logger.write("{0}: {1}".format(final_status, evaluation_message))
 
     except Exception as error:
         final_status = "FAILED_EXCEPTION"

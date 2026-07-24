@@ -33,6 +33,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
+JOURNAL_BUILD_ID = "J07-NX2506-CANONICAL-SPEC-OPEN-V1"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -102,6 +103,13 @@ _DRAWING_SUFFIX_RE = re.compile(
 
 def normalize_text(value):
     return "" if value is None else str(value).strip()
+
+
+def runtime_source_path():
+    try:
+        return os.path.abspath(__file__)
+    except Exception:
+        return "<unknown>"
 
 
 def normalize_header(value):
@@ -490,6 +498,18 @@ def open_display_part(
             safe_part_name(part),
             " [journal-opened]" if opened_by_journal else " [already loaded]",
         ),
+        log_buffer,
+    )
+    log_line(
+        session,
+        "    JournalIdentifier: {0}".format(
+            normalize_text(getattr(part, "JournalIdentifier", ""))
+        ),
+        log_buffer,
+    )
+    log_line(
+        session,
+        "    Drawing sheets: {0}".format(drawing_sheet_count(part)),
         log_buffer,
     )
 
@@ -1644,6 +1664,12 @@ def main():
         log_line(
             session,
             "Journal 07 - CSV-driven PDF + STEP export",
+            log_buffer,
+        )
+        log_line(session, "Journal build: " + JOURNAL_BUILD_ID, log_buffer)
+        log_line(
+            session,
+            "Journal source: " + runtime_source_path(),
             log_buffer,
         )
         log_line(session, "Input CSV: " + input_csv, log_buffer)
