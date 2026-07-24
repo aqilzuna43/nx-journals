@@ -8,13 +8,84 @@ blocking findings.
 
 import os
 import sys
-from collections import Counter
+from collections import Counter, OrderedDict
 from datetime import datetime
 
 import NXOpen
 import NXOpen.UF
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_REQUIRED_RUNTIME_FILES = (
+    os.path.join("utils", "attribute_reconciliation.py"),
+    os.path.join("utils", "nx_helpers.py"),
+    os.path.join("config", "attribute_reconciliation.json"),
+)
+
+
+def _runtime_root_candidates(
+    script_path=None,
+    configured_root=None,
+    working_directory=None,
+    python_paths=None,
+):
+    """Return possible `from_git` roots in deterministic priority order."""
+    script_path = script_path or __file__
+    configured_root = configured_root or os.environ.get("NX_JOURNALS_ROOT")
+    working_directory = working_directory or os.getcwd()
+    python_paths = sys.path if python_paths is None else python_paths
+
+    seeds = [
+        configured_root,
+        os.path.dirname(os.path.abspath(script_path)),
+        working_directory,
+    ] + list(python_paths)
+    candidates = []
+    seen = set()
+
+    for seed in seeds:
+        if not seed:
+            continue
+        current = os.path.abspath(os.path.expanduser(os.path.expandvars(seed)))
+        for _level in range(4):
+            for candidate in (current, os.path.join(current, "from_git")):
+                normalized = os.path.normcase(os.path.normpath(candidate))
+                if normalized not in seen:
+                    seen.add(normalized)
+                    candidates.append(candidate)
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+
+    return candidates
+
+
+def _find_runtime_root(
+    script_path=None,
+    configured_root=None,
+    working_directory=None,
+    python_paths=None,
+):
+    candidates = _runtime_root_candidates(
+        script_path=script_path,
+        configured_root=configured_root,
+        working_directory=working_directory,
+        python_paths=python_paths,
+    )
+    for candidate in candidates:
+        if all(os.path.isfile(os.path.join(candidate, name)) for name in _REQUIRED_RUNTIME_FILES):
+            return candidate
+
+    checked = "\n  - ".join(candidates[:12])
+    raise ImportError(
+        "Journal 04 could not locate its complete from_git runtime payload.\n"
+        "Keep config/, journals/, and utils/ together, or set NX_JOURNALS_ROOT "
+        "to the repository root or from_git folder before starting NX.\n"
+        "Checked:\n  - {0}".format(checked or "(no candidate paths)")
+    )
+
+
+_REPO_ROOT = _find_runtime_root()
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 

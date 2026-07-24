@@ -4,78 +4,94 @@ import os
 import datetime
 
 # --- CONFIGURATION ---
-# List the exact names of the attributes you want to extract here.
-# Internal titles mapped from NXPartAttribute_FZ.xml + Custom Additions
-ATTRIBUTES_TO_EXTRACT = [
-    "DB_PART_DESC", 
-    "DB_PART_NAME", 
-    "DB_PART_REV",              # Rev
-    "Temperature_Sensitive",    # Temperature Sensitive
-    "Hazardous",                # Hazardous
-    "Dimensions",               # Dimensions
-    "COMMODITYTYPE",            # Commodity Type
-    "Commodity_Code",           # Commodity Code
-    "Serviceable_item_flag",    # Serviceable item flag
-    "WAEItemItemID",            # ID
-    "Export_Control_Number",    # Export Control Number
-    "SERIAL_NUMBERED_PART",     # Traceability
-    "LIFED",                    # Shelf Life Limited
-    "Country_of_Origin",        # Country of Origin
-    "COMPONENT_CLASS",          # Part Classification
-    "Unit_Of_Measure",          # UOM
-    "MFG",                      # Mfr. Name
-    "MPN",                      # Mfr. Part Number
-    "Stocking_Type",            # Stocking Type
-    "NX_FINISH",                # FINISH
-    "NX_MASS",                  # MASS
-    "NX_MATERIAL",              # MATERIAL
-    "NX_MassPropRollupMass"     # Rollup Mass
+# Exact output contract from docs/FZ-PowerSystem_v1_22Jun.csv.
+FZ_COLUMNS = [
+    "Level",
+    "Item Number",
+    "Part Description",
+    "Item Rev",
+    "Lifecycle",
+    "Qty",
+    "UOM",
+    "Mfr. Name",
+    "Mfr. Part Number",
+    "Reference Notes",
 ]
-# The attribute used as the primary identifier (Source of Truth) and placed in Column B
+
+# FZ column -> exact internal NX/Teamcenter title -> NX attribute type.
+FZ_ATTRIBUTE_SPECS = [
+    ("Part Description", "DB_PART_NAME", "String"),
+    ("Item Rev", "DB_PART_REV", "String"),
+    ("Lifecycle", "ItemRev_REL_STATUS", "String"),
+    ("UOM", "Unit_Of_Measure", "String"),
+    ("Mfr. Name", "MFG", "String"),
+    ("Mfr. Part Number", "MPN", "String"),
+    ("Reference Notes", "Stocking_Type", "String"),
+]
+
+# The attribute used as the primary identifier (Source of Truth).
 SOURCE_OF_TRUTH_ATTR = "DB_PART_NO"
+DEFAULT_LIFECYCLE = "DRAFT"
 
 # List of keywords in part names to automatically exclude from the BOM
 # (e.g., coordinate systems, datums, skeletons). Case-insensitive.
 IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
 # ---------------------
 
-def get_safe_attribute(nx_object, attr_name):
-    """Helper to try and read an attribute, returns None if not found."""
+def get_safe_attribute(nx_object, attr_name, attr_type="String"):
+    """Read a typed NX attribute, returning None when it is unavailable."""
+    if attr_type not in ("String", "Number"):
+        raise ValueError("Unsupported NX attribute type: {0}".format(attr_type))
+
     try:
-        return nx_object.GetStringAttribute(attr_name)
-    except:
+        if attr_type == "String":
+            return nx_object.GetStringAttribute(attr_name)
+        return nx_object.GetRealAttribute(attr_name)
+    except Exception:
         return None
 
+
+def get_component_attribute(component, attr_name, attr_type="String"):
+    """Read an occurrence attribute, then fall back to its prototype."""
+    value = get_safe_attribute(component, attr_name, attr_type)
+    if value is None and component.Prototype is not None:
+        value = get_safe_attribute(component.Prototype, attr_name, attr_type)
+    return value
+
+
+def fz_attribute_values(component):
+    """Project exact NX attributes into the FZ template column names."""
+    values = {}
+    for column, attr_name, attr_type in FZ_ATTRIBUTE_SPECS:
+        values[column] = get_component_attribute(component, attr_name, attr_type)
+    return values
+
+
 def walk_assembly_tree(component, level, csv_writer, quantity=1):
-    # Create a visual indent for the CSV file based on the assembly level
-    indent = "    " * level
-    
     # Extract metadata safely
     part_name = component.DisplayName
-    component_name = component.Name
-    
+
     # Extract Source of Truth (DB_PART_NO)
-    db_part_no = get_safe_attribute(component, SOURCE_OF_TRUTH_ATTR)
-    if db_part_no is None and component.Prototype is not None:
-        db_part_no = get_safe_attribute(component.Prototype, SOURCE_OF_TRUTH_ATTR)
+    db_part_no = get_component_attribute(component, SOURCE_OF_TRUTH_ATTR)
     # Fallback to DisplayName if the attribute is missing/blank
     if not db_part_no:
         db_part_no = component.DisplayName
-        
-    # Extract custom attributes
-    custom_attr_values = []
-    for attr in ATTRIBUTES_TO_EXTRACT:
-        # Try getting attribute from the component instance first
-        val = get_safe_attribute(component, attr)
-        
-        # If not on the component, try getting it from the actual part file (Prototype)
-        if val is None and component.Prototype is not None:
-            val = get_safe_attribute(component.Prototype, attr)
-            
-        custom_attr_values.append(val if val is not None else "")
-    
-    # Write the row to the CSV file - NOW INCLUDES DB_PART_NO in Column B
-    row_data = [level, db_part_no, f"{indent}{part_name}", component_name, quantity] + custom_attr_values
+
+    values = fz_attribute_values(component)
+    part_description = values["Part Description"] or part_name
+    lifecycle = values["Lifecycle"] or DEFAULT_LIFECYCLE
+    row_data = [
+        level,
+        db_part_no,
+        part_description,
+        values["Item Rev"] or "",
+        lifecycle,
+        quantity,
+        values["UOM"] or "",
+        values["Mfr. Name"] or "",
+        values["Mfr. Part Number"] or "",
+        values["Reference Notes"] or "",
+    ]
     csv_writer.writerow(row_data)
     
     # Get children and run recursively
@@ -166,9 +182,7 @@ def main():
         with open(full_csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
             writer = csv.writer(csv_file)
             
-            # Write the header row - ADDED 'DB_PART_NO' as Column B
-            header_row = ['BOM Level', SOURCE_OF_TRUTH_ATTR, 'Indented Part Name', 'Component Name', 'Quantity'] + ATTRIBUTES_TO_EXTRACT
-            writer.writerow(header_row)
+            writer.writerow(FZ_COLUMNS)
             
             # Start walking the tree at Level 0, Quantity is 1 for the very top assembly
             walk_assembly_tree(root_component, 0, writer, quantity=1)

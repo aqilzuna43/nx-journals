@@ -22,6 +22,10 @@ J02 and J04 use `utils/attribute_reconciliation.py`. J05 is self-contained for
 NX2312 deployment but consumes the same
 `config/attribute_reconciliation.json` rule model.
 
+NX may stage a selected journal outside this folder. In that launch mode, set
+`NX_JOURNALS_ROOT` to the complete `from_git` folder (or its repository parent)
+before starting NX so J04 can locate `utils/` and `config/`.
+
 J04 requires `NX_DRAWING_SCOPE.csv` in `NX_JOURNALS_IO_DIR` (or Desktop) and
 accepts an optional `NX_ATTRIBUTE_MASTER_REFERENCE.csv` only for downstream
 drift detection. J05 consumes `NX_ATTRIBUTE_CORRECTIONS.csv`; templates are in
