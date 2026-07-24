@@ -102,6 +102,56 @@ class PdfGroupingTests(unittest.TestCase):
             "264MN020016A01_REVA_DWG2.pdf",
         )
 
+    def test_drawing_specs_use_canonical_specification_identifier(self):
+        self.assertEqual(
+            self.journal.teamcenter_drawing_specs(
+                "264MN020016A01",
+                "A",
+                2,
+            ),
+            [
+                (
+                    "@DB/264MN020016A01/A/specification/"
+                    "264MN020016A01-A-dwg2"
+                )
+            ],
+        )
+
+    def test_drawing_open_uses_open_display(self):
+        class Status:
+            def __init__(self):
+                self.disposed = False
+
+            def Dispose(self):
+                self.disposed = True
+
+        part = types.SimpleNamespace(Tag=42, Name="drawing")
+        status = Status()
+        parts = types.SimpleNamespace(
+            OpenDisplay=mock.Mock(return_value=(part, status)),
+            OpenBase=mock.Mock(
+                side_effect=AssertionError("OpenBase must not open drawings")
+            ),
+        )
+        session = types.SimpleNamespace(Parts=parts)
+
+        opened = self.journal.open_display_part(
+            session,
+            (
+                "@DB/264MN020016A01/A/specification/"
+                "264MN020016A01-A-dwg1"
+            ),
+            set(),
+            [],
+            "drawing",
+        )
+
+        self.assertIs(opened["part"], part)
+        self.assertTrue(opened["opened_by_journal"])
+        self.assertTrue(status.disposed)
+        parts.OpenDisplay.assert_called_once()
+        parts.OpenBase.assert_not_called()
+
     def test_duplicate_or_missing_tokens_are_made_unique(self):
         candidates = [
             {"part": object(), "drawing_index": 1},

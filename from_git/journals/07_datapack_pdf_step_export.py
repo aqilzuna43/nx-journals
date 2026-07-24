@@ -14,7 +14,7 @@ For STEP:
 - Otherwise open the Teamcenter master directly from the CSV identity.
 - Make the master the active display/work part before AP214 export.
 
-Target: NX 2312 embedded Python 3.10
+Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
 """
 
@@ -48,7 +48,6 @@ STEP_BODY_TOKENS = (
 )
 
 MAX_DRAWING_DATASET_INDEX = 9
-TEAMCENTER_DRAWING_DATASET_TYPE = "UGPART"
 CLOSE_PARTS_OPENED_BY_JOURNAL = True
 
 TRUE_VALUES = {"YES", "Y", "TRUE", "1", "X"}
@@ -444,6 +443,63 @@ def open_base_part(session, specification, preloaded_identities, log_buffer, lab
     }
 
 
+def open_display_part(
+    session,
+    specification,
+    preloaded_identities,
+    log_buffer,
+    label,
+):
+    """
+    Open a Teamcenter specification as the display part.
+
+    Teamcenter drawing datasets use their canonical /specification/
+    JournalIdentifier. OpenDisplay is required for NX to resolve that managed
+    drawing identity and make its drawing sheets available.
+    """
+    log_line(
+        session,
+        "  Attempt {0} open: {1}".format(label, specification),
+        log_buffer,
+    )
+
+    part = None
+    status = None
+    try:
+        part, status = unwrap_open_result(
+            session.Parts.OpenDisplay(specification)
+        )
+    except Exception as error:
+        log_line(
+            session,
+            "    Not opened: {0}".format(error),
+            log_buffer,
+        )
+        return None
+    finally:
+        dispose(status)
+
+    if part is None:
+        log_line(session, "    Open returned no part.", log_buffer)
+        return None
+
+    opened_by_journal = object_identity(part) not in preloaded_identities
+    log_line(
+        session,
+        "    Opened: {0}{1}".format(
+            safe_part_name(part),
+            " [journal-opened]" if opened_by_journal else " [already loaded]",
+        ),
+        log_buffer,
+    )
+
+    return {
+        "part": part,
+        "opened_by_journal": opened_by_journal,
+        "source": specification,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CSV input and reports
 # ---------------------------------------------------------------------------
@@ -788,22 +844,10 @@ def teamcenter_drawing_specs(number, revision, index):
     )
 
     return [
-        "@DB/{0}/{1}/{2}/{3}".format(
+        "@DB/{0}/{1}/specification/{2}".format(
             number,
             revision,
-            TEAMCENTER_DRAWING_DATASET_TYPE,
             dataset_name,
-        ),
-        "@DB/{0}/{1}/{2}/dwg{3}".format(
-            number,
-            revision,
-            TEAMCENTER_DRAWING_DATASET_TYPE,
-            index,
-        ),
-        "@DB/{0}/{1}/dwg{2}".format(
-            number,
-            revision,
-            index,
         ),
     ]
 
@@ -845,7 +889,7 @@ def resolve_drawing_candidates(session, number, revision, log_buffer):
             index,
         ):
             attempts.append(specification)
-            opened = open_base_part(
+            opened = open_display_part(
                 session,
                 specification,
                 preloaded_identities,
@@ -1603,6 +1647,15 @@ def main():
             log_buffer,
         )
         log_line(session, "Input CSV: " + input_csv, log_buffer)
+        log_line(
+            session,
+            (
+                "Drawing resolver: "
+                "@DB/<part>/<rev>/specification/<part>-<rev>-dwg<n> "
+                "via session.Parts.OpenDisplay"
+            ),
+            log_buffer,
+        )
         log_line(
             session,
             "Managed-mode flag: {0} (informational only; @DB opens are always attempted)".format(
