@@ -1,3 +1,6 @@
+#Level	Item Number	Part Description	Item Rev	Lifecycle	Qty	UOM	Mfr. Name	Mfr. Part Number	Reference Notes	WAE_VERSION	NX_MATERIAL	NX_FINISH	NX_MASS	NX_MassPropRollupMass	COMPONENT_CLASS	LIFED	SERIAL_NUMBERED_PART	Temperature_Sensitive	Hazardous	Dimensions	COMMODITYTYPE	Commodity_Code	Serviceable_item_flag	Export_Control_Number	Country_of_Origin
+#Look at the Attribute xml, we need to add WAE_VERSION. Thanks's important
+
 import NXOpen
 import csv
 import os
