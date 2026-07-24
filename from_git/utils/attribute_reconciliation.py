@@ -311,6 +311,16 @@ def validate_attribute_value(result, rule, config):
 
 def _attribute_value(info):
     kind = enum_name(getattr(info, "Type", ""))
+    # NX 2506 may expose NXObject.AttributeType as its integer value instead
+    # of an enum object with a `.name` property.
+    kind = {
+        "2": "Boolean",
+        "3": "Integer",
+        "4": "Real",
+        "5": "String",
+        "6": "Time",
+        "7": "Reference",
+    }.get(kind, kind)
     field_by_type = {
         "String": "StringValue",
         "Real": "RealValue",
@@ -863,10 +873,9 @@ def corners_from_exact_box(min_corner, directions, distances):
     return corners
 
 
-def _ask_exact_box(uf_session, body):
-    method = uf_session.Modl.AskBoundingBoxExact
+def _call_bounding_box_method(method, input_args):
     try:
-        result = method(body.Tag, 0)
+        result = method(*input_args)
         if isinstance(result, tuple) and len(result) >= 3:
             return result[0], result[1], result[2]
     except TypeError:
@@ -874,10 +883,28 @@ def _ask_exact_box(uf_session, body):
     min_corner = [0.0, 0.0, 0.0]
     directions = [0.0] * 9
     distances = [0.0, 0.0, 0.0]
-    result = method(body.Tag, 0, min_corner, directions, distances)
+    result = method(*(tuple(input_args) + (min_corner, directions, distances)))
     if isinstance(result, tuple) and len(result) >= 3:
         return result[0], result[1], result[2]
     return min_corner, directions, distances
+
+
+def _ask_exact_box(uf_session, body):
+    modl = uf_session.Modl
+    exact = getattr(modl, "AskBoundingBoxExact", None)
+    if callable(exact):
+        return _call_bounding_box_method(exact, (body.Tag, 0))
+
+    # NX 2506's Python UF wrapper may omit AskBoundingBoxExact. The aligned
+    # variant with expand=False returns the same min/direction/distance shape
+    # and keeps the box aligned to the active model coordinate system.
+    aligned = getattr(modl, "AskBoundingBoxAligned", None)
+    if callable(aligned):
+        return _call_bounding_box_method(aligned, (body.Tag, 0, False))
+
+    raise AttributeError(
+        "NXOpen.UF.Modl exposes neither AskBoundingBoxExact nor AskBoundingBoxAligned"
+    )
 
 
 def _component_transform(component):

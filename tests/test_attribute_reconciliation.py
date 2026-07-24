@@ -211,6 +211,16 @@ class ConfigAndValuesTests(unittest.TestCase):
         self.assertEqual(("UNSET", "default"), (unset_result["status"], unset_result["raw_value"]))
         self.assertEqual("MISSING", missing["status"])
 
+    def test_nx2506_numeric_attribute_type_values_are_decoded(self):
+        string_info = FakeAttribute("Cad0Design", "DB_PART_NO", "PART-001")
+        string_info.Type = 5
+        real_info = FakeAttribute("Materials", "NX_Mass", "")
+        real_info.Type = 4
+        real_info.RealValue = 12.5
+
+        self.assertEqual(("PART-001", "String"), core._attribute_value(string_info))
+        self.assertEqual((12.5, "Real"), core._attribute_value(real_info))
+
 
 class AssemblyTests(unittest.TestCase):
     def test_immediate_parent_quantity_repeated_subtree_and_suppression(self):
@@ -294,6 +304,21 @@ class AssemblyTests(unittest.TestCase):
 
         dimensions = core.exact_model_dimensions(root, types.SimpleNamespace(Modl=Modl()))
         self.assertEqual((3.0, 2.0, 1.0), dimensions)
+
+    def test_nx2506_aligned_bounding_box_fallback(self):
+        body = FakeBody()
+        root = FakePart("ROOT", attrs("ROOT"), [body])
+
+        class Modl:
+            def AskBoundingBoxAligned(self, tag, csys, expand):
+                self.call = (tag, csys, expand)
+                return [0, 0, 0], [1, 0, 0, 0, 1, 0, 0, 0, 1], [4, 5, 6]
+
+        modl = Modl()
+        dimensions = core.exact_model_dimensions(root, types.SimpleNamespace(Modl=modl))
+
+        self.assertEqual((4.0, 5.0, 6.0), dimensions)
+        self.assertEqual((body.Tag, 0, False), modl.call)
 
     def test_dimension_derivation_fails_without_solids(self):
         with self.assertRaises(core.ReconciliationError):
