@@ -32,10 +32,10 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
 | # | File | Description |
 |---|------|-------------|
 | 01 | `from_git/journals/01_hla_step_export.py` | Exports the active work part to STEP |
-| 02 | `from_git/journals/02_hla_multilevel_bom.py` | Traverses the assembly and exports a multilevel BOM CSV from NX part attributes |
+| 02 | `from_git/journals/02_hla_multilevel_bom.py` | Exports an NX-authoritative draft multilevel BOM |
 | 03 | `from_git/journals/03_batch_drawing_pdf.py` | Traverses unique prototype parts and exports drawing sheets to PDF |
-| 04 | `from_git/journals/04_assembly_attribute_audit.py` | Audits required attributes and writes audit/summary CSV reports |
-| 05 | `from_git/journals/05_bulk_attribute_updater.py` | **Pull/Push** - dumps NX attributes to CSV or writes Teamcenter CSV values back to empty NX attributes |
+| 04 | `from_git/journals/04_assembly_attribute_audit.py` | Fail-closed, read-only attribute and BOM certification |
+| 05 | `from_git/journals/05_bulk_attribute_updater.py` | Approved typed correction workflow (`PULL`, `DRY_RUN`, `APPLY_APPROVED`) |
 | 06 | `from_git/journals/06_auto_pdf_step_export.py` | Exports the active work part to STEP and its drawing sheets to PDF in one run |
 | 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Exports DataPack-controlled drawing PDFs and AP214 STEP files from the loaded assembly |
 | 08 | `from_git/journals/08_list_loaded_drawings.py` | Reports exact Teamcenter identities for drawings already loaded in NX |
@@ -53,6 +53,25 @@ For J01-J04, keep the full `from_git` folder together because those journals sti
   - Input CSV files: `%USERPROFILE%\Desktop`
   - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
 - To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
+
+## NX-authoritative Attribute Reconciliation
+
+J02, J04, and J05 use `from_git/config/attribute_reconciliation.json`.
+NX/Teamcenter is authoritative; imported BOM or MASTER data is downstream
+reference evidence and never an authority for overwriting NX.
+
+- J02 produces `BOM_DRAFT_<root>_<timestamp>.csv`.
+- J04 requires `NX_DRAWING_SCOPE.csv`, remains read-only, always writes detail
+  and summary evidence, and emits a certified BOM only with zero blockers.
+- J05 defaults to `DRY_RUN`, rejects unapproved or stale corrections, and
+  remains under the configured `NO_SAVE` gate.
+
+Keep `config/`, `journals/`, and `utils/` together. If NX stages Journal 04
+outside the deployed folder, set `NX_JOURNALS_ROOT` to the repository root or
+the complete `from_git` folder before starting NX.
+
+See `docs/J04_J05_ATTRIBUTE_RECONCILIATION_PLAN.md` for the detailed rule,
+failure, recovery, and runtime-acceptance specification.
 
 ## Journal 07 - DataPack PDF + STEP Export
 

@@ -30,11 +30,16 @@ Available production journals:
 ```
 
 `05_bulk_attribute_updater.py` is intentionally self-contained to avoid NX2312
-package/import path problems. It still reads `config/attribute_mapping.json`,
-so keep the `config` folder beside `journals`.
+package/import path problems. The J02/J04/J05 reconciliation workflow reads
+`config/attribute_reconciliation.json`; its production save policy remains
+`NO_SAVE` until the disposable-item runtime gate is approved.
 
 The other journals still use shared helpers from `utils`, so keep the full
 folder together if you run J01-J04.
+
+J04 also requires `NX_DRAWING_SCOPE.csv` in `NX_JOURNALS_IO_DIR` (or Desktop).
+If NX stages the selected journal outside this folder, set `NX_JOURNALS_ROOT`
+to the complete `from_git` folder or its repository parent before starting NX.
 
 J06 also uses the shared helpers from `utils`. It writes the active work part
 STEP file and active-part drawing PDF files to `NX_JOURNALS_IO_DIR` when set,
