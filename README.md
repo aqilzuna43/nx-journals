@@ -84,11 +84,15 @@ business allowlist in `attribute_reconciliation.json`, including
 `WAE_VERSION`, `NX_FINISH`, commodity, traceability, service, manufacturer,
 stocking, UOM, and export metadata. It rejects blank replacements.
 
-J05 production saving remains disabled while `save_policy` is `NO_SAVE`.
-Before changing that gate, run J11 `PROBE`, then its explicitly guarded
-`FULL_REVERSIBLE` test on a disposable Teamcenter item. Apply mode explicitly
-checks out every affected master part before changing anything, aborts the
-batch if any checkout fails, and never checks a part in automatically.
+J05 production saving is enabled with `save_policy` set to
+`SAVE_CHANGED_PARTS`. Apply mode explicitly checks out every affected
+Teamcenter master part, writes and rereads approved values, and saves the
+part. It aborts the batch if any checkout fails and never checks a part in
+automatically. A successful J05 report shows `SAVE_RESULT=SAVED`; pressing
+Save manually is not part of the workflow.
+
+J11 remains the guarded reversible runtime diagnostic for validating checkout
+and persistence on a disposable Teamcenter item.
 
 See `docs/J04_J05_ATTRIBUTE_RECONCILIATION_PLAN.md` for CSV columns, checkout
 guards, recovery behavior, and the J11 acceptance procedure.

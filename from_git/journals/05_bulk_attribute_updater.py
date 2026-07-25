@@ -591,6 +591,45 @@ def _managed_mode(session):
     return bool(value)
 
 
+def _is_teamcenter_target(session, target):
+    if _managed_mode(session):
+        return True
+    return _object_identifier(target).upper().startswith("@DB/")
+
+
+def _pdm_part(target):
+    value = getattr(target, "PDMPart", None)
+    return value() if callable(value) else value
+
+
+def _pdm_checkout_state(target):
+    pdm_part = _pdm_part(target)
+    method = getattr(pdm_part, "GetCheckedoutStatusAndUser", None)
+    if not callable(method):
+        return None, ""
+    try:
+        result = method()
+        values = result if isinstance(result, tuple) else (result,)
+        status = values[0] if values else None
+        user = _clean(values[1]) if len(values) > 1 else ""
+        if isinstance(status, bool):
+            state = "CHECKED_OUT" if status else "NOT_CHECKED_OUT"
+        else:
+            status_name = _normalized(_enum_name(status)).replace("_", "")
+            if status_name.startswith("NOT") and "CHECKEDOUT" in status_name:
+                state = "NOT_CHECKED_OUT"
+            elif "CHECKEDOUT" in status_name:
+                state = "CHECKED_OUT"
+            else:
+                return None, "PDM checkout status: " + repr(result)
+        detail = "Checkout user: " + user if user else ""
+        return state, detail
+    except Exception as exc:
+        return None, "PDM checkout status unavailable: " + _exception_details(
+            exc
+        )
+
+
 def _checked_out_members(work_part):
     assembly = getattr(work_part, "ComponentAssembly", None)
     method = getattr(assembly, "GetCheckedoutStatusOfObjects", None)
@@ -617,6 +656,11 @@ def _checkout_state(work_part, target):
         return "CHECKED_OUT", detail
     if unchecked is not None and key in unchecked:
         return "NOT_CHECKED_OUT", detail
+    pdm_state, pdm_detail = _pdm_checkout_state(target)
+    if pdm_state is not None:
+        return pdm_state, pdm_detail
+    if pdm_detail:
+        detail = " | ".join(item for item in (detail, pdm_detail) if item)
     read_only = _read_only(target)
     if read_only is True:
         return "READ_ONLY_UNKNOWN_OWNER", detail
@@ -625,13 +669,8 @@ def _checkout_state(work_part, target):
     return "UNKNOWN", detail
 
 
-def _pdm_part(target):
-    value = getattr(target, "PDMPart", None)
-    return value() if callable(value) else value
-
-
 def _checkout_target(session, work_part, target):
-    managed = _managed_mode(session)
+    managed = _is_teamcenter_target(session, target)
     before, before_detail = _checkout_state(work_part, target)
     read_only_before = _read_only(target)
     result = {
@@ -672,7 +711,11 @@ def _checkout_target(session, work_part, target):
                 "explicit checkout call."
             )
         result["success"] = True
-        result["result"] = after or "CHECKOUT_API_SUCCEEDED"
+        result["result"] = (
+            "CHECKED_OUT"
+            if after == "CHECKED_OUT"
+            else "CHECKOUT_API_SUCCEEDED_WRITABLE"
+        )
         return result
     except Exception as exc:
         exception_type, error_code = _exception_fields(exc)

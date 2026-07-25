@@ -33,7 +33,7 @@ Available production journals:
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
 package/import path problems. They read
 `config/attribute_reconciliation.json`; J05 production saving remains
-`NO_SAVE` until the disposable-item Journal 11 runtime gate is approved.
+The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder
 together.
@@ -50,11 +50,12 @@ automation. An approved row authorizes every changed business field on that
 row; identity, material, mass, dimensions, lifecycle, and quantity cannot be
 changed. J05 rejects blank replacements and stale baselines.
 
-Before enabling `SAVE_CHANGED_PARTS`, run J11 in its default read-only `PROBE`
-mode and then `FULL_REVERSIBLE` on an explicitly identified disposable item.
-J05 explicitly checks out all affected prototypes before writing, aborts
-without attribute changes if any checkout fails, leaves successful checkouts
-checked out for review, and never performs check-in.
+J05 explicitly checks out all affected Teamcenter prototypes before writing,
+aborts without attribute changes if any checkout fails, rereads each write,
+saves successful targets, leaves successful checkouts checked out for review,
+and never performs check-in. NX X `@DB/...` identities are treated as managed
+even when `Session.IsManagedMode` incorrectly reports false. J11 remains
+available in `PROBE` and guarded `FULL_REVERSIBLE` modes for runtime diagnosis.
 
 J06 also uses the shared helpers from `utils`. It writes the active work part
 STEP file and active-part drawing PDF files to `NX_JOURNALS_IO_DIR` when set,

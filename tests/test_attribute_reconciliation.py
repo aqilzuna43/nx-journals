@@ -186,10 +186,12 @@ class ConfigAndValuesTests(unittest.TestCase):
         cls.config_path = ROOT / "from_git" / "config" / "attribute_reconciliation.json"
         cls.config = json.loads(cls.config_path.read_text(encoding="utf-8"))
 
-    def test_config_is_valid_nx_authoritative_and_no_save(self):
+    def test_config_is_valid_nx_authoritative_and_save_enabled(self):
         self.assertIs(core.validate_config(self.config), self.config)
         self.assertEqual("NX_TEAMCENTER", self.config["authority"])
-        self.assertEqual("NO_SAVE", self.config["save_policy"])
+        self.assertEqual(
+            "SAVE_CHANGED_PARTS", self.config["save_policy"]
+        )
 
     def test_runtime_config_contains_no_snapshot_or_evidence_identity(self):
         payload = self.config_path.read_text(encoding="utf-8")
@@ -667,6 +669,7 @@ class J05Tests(unittest.TestCase):
 
     def test_no_save_gate_prevents_checkout_and_write(self):
         target = self.target()
+        config = dict(self.config, save_policy="NO_SAVE")
         with mock.patch.object(
             self.j05, "checkout_targets"
         ) as checkout, mock.patch.object(
@@ -675,7 +678,7 @@ class J05Tests(unittest.TestCase):
             reports, unsaved = self.j05.execute(
                 types.SimpleNamespace(IsManagedMode=True),
                 target,
-                self.config,
+                config,
                 [self.row()],
                 self.baseline(),
                 "timestamp",
@@ -776,6 +779,51 @@ class J05Tests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual("EXPLICIT_CHECKOUT", result["action"])
         self.assertFalse(result["read_only_after"])
+
+    def test_db_identity_forces_checkout_when_session_flag_is_false(self):
+        target = self.target()
+        target.JournalIdentifier = "@DB/P1/A"
+        target.IsReadOnly = False
+
+        class Pdm:
+            def __init__(inner_self):
+                inner_self.checkout_calls = 0
+                inner_self.checked_out = False
+
+            def GetCheckedoutStatusAndUser(inner_self):
+                return inner_self.checked_out, ""
+
+            def Checkout(inner_self):
+                inner_self.checkout_calls += 1
+                inner_self.checked_out = True
+
+        target.PDMPart = Pdm()
+        result = self.j05._checkout_target(
+            types.SimpleNamespace(IsManagedMode=False),
+            target,
+            target,
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual("EXPLICIT_CHECKOUT", result["action"])
+        self.assertEqual(1, target.PDMPart.checkout_calls)
+        self.assertEqual("CHECKED_OUT", result["result"])
+
+    def test_sample_changes_are_business_writable_and_valid(self):
+        expected = {
+            "Unit_Of_Measure": "ea",
+            "MFG": "FABRICATOR",
+            "MPN": "264MN033036A01",
+        }
+        rules = {
+            rule["attribute"]: rule
+            for _column, rule in self.j05._business_specs(self.config)
+        }
+        for title, value in expected.items():
+            self.assertIn(title, rules)
+            self.assertTrue(rules[title]["writable"])
+            self.assertEqual(
+                "", self.j05._validate_expected(value, rules[title], self.config)
+            )
 
 
 class StaticSafetyTests(unittest.TestCase):

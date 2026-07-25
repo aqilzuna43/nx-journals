@@ -112,15 +112,17 @@ exception/error-code evidence.
 
 ## Production save gate
 
-The versioned configuration remains:
+The versioned configuration is:
 
 ```json
-"save_policy": "NO_SAVE"
+"save_policy": "SAVE_CHANGED_PARTS"
 ```
 
-With this gate, `APPLY_APPROVED` performs no checkout and no write; it reports
-`SAVE_GATE_DISABLED`. Change it to `SAVE_CHANGED_PARTS` only after Journal 11
-passes in the deployed NX/Teamcenter runtime.
+With this gate, `APPLY_APPROVED` explicitly checks out each affected
+Teamcenter prototype, writes and rereads approved values, and saves each
+successful target. An `@DB/...` target is treated as Teamcenter-managed even
+when NX X reports `Session.IsManagedMode=False`. A successful report contains
+`SAVE_RESULT=SAVED`; no manual NX Save is required.
 
 ## Journal 11 acceptance
 
@@ -172,5 +174,6 @@ Runtime acceptance requires:
 4. Run Journal 11 `FULL_REVERSIBLE` on the explicitly guarded disposable item.
 5. Confirm temporary persistence, original-value restoration, and that the
    item remains checked out.
-6. Only then enable `SAVE_CHANGED_PARTS` and rerun J05 on a controlled case.
+6. Run J05 `APPLY_APPROVED` on a controlled case and require
+   `SAVE_RESULT=SAVED`.
 7. Re-export Extended BOM and confirm the saved business value is present.

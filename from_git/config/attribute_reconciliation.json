@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "authority": "NX_TEAMCENTER",
-  "save_policy": "NO_SAVE",
+  "save_policy": "SAVE_CHANGED_PARTS",
   "identity": {
     "part_number": {"category": "Cad0Design", "attribute": "DB_PART_NO", "type": "String"},
     "revision": {"category": "Cad0DesignRevision", "attribute": "DB_PART_REV", "type": "String"}
