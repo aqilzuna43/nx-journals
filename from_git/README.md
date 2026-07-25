@@ -42,11 +42,13 @@ J04 reads unique 3D master prototypes only. It produces one editable
 `NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json` sidecar. It does
 not inspect drawings, require drawing scope, certify a BOM, or modify NX.
 
-Set `NX_ATTRIBUTE_UPDATE_FILE` to the edited J04 CSV before running J05. Use
-`NX_J05_MODE=DRY_RUN` first. An approved row authorizes every changed business
-field on that row; identity, material, mass, dimensions, lifecycle, and
-quantity cannot be changed. J05 rejects blank replacements and stale
-baselines.
+For normal NX use, open J05 and edit only the two user settings near its top:
+paste the edited J04 CSV path into `USER_UPDATE_CSV` and leave
+`USER_MODE = "DRY_RUN"` for the first run. PowerShell is not required.
+`NX_ATTRIBUTE_UPDATE_FILE` and `NX_J05_MODE` remain optional overrides for
+automation. An approved row authorizes every changed business field on that
+row; identity, material, mass, dimensions, lifecycle, and quantity cannot be
+changed. J05 rejects blank replacements and stale baselines.
 
 Before enabling `SAVE_CHANGED_PARTS`, run J11 in its default read-only `PROBE`
 mode and then `FULL_REVERSIBLE` on an explicitly identified disposable item.

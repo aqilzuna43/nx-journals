@@ -550,6 +550,43 @@ class J05Tests(unittest.TestCase):
         )
         return reports, proposals
 
+    def test_manual_settings_are_safe_and_environment_can_override(self):
+        self.assertEqual("", self.j05.USER_UPDATE_CSV)
+        self.assertEqual("DRY_RUN", self.j05.USER_MODE)
+        with mock.patch.dict(
+            self.j05.os.environ,
+            {
+                "NX_ATTRIBUTE_UPDATE_FILE": r"C:\temp\from-environment.csv",
+                "NX_J05_MODE": "apply_approved",
+            },
+            clear=False,
+        ), mock.patch.object(
+            self.j05, "USER_UPDATE_CSV", r"C:\temp\from-code.csv"
+        ), mock.patch.object(self.j05, "USER_MODE", "DRY_RUN"):
+            self.assertEqual(
+                r"C:\temp\from-environment.csv",
+                self.j05.configured_input_path(),
+            )
+            self.assertEqual(
+                "APPLY_APPROVED", self.j05.configured_mode()
+            )
+
+    def test_manual_settings_are_used_without_environment(self):
+        with mock.patch.dict(
+            self.j05.os.environ,
+            {},
+            clear=True,
+        ), mock.patch.object(
+            self.j05, "USER_UPDATE_CSV", r"C:\temp\from-code.csv"
+        ), mock.patch.object(self.j05, "USER_MODE", "apply_approved"):
+            self.assertEqual(
+                r"C:\temp\from-code.csv",
+                self.j05.configured_input_path(),
+            )
+            self.assertEqual(
+                "APPLY_APPROVED", self.j05.configured_mode()
+            )
+
     def test_business_allowlist_and_model_write_targets(self):
         columns = [
             column

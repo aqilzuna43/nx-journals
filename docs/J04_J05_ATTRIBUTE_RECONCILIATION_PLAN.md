@@ -57,8 +57,16 @@ the edited CSV and must not be edited.
 
 ## Journal 05 validation and checkout
 
-Set `NX_ATTRIBUTE_UPDATE_FILE` to the edited Journal 04 CSV. Modes are selected
-with `NX_J05_MODE`:
+For normal NX use, edit the two clearly marked settings near the top of
+Journal 05:
+
+```python
+USER_UPDATE_CSV = r"C:\full\path\to\NX_ATTRIBUTE_UPDATE_....csv"
+USER_MODE = "DRY_RUN"
+```
+
+PowerShell is not required. `NX_ATTRIBUTE_UPDATE_FILE` and `NX_J05_MODE` are
+optional environment-variable overrides for automation. The two modes are:
 
 - `DRY_RUN` is the default and performs no checkout, attribute write, or save.
 - `APPLY_APPROVED` applies only approved changed rows after all gates pass.

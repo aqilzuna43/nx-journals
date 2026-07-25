@@ -16,6 +16,17 @@ from datetime import datetime
 import NXOpen
 
 
+# ============================================================================
+# USER SETTINGS - EDIT ONLY THESE TWO LINES FOR NORMAL NX USE
+# Paste the full path of the CSV created by Journal 04 between the quotes.
+USER_UPDATE_CSV = r""
+# Keep DRY_RUN for validation. The only other valid value is APPLY_APPROVED.
+USER_MODE = "DRY_RUN"
+# PowerShell variables NX_ATTRIBUTE_UPDATE_FILE and NX_J05_MODE, when set,
+# override these values for automated or advanced use.
+# ============================================================================
+
+
 CONTROL_COLUMNS = [
     "AUDIT_RUN_ID",
     "APPROVED",
@@ -70,6 +81,16 @@ def _clean(value):
 
 def _normalized(value):
     return " ".join(_clean(value).split()).upper()
+
+
+def configured_input_path():
+    return _clean(
+        os.environ.get("NX_ATTRIBUTE_UPDATE_FILE") or USER_UPDATE_CSV
+    )
+
+
+def configured_mode():
+    return _normalized(os.environ.get("NX_J05_MODE") or USER_MODE or "DRY_RUN")
 
 
 def _enum_name(value):
@@ -1157,15 +1178,17 @@ def main(session):
     if work_part is None:
         raise RuntimeError("Open the source 3D assembly before Journal 05.")
     config = _load_config()
-    mode = _normalized(os.environ.get("NX_J05_MODE") or "DRY_RUN")
+    mode = configured_mode()
     if mode not in VALID_MODES:
         raise RuntimeError(
-            "NX_J05_MODE must be DRY_RUN or APPLY_APPROVED."
+            "USER_MODE (or NX_J05_MODE) must be DRY_RUN or APPLY_APPROVED."
         )
-    input_path = _clean(os.environ.get("NX_ATTRIBUTE_UPDATE_FILE"))
+    input_path = configured_input_path()
     if not input_path:
         raise RuntimeError(
-            "Set NX_ATTRIBUTE_UPDATE_FILE to the edited Journal 04 CSV."
+            "Edit USER_UPDATE_CSV near the top of Journal 05 and paste the "
+            "full path of the edited Journal 04 CSV. Advanced users may "
+            "instead set NX_ATTRIBUTE_UPDATE_FILE."
         )
     input_path = os.path.abspath(input_path)
     if not os.path.isfile(input_path):

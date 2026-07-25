@@ -69,9 +69,14 @@ The normal workflow is:
    `.baseline.json`.
 3. Edit only business columns. Set `APPROVED=YES` and populate `ENGINEER` on
    each row to apply.
-4. Set `NX_ATTRIBUTE_UPDATE_FILE` to that CSV and run J05 in `DRY_RUN`.
+4. Open J05 and edit the two clearly marked user settings near the top:
+   paste the J04 CSV path into `USER_UPDATE_CSV` and leave
+   `USER_MODE = "DRY_RUN"`.
 5. Resolve every stale, identity, controlled-value, permission, or checkout
    error before considering apply mode.
+
+PowerShell is not required. For automation, `NX_ATTRIBUTE_UPDATE_FILE` and
+`NX_J05_MODE` remain optional environment-variable overrides.
 
 Part number, part name, revision, quantity, lifecycle, material, dimensions,
 mass, and roll-up mass are read-only NX/CAD values. J05 can change only the
