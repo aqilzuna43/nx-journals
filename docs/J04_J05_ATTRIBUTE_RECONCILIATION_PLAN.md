@@ -1,259 +1,168 @@
-# NX-Authoritative Attribute Reconciliation and Certified BOM Pipeline
+# 3D Business-Attribute Round Trip and Checkout Gate
 
-## Document status
+## Purpose
 
-- **Repository:** `aqilzuna43/nx-journals`
-- **Implementation branch:** `codex/j04-j05-attribute-reconciliation`
-- **Baseline:** remote `main` at `a87258f`
-- **Runtime:** Siemens NX 2312 embedded Python 3.10
-- **Data management:** TeamcenterX / managed NX
-- **External Python packages:** none
-- **Protected J07 commit:** `6fe58f765b8a207229b2f6990e3b0224caa03771`
-- **Authority decision:** NX/Teamcenter is authoritative for the engineering BOM and configured attributes. MASTER is downstream reference evidence only.
-- **Current J05 save gate:** `NO_SAVE` until the approved disposable-item proof is completed.
+Journal 04 shows the current business attributes on every unique 3D master
+prototype in the active assembly. The engineer edits that same wide CSV and
+Journal 05 validates and applies the approved differences. Extended BOM reads
+the same prototype attributes and produces the PLM-facing BOM.
 
-This document supersedes the earlier proposal that treated an imported BOM or
-MASTER workbook as authority over NX. The production BOM is built from exact
-NX/Teamcenter model identities and assembly occurrences. No MASTER or BOM value
-may be used to overwrite NX.
+NX/Teamcenter remains authoritative for part number, part name, revision,
+quantity, lifecycle, material, dimensions, mass, and roll-up mass. Those
+values are context only and are never writable through Journal 05.
 
-## 1. Definition of win
+## Journal 04 pull
 
-The pipeline succeeds only when all applicable blocking rules pass:
-
-- J02 exports a clearly labelled draft FZ-compatible BOM from the active NX assembly.
-- J04 reads NX and Teamcenter-managed drawing specifications without modifying or saving them.
-- Part identity is the exact composite `DB_PART_NO + DB_PART_REV`.
-- Attribute identity is the exact composite `category + title`.
-- Assembly hierarchy and quantity are evaluated by immediate parent, not globally.
-- Suppressed occurrences are excluded and unresolved prototypes are reported.
-- Exact model-coordinate X/Y/Z dimensions are derived from transformed solid-body bounding boxes.
-- Required model, material, classification, commodity, export, traceability, service and drawing rules pass.
-- Placeholder values such as blank, `TBC`, `TBD`, and `00-Jan-0` block certification.
-- J04 always emits detail and summary evidence, and emits a certified BOM only with zero blocking findings.
-- J05 changes only explicitly approved, configured-writable metadata and verifies every change immediately.
-- Identity, material, mass, density, volume, dimensions, system-owned, locked and read-only values are never writable.
-- J07 remains unchanged from the protected commit and passes its NX regression.
-
-A present value is not automatically valid. For example, `TBC` is populated
-but is a blocking placeholder for commodity, country and export-control data.
-
-## 2. Authority and data flow
+Journal 04 is self-contained, read-only, and requires no drawing-scope file or
+repository-local Python import. It traverses the active assembly, ignores
+suppressed occurrences, deduplicates prototypes, and writes:
 
 ```text
-NX/Teamcenter assembly and attributes (authority)
-        |
-        +--> J02 --> BOM_DRAFT_<root>_<timestamp>.csv
-        |
-        +--> J04 read-only certification
-                  |       |
-                  |       +--> optional MASTER reference -> downstream drift only
-                  |
-                  +--> detail + summary reports (every run)
-                  +--> certified BOM (zero blockers only)
-                  |
-                  +--> engineer-reviewed correction evidence
-                              |
-                              +--> J05 DRY_RUN
-                              +--> J05 APPLY_APPROVED
-                                      |
-                                      +--> immediate reread/verification
-                                      +--> save only after sandbox gate
+NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.csv
+NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.baseline.json
 ```
 
-Valid J05 authorities are `ENGINEERING_APPROVAL` and the configured
-model-to-drawing mirror. `MASTER`, `BOM`, and similar downstream exports are
-explicitly rejected as correction sources.
-
-## 3. Versioned rule model
-
-The sanitized runtime contract is
-`from_git/config/attribute_reconciliation.json`. It contains no inspected
-snapshot values, account IDs, workstation names, paths, or other source
-metadata. It defines:
-
-- NX/Teamcenter authority and the `NO_SAVE` production gate;
-- category-aware, typed identities and attribute rules;
-- exact model identity attributes;
-- required-on applicability and certification severity;
-- normalization, controlled values and placeholder rejection;
-- writable targets proven as editable in the supplied NX attribute evidence;
-- the canonical drawing resolver
-  `@DB/{part_number}/{revision}/specification/{part_number}-{revision}-dwg{index}`
-  for indexes 1 through 9;
-- FZ-compatible export columns;
-- mass/volume/density tolerance and absolute-model-coordinate dimensions.
-
-No unconfirmed material aliases are configured. Material comparison uses
-normalized text and remains non-writable.
-
-## 4. Shared assembly and attribute engine
-
-`from_git/utils/attribute_reconciliation.py` is a standard-library/NXOpen
-shared engine used by J02 and J04. It provides:
-
-- schema validation, canonical JSON hashing and deterministic run IDs;
-- category-aware typed attribute reads, with set/unset/default status retained;
-- deterministic recursive traversal with suppressed-occurrence exclusion;
-- exact prototype identity and occurrence paths;
-- root BOM row at level 0;
-- sibling aggregation by exact part and revision;
-- immediate-parent quantity, while preserving repeated parts under different parents;
-- FZ BOM projection;
-- drawing-scope validation;
-- optional MASTER subtree drift comparison;
-- controlled-value and placeholder checks;
-- mass/density/volume consistency checks;
-- transformed solid-body bounding-box union in the owning model coordinate system.
-
-Failure to derive an exact dimension is blocking. The implementation does not
-fall back to approximate or untransformed extents.
-
-## 5. J02 draft BOM
-
-Run `from_git/journals/02_hla_multilevel_bom.py` with the intended active root
-assembly fully loaded. It writes:
+The CSV control fields are:
 
 ```text
-BOM_DRAFT_<root>_<timestamp>.csv
+AUDIT_RUN_ID, APPROVED, ENGINEER, APPROVAL_NOTE, PULL_STATUS, PULL_MESSAGE
 ```
 
-The exact columns are:
+Read-only identity fields are:
 
 ```text
-BOM Level, DB_PART_NO, Indented Part Name, Component Name, Quantity,
-DB_PART_DESC, DB_PART_NAME, DB_PART_REV, MFG, MPN, Stocking_Type
+Item Number, Part Description, Item Rev
 ```
 
-The active root is included at BOM level 0. `Indented Part Name` is derived
-from `DB_PART_NAME`, matching the downstream FZ convention. J02 performs no
-drawing or release certification; every J02 output is draft.
-
-## 6. J04 fail-closed certification
-
-Run `from_git/journals/04_assembly_attribute_audit.py`. J04 is read-only and
-requires `NX_DRAWING_SCOPE.csv` in `NX_JOURNALS_IO_DIR`, unless
-`NX_DRAWING_SCOPE_FILE` specifies an explicit path.
-
-Required drawing-scope headers:
+Editable business fields are:
 
 ```text
-Item Number,Item Rev,Drawing Required
+UOM, Mfr. Name, Mfr. Part Number, Reference Notes, WAE_VERSION, NX_FINISH,
+COMPONENT_CLASS, LIFED, SERIAL_NUMBERED_PART, Temperature_Sensitive,
+Hazardous, COMMODITYTYPE, Commodity_Code, Serviceable_item_flag,
+Export_Control_Number, Country_of_Origin
 ```
 
-Drawing decisions are:
+`APPROVED=YES` authorizes every detected business-field change on that row.
+Populate `ENGINEER` on every approved row. Missing business values are blank
+and may be filled; unreadable identity or ambiguous prototypes produce
+`PULL_STATUS=REVIEW` and cannot be applied.
 
-- `YES`: a canonical drawing must open, match part/revision, contain a sheet and pass configured comparisons;
-- `NO`: drawing checks are `NOT_APPLICABLE`;
-- `REVIEW`, a missing identity, an invalid value, or conflicting duplicates: certification is blocked.
+The hard-coded CAD identities `DB_PART_NO`, `DB_PART_NAME`, and `DB_PART_REV`
+are read by exact NX title without relying on a Teamcenter category. Editable
+business fields remain exact category/title reads under `WAEItem`.
 
-An optional `NX_ATTRIBUTE_MASTER_REFERENCE.csv` can be supplied through the
-default I/O directory or `NX_ATTRIBUTE_MASTER_FILE`. Structural, quantity,
-revision or configured-field differences are reported as
-`DOWNSTREAM_BOM_DRIFT` with an instruction to regenerate MASTER. They never
-produce an NX correction.
+The baseline sidecar stores exact typed original values. It must remain beside
+the edited CSV and must not be edited.
 
-Every run writes detailed and summary CSV evidence. Only a run with zero
-blocking findings also writes:
+## Journal 05 validation and checkout
+
+Set `NX_ATTRIBUTE_UPDATE_FILE` to the edited Journal 04 CSV. Modes are selected
+with `NX_J05_MODE`:
+
+- `DRY_RUN` is the default and performs no checkout, attribute write, or save.
+- `APPLY_APPROVED` applies only approved changed rows after all gates pass.
+
+Journal 05 rejects:
+
+- missing or mismatched baseline sidecars and audit IDs;
+- duplicate, missing, stale, or edited part/revision identities;
+- edits to the read-only part description;
+- rows marked `REVIEW`;
+- approved rows without an engineer;
+- populated-to-blank changes;
+- invalid controlled values;
+- locked, system-owned, or PDM-based attributes;
+- ambiguous loaded prototypes or current NX values different from the J04
+  baseline.
+
+`TBC` and `N/A` are accepted for unrestricted text fields. They remain invalid
+where an attribute has a controlled domain such as Y/N, UOM, component class,
+traceability, stocking type, or commodity type.
+
+In managed mode, apply performs a complete preflight and then explicitly
+checks out every changed prototype. No attribute is changed unless all
+required checkouts succeed. Journal 05 never steals another user's checkout,
+bypasses release/access rules, creates another revision, trusts implicit
+autolock, or checks a part in.
+
+After checkout, each prototype is updated under one undo mark. Every value is
+reread immediately. A failure rolls back that prototype and prevents its save.
+Each verified prototype is saved once. A save failure stops later saves and
+leaves the affected part open, modified, and checked out with recovery details.
+
+Reports are written as:
 
 ```text
-NX_CERTIFIED_BOM_<root>_<run_id>.csv
+J05_DRY_RUN_<timestamp>.csv
+J05_APPLY_APPROVED_<timestamp>.csv
 ```
 
-The failure vocabulary includes `PLACEHOLDER_VALUE`,
-`INVALID_CONTROLLED_VALUE`, `DRAWING_SCOPE_REVIEW`,
-`DIMENSION_DERIVATION_FAILED`, and `DOWNSTREAM_BOM_DRIFT`. Raw NX exception
-text and `ErrorCode`, when available, are retained in detail rows.
+They include baseline/current/expected values, checkout state/action/result,
+read-only state before/after, write/rollback/verification/save results, and NX
+exception/error-code evidence.
 
-J04 restores the original work/display state in a `finally` path and closes
-only drawings it opened.
+## Production save gate
 
-## 7. J05 controlled correction
+The versioned configuration remains:
 
-`from_git/journals/05_bulk_attribute_updater.py` remains self-contained for
-NX2312 journal deployment. It reads the shared JSON rule model but imports no
-repository-local Python module.
+```json
+"save_policy": "NO_SAVE"
+```
 
-Modes are selected with `NX_J05_MODE`:
+With this gate, `APPLY_APPROVED` performs no checkout and no write; it reports
+`SAVE_GATE_DISABLED`. Change it to `SAVE_CHANGED_PARTS` only after Journal 11
+passes in the deployed NX/Teamcenter runtime.
 
-- `PULL`: create typed, category-aware evidence for the loaded model set and applicable drawings;
-- `DRY_RUN`: validate correction rows and report proposed/no-change/rejected actions;
-- `APPLY_APPROVED`: apply only rows that pass every approval and stale-audit gate.
+## Journal 11 acceptance
 
-The default mode is `DRY_RUN`. The default correction input is
-`NX_ATTRIBUTE_CORRECTIONS.csv`; override it with
-`NX_ATTRIBUTE_CORRECTIONS_FILE`.
+`11_test_teamcenter_attribute_checkout.py` defaults to the read-only `PROBE`
+mode. It records managed-mode, PDM/checkout APIs, autolock, checkout status,
+and part read-only state.
 
-Each row carries approval, exact part/revision, MODEL or DRAWING target,
-drawing index, category, title, type, audited raw value, expected value,
-authoritative source, audit run ID, engineer, evidence reference and note.
+The mutating test requires a disposable Teamcenter item and all of:
 
-J05 rejects:
+```text
+NX_J11_MODE=FULL_REVERSIBLE
+NX_J11_ALLOW_MUTATION=YES
+NX_J11_EXPECTED_PART_NUMBER=<exact disposable item>
+NX_J11_EXPECTED_REVISION=<exact revision>
+NX_J11_ATTRIBUTE=<one title from the business allowlist>
+NX_J11_TEST_VALUE=<temporary non-blank value>
+```
 
-- unapproved or incomplete approval evidence;
-- part-only or wrong-revision matches;
-- wrong target/category/title/type;
-- blank expected values;
-- stale audited raw values;
-- MASTER/BOM authority;
-- non-writable, locked, system-owned, PDM-based or read-only fields;
-- physical, identity, material or dimension changes.
+It verifies this sequence:
 
-Approved writes use the NX attribute builder with category and type. Changes
-are grouped per target under an undo mark. A failed write or reread verification
-rolls back that target and prevents its save. When saving is eventually
-enabled, each verified changed target is saved once with component saving
-disabled. A save failure stops later saves and leaves the affected target open
-and visibly modified with recovery details.
+1. Match the exact active master part and capture the original value.
+2. Explicitly check out the part and prove it is writable.
+3. Write, reread, and save the temporary value.
+4. Reopen and verify persistence.
+5. Restore, reread, and save the original value.
+6. Reopen and verify restoration.
+7. Leave the part checked out for review.
 
-Preloaded parts remain open. Journal-opened parts close only after unchanged
-processing or a confirmed successful save. Any target with uncertain rollback
-or unsaved changes remains open.
+Evidence is written to `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json`. If
+restoration cannot be proven, the result is `RESTORATION_REQUIRED`; leave the
+item checked out and restore it manually before further work.
 
-## 8. Inputs, templates and overrides
+If the deployed Python binding does not expose a proven explicit checkout
+path, Journal 05 must require manual checkout. It must never fall back to
+implicit autolock.
 
-Default files under `NX_JOURNALS_IO_DIR` (Desktop when unset):
+## Acceptance
 
-| Input | Required | Override |
-|---|---:|---|
-| `NX_DRAWING_SCOPE.csv` | J04 certification | `NX_DRAWING_SCOPE_FILE` |
-| `NX_ATTRIBUTE_MASTER_REFERENCE.csv` | No | `NX_ATTRIBUTE_MASTER_FILE` |
-| `NX_ATTRIBUTE_CORRECTIONS.csv` | J05 DRY/APPLY | `NX_ATTRIBUTE_CORRECTIONS_FILE` |
+Repository tests cover mapping parity, prototype-only reads, unique-prototype
+pulls, whole-row approval, protected identities, blanks and controlled values,
+stale baselines, checkout failure, no-save behavior, rollback, verification,
+save handling, and Journal 11 mutation guards.
 
-Templates are kept in `from_git/templates`. Close Excel before running a
-journal so the CSV is not locked.
+Runtime acceptance requires:
 
-## 9. Evidence case
-
-`264MN025450A01/A` is the fail-closed evidence case. Its current identity and
-material evidence is expected to pass, while `TBC` commodity, country and
-export-control values (and any other configured placeholder) must prevent
-certified BOM output. The inspected source snapshot is local evidence only and
-is not versioned.
-
-## 10. Acceptance gates
-
-Static acceptance in this repository covers:
-
-- JSON schema and sensitive-evidence separation;
-- typed normalization, placeholders and controlled values;
-- hierarchy, per-parent quantities, repeated subtrees and suppression;
-- transformed bounding-box behavior;
-- drawing scope and MASTER drift;
-- J04 mutation/save-call absence;
-- J05 approval, stale-value, prohibited-field, rollback, verification and save behavior with fakes;
-- J07 byte equality with protected commit `6fe58f7`.
-
-NX 2312 runtime acceptance remains user-confirmed:
-
-1. Run J09 and confirm canonical drawing open and state restoration.
-2. Run single-part J04 on `264MN025450A01/A`; placeholders must block certification.
-3. Run J04 on a fully compliant item; certified FZ-compatible output must be created.
-4. Run full-HLA J04 and validate hierarchy, per-parent quantities, drawings and dimensions.
-5. Exercise J05 `PULL`, `DRY_RUN`, approved, unapproved and stale cases.
-6. On a user-supplied disposable Teamcenter item, prove reversible write, reread, save, reopen and restoration.
-7. Only after explicit approval, change `save_policy` to `SAVE_CHANGED_PARTS`.
-8. Rerun J04, J09 and J07 PDF/STEP regressions. Certified output must contain no mismatches.
-
-Static success is not NX runtime proof. Until gate 6 is confirmed, the
-versioned configuration must remain `NO_SAVE`.
+1. Run J04 on a representative assembly and review its CSV/sidecar.
+2. Edit one disposable business field and run J05 `DRY_RUN`.
+3. Run Journal 11 `PROBE`.
+4. Run Journal 11 `FULL_REVERSIBLE` on the explicitly guarded disposable item.
+5. Confirm temporary persistence, original-value restoration, and that the
+   item remains checked out.
+6. Only then enable `SAVE_CHANGED_PARTS` and rerun J05 on a controlled case.
+7. Re-export Extended BOM and confirm the saved business value is present.

@@ -20,26 +20,39 @@ Available production journals:
 01_hla_step_export.py          Active work part STEP export
 02_hla_multilevel_bom.py       Multilevel assembly BOM CSV
 03_batch_drawing_pdf.py        Assembly drawing PDF batch export
-04_assembly_attribute_audit.py Assembly attribute audit reports
-05_bulk_attribute_updater.py   Pull/push attribute CSV workflow
+04_assembly_attribute_audit.py Read-only 3D model business-attribute pull
+05_bulk_attribute_updater.py   Approved CSV update + checkout workflow
 06_auto_pdf_step_export.py     Active work part STEP + drawing PDF export
 07_datapack_pdf_step_export.py DataPack-controlled assembly PDF + STEP export
 08_list_loaded_drawings.py     Loaded-drawing Teamcenter identity probe
 09_test_teamcenter_specification_open.py Closed-drawing specification-open test
 10_test_step_export.py         STEP export and body-validation diagnostic
+11_test_teamcenter_attribute_checkout.py Guarded checkout/save acceptance
 ```
 
-`05_bulk_attribute_updater.py` is intentionally self-contained to avoid NX2312
-package/import path problems. The J02/J04/J05 reconciliation workflow reads
-`config/attribute_reconciliation.json`; its production save policy remains
-`NO_SAVE` until the disposable-item runtime gate is approved.
+J04, J05, and J11 are intentionally self-contained to avoid NX2312
+package/import path problems. They read
+`config/attribute_reconciliation.json`; J05 production saving remains
+`NO_SAVE` until the disposable-item Journal 11 runtime gate is approved.
 
-The other journals still use shared helpers from `utils`, so keep the full
-folder together if you run J01-J04.
+Other journals still use shared helpers from `utils`, so keep the full folder
+together.
 
-J04 also requires `NX_DRAWING_SCOPE.csv` in `NX_JOURNALS_IO_DIR` (or Desktop).
-If NX stages the selected journal outside this folder, set `NX_JOURNALS_ROOT`
-to the complete `from_git` folder or its repository parent before starting NX.
+J04 reads unique 3D master prototypes only. It produces one editable
+`NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json` sidecar. It does
+not inspect drawings, require drawing scope, certify a BOM, or modify NX.
+
+Set `NX_ATTRIBUTE_UPDATE_FILE` to the edited J04 CSV before running J05. Use
+`NX_J05_MODE=DRY_RUN` first. An approved row authorizes every changed business
+field on that row; identity, material, mass, dimensions, lifecycle, and
+quantity cannot be changed. J05 rejects blank replacements and stale
+baselines.
+
+Before enabling `SAVE_CHANGED_PARTS`, run J11 in its default read-only `PROBE`
+mode and then `FULL_REVERSIBLE` on an explicitly identified disposable item.
+J05 explicitly checks out all affected prototypes before writing, aborts
+without attribute changes if any checkout fails, leaves successful checkouts
+checked out for review, and never performs check-in.
 
 J06 also uses the shared helpers from `utils`. It writes the active work part
 STEP file and active-part drawing PDF files to `NX_JOURNALS_IO_DIR` when set,

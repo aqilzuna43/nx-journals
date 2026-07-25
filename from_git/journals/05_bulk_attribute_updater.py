@@ -1,105 +1,63 @@
-"""Journal 05 - Controlled NX/Teamcenter attribute correction.
+"""Journal 05 - approved business-attribute updates for 3D master models.
 
-Self-contained for NX 2312 deployment.  Modes are selected with NX_J05_MODE:
-PULL, DRY_RUN (default), or APPLY_APPROVED.  MASTER/BOM values are never an
-authoritative correction source.
+Input is the wide CSV emitted by Journal 04 plus its .baseline.json sidecar.
+DRY_RUN is always non-mutating. APPLY_APPROVED requires APPROVED=YES, a clean
+stale-value preflight, explicit Teamcenter checkout, verification, and the
+SAVE_CHANGED_PARTS configuration gate.
 """
 
 import csv
 import json
 import os
-import sys
 import traceback
 from collections import OrderedDict
 from datetime import datetime
 
 import NXOpen
-import NXOpen.UF
 
 
-CORRECTION_COLUMNS = [
-    "APPROVED",
-    "PART_NUMBER",
-    "REVISION",
-    "TARGET_OBJECT",
-    "DRAWING_INDEX",
-    "CATEGORY",
-    "NX_ATTRIBUTE_NAME",
-    "NX_ATTRIBUTE_TYPE",
-    "CURRENT_VALUE_FROM_AUDIT",
-    "EXPECTED_VALUE",
-    "AUTHORITATIVE_SOURCE",
+CONTROL_COLUMNS = [
     "AUDIT_RUN_ID",
+    "APPROVED",
     "ENGINEER",
-    "EVIDENCE_REFERENCE",
     "APPROVAL_NOTE",
+    "PULL_STATUS",
+    "PULL_MESSAGE",
 ]
+VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
 REPORT_COLUMNS = [
     "RUN_TIMESTAMP",
     "MODE",
     "AUDIT_RUN_ID",
+    "CSV_ROW",
     "PART_NUMBER",
     "REVISION",
-    "TARGET_OBJECT",
-    "DRAWING_INDEX",
     "TARGET_IDENTIFIER",
+    "CSV_COLUMN",
     "LOGICAL_ATTRIBUTE",
     "CATEGORY",
     "NX_ATTRIBUTE_NAME",
     "NX_ATTRIBUTE_TYPE",
-    "AUDITED_CURRENT_VALUE",
+    "BASELINE_VALUE",
     "ACTUAL_CURRENT_VALUE",
     "EXPECTED_VALUE",
-    "AUTHORITATIVE_SOURCE",
     "APPROVED",
     "ENGINEER",
-    "EVIDENCE_REFERENCE",
     "ACTION",
+    "CHECKOUT_BEFORE",
+    "CHECKOUT_ACTION",
+    "CHECKOUT_RESULT",
+    "READ_ONLY_BEFORE",
+    "READ_ONLY_AFTER",
     "WRITE_ATTEMPTED",
     "ROLLBACK_RESULT",
     "REREAD_VALUE",
     "VERIFICATION_RESULT",
     "SAVE_RESULT",
+    "NX_EXCEPTION_TYPE",
+    "NX_ERROR_CODE",
     "MESSAGE",
 ]
-PULL_COLUMNS = [
-    "RUN_TIMESTAMP",
-    "PART_NUMBER",
-    "REVISION",
-    "TARGET_OBJECT",
-    "DRAWING_INDEX",
-    "TARGET_IDENTIFIER",
-    "LOGICAL_ATTRIBUTE",
-    "CATEGORY",
-    "NX_ATTRIBUTE_NAME",
-    "NX_ATTRIBUTE_TYPE",
-    "ATTRIBUTE_STATUS",
-    "RAW_VALUE",
-    "NORMALIZED_VALUE",
-    "LOCKED",
-    "OWNED_BY_SYSTEM",
-    "PDM_BASED",
-    "NOT_SAVED",
-]
-VALID_MODES = ("PULL", "DRY_RUN", "APPLY_APPROVED")
-VALID_SOURCES = ("ENGINEERING_APPROVAL", "MODEL")
-PROTECTED_LOGICAL_WRITES = {
-    "part_number",
-    "revision",
-    "part_name",
-    "part_description",
-    "part_type",
-    "reference_set",
-    "mass_kg",
-    "volume_mm3",
-    "density_kg_per_mm3",
-    "material",
-    "material_missing_assignments",
-    "material_multiple_assigned",
-    "length_x_mm",
-    "width_y_mm",
-    "height_z_mm",
-}
 
 
 def _text(value):
@@ -110,184 +68,252 @@ def _clean(value):
     return _text(value).strip()
 
 
-def _normalized_text(value):
+def _normalized(value):
     return " ".join(_clean(value).split()).upper()
 
 
 def _enum_name(value):
-    name = getattr(value, "name", None)
-    return str(name) if name else _text(value).rsplit(".", 1)[-1]
-
-
-def _session():
-    return NXOpen.Session.GetSession()
-
-
-def _listing_window(session):
-    window = session.ListingWindow
-    window.Open()
-    return window
-
-
-def _log(session, message):
-    window = _listing_window(session)
-    for line in _text(message).splitlines() or [""]:
-        print(line)
-        window.WriteFullline(line)
-
-
-def _exception_details(error):
-    code = getattr(error, "ErrorCode", None)
-    if code is None:
-        return "{0}: {1}".format(type(error).__name__, error)
-    return "{0}: {1} (ErrorCode={2})".format(type(error).__name__, error, code)
-
-
-def _journal_path():
-    try:
-        return os.path.abspath(__file__)
-    except Exception:
+    if value is None:
         return ""
-
-
-def _runtime_root():
-    path = _journal_path()
-    return os.path.dirname(os.path.dirname(path)) if path else os.getcwd()
-
-
-def _desktop():
-    profile = os.environ.get("USERPROFILE")
-    if profile:
-        return os.path.join(profile, "Desktop")
-    home = os.path.expanduser("~")
-    return os.path.join(home, "Desktop") if home and home != "~" else os.getcwd()
-
-
-def _io_root():
-    root = _clean(os.environ.get("NX_JOURNALS_IO_DIR")) or _desktop()
-    os.makedirs(root, exist_ok=True)
-    return root
-
-
-def _config_path():
-    return os.path.join(_runtime_root(), "config", "attribute_reconciliation.json")
-
-
-def _load_config():
-    path = _config_path()
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            config = json.load(handle)
-    except (OSError, ValueError) as exc:
-        raise RuntimeError("Unable to load reconciliation config {0}: {1}".format(path, exc))
-    if config.get("schema_version") != 1 or config.get("authority") != "NX_TEAMCENTER":
-        raise RuntimeError("Unsupported reconciliation config schema or authority.")
-    if config.get("save_policy") not in ("NO_SAVE", "SAVE_CHANGED_PARTS"):
-        raise RuntimeError("Invalid save_policy in reconciliation config.")
-    rules = config.get("attributes")
-    if not isinstance(rules, list) or not rules:
-        raise RuntimeError("Reconciliation config has no attribute rules.")
-    seen_logical = set()
-    seen_keys = set()
-    for rule in rules:
-        required = ("logical_name", "category", "attribute", "type", "source_owner")
-        if any(not _clean(rule.get(name)) for name in required):
-            raise RuntimeError("Malformed reconciliation attribute rule.")
-        key = (rule["category"], rule["attribute"])
-        if rule["logical_name"] in seen_logical or key in seen_keys:
-            raise RuntimeError("Duplicate reconciliation attribute rule.")
-        seen_logical.add(rule["logical_name"])
-        seen_keys.add(key)
-    return config
-
-
-def _write_csv(path, headers, rows):
-    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(headers)
-        for row in rows:
-            writer.writerow([row.get(header, "") for header in headers])
-    return path
-
-
-def _read_csv(path):
-    last_error = None
-    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
-        try:
-            with open(path, "r", encoding=encoding, newline="") as handle:
-                reader = csv.DictReader(handle)
-                if reader.fieldnames is None:
-                    raise RuntimeError("CSV has no header row: {0}".format(path))
-                headers = [_clean(name) for name in reader.fieldnames]
-                missing = [name for name in CORRECTION_COLUMNS if name not in headers]
-                if missing:
-                    raise RuntimeError("Correction CSV missing columns: {0}".format(", ".join(missing)))
-                rows = []
-                for row_number, source in enumerate(reader, 2):
-                    row = {_clean(key): _clean(value) for key, value in source.items() if key is not None}
-                    if not any(row.values()):
-                        continue
-                    row["__ROW_NUMBER__"] = row_number
-                    rows.append(row)
-                return rows
-        except UnicodeDecodeError as exc:
-            last_error = exc
-    raise RuntimeError("Unable to decode correction CSV: {0}".format(last_error))
+    name = getattr(value, "name", None)
+    return _text(name if name is not None else value).split(".")[-1]
 
 
 def _dispose(value):
     if value is None:
         return
-    for name in ("Destroy", "Dispose", "FreeResource"):
-        try:
-            getattr(value, name)()
+    for name in ("Dispose", "FreeResource"):
+        method = getattr(value, name, None)
+        if callable(method):
+            try:
+                method()
+            except Exception:
+                pass
             return
-        except Exception:
-            pass
 
 
-def _unwrap(value):
-    if isinstance(value, tuple):
-        first = value[0] if value else None
-        for extra in value[1:]:
-            _dispose(extra)
-        return first
-    return value
+def _exception_fields(error):
+    return type(error).__name__, _text(getattr(error, "ErrorCode", ""))
 
 
-def _object_identifier(nx_object):
-    for name in ("JournalIdentifier", "FullPath", "Leaf", "Name"):
+def _exception_details(error):
+    exception_type, error_code = _exception_fields(error)
+    code = ": {0}".format(error_code) if error_code else ""
+    return "{0}{1} - {2}".format(exception_type, code, _text(error))
+
+
+def _journal_path():
+    return os.path.abspath(__file__)
+
+
+def _runtime_candidates():
+    script_parent = os.path.dirname(_journal_path())
+    configured = _clean(os.environ.get("NX_JOURNALS_ROOT"))
+    candidates = [
+        configured,
+        os.path.join(configured, "from_git") if configured else "",
+        os.path.dirname(script_parent),
+        os.getcwd(),
+        os.path.join(os.getcwd(), "from_git"),
+    ]
+    result = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        absolute = os.path.abspath(candidate)
+        if absolute not in result:
+            result.append(absolute)
+    return result
+
+
+def _runtime_root():
+    attempted = []
+    for candidate in _runtime_candidates():
+        attempted.append(candidate)
+        if os.path.isfile(
+            os.path.join(candidate, "config", "attribute_reconciliation.json")
+        ):
+            return candidate
+    raise RuntimeError(
+        "Journal 05 configuration was not found. Deploy config beside journals "
+        "or set NX_JOURNALS_ROOT. Attempted: {0}".format(
+            " | ".join(attempted)
+        )
+    )
+
+
+def _io_root():
+    configured = _clean(os.environ.get("NX_JOURNALS_IO_DIR"))
+    if configured:
+        return os.path.abspath(configured)
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    return desktop if os.path.isdir(desktop) else os.getcwd()
+
+
+def _load_config():
+    path = os.path.join(
+        _runtime_root(), "config", "attribute_reconciliation.json"
+    )
+    with open(path, "r", encoding="utf-8-sig") as handle:
+        config = json.load(handle)
+    if config.get("authority") != "NX_TEAMCENTER":
+        raise RuntimeError("Unsupported reconciliation authority.")
+    workflow = config.get("update_workflow", {})
+    if workflow.get("schema_version") != 1:
+        raise RuntimeError("Unsupported or missing update_workflow schema.")
+    if config.get("save_policy") not in (
+        "NO_SAVE",
+        "SAVE_CHANGED_PARTS",
+    ):
+        raise RuntimeError("Invalid save_policy.")
+    _business_specs(config)
+    _identity_specs(config)
+    return config
+
+
+def _rule_map(config):
+    return {
+        rule["logical_name"]: rule for rule in config.get("attributes", [])
+    }
+
+
+def _mapped_specs(config, key):
+    rules = _rule_map(config)
+    specs = []
+    seen = set()
+    for mapping in config["update_workflow"][key]:
+        column = _clean(mapping.get("csv_column"))
+        logical_name = _clean(mapping.get("logical_name"))
+        rule = rules.get(logical_name)
+        if not column or rule is None:
+            raise RuntimeError(
+                "Invalid {0} mapping: {1}".format(key, logical_name)
+            )
+        if column in seen:
+            raise RuntimeError("Duplicate update CSV column: " + column)
+        seen.add(column)
+        specs.append((column, rule))
+    return specs
+
+
+def _identity_specs(config):
+    return _mapped_specs(config, "identity_columns")
+
+
+def _business_specs(config):
+    specs = _mapped_specs(config, "business_columns")
+    for _column, rule in specs:
+        if (
+            not rule.get("writable")
+            or "MODEL" not in rule.get("write_targets", [])
+        ):
+            raise RuntimeError(
+                "Business mapping is not model-writable: {0}".format(
+                    rule["logical_name"]
+                )
+            )
+    return specs
+
+
+def update_columns(config):
+    return (
+        list(CONTROL_COLUMNS)
+        + [column for column, _rule in _identity_specs(config)]
+        + [column for column, _rule in _business_specs(config)]
+    )
+
+
+def _read_csv(path, config):
+    required = update_columns(config)
+    last_error = None
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
         try:
-            value = _clean(getattr(nx_object, name))
-            if value:
-                return value
-        except Exception:
-            pass
-    return ""
+            with open(path, "r", encoding=encoding, newline="") as handle:
+                reader = csv.DictReader(handle)
+                headers = [_clean(name) for name in (reader.fieldnames or [])]
+                missing = [
+                    column for column in required if column not in headers
+                ]
+                if missing:
+                    raise RuntimeError(
+                        "Update CSV is missing columns: {0}".format(
+                            ", ".join(missing)
+                        )
+                    )
+                rows = []
+                for row_number, source in enumerate(reader, 2):
+                    row = {
+                        _clean(key): _clean(value)
+                        for key, value in source.items()
+                        if key is not None
+                    }
+                    row["_CSV_ROW"] = row_number
+                    rows.append(row)
+                return rows
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    raise RuntimeError(
+        "Unable to decode update CSV: {0}".format(last_error or path)
+    )
 
 
-def _object_key(nx_object):
-    try:
-        tag = getattr(nx_object, "Tag")
-        if tag:
-            return ("TAG", str(tag))
-    except Exception:
-        pass
-    return ("ID", _object_identifier(nx_object) or str(id(nx_object)))
+def _baseline_path(csv_path):
+    return os.path.splitext(csv_path)[0] + ".baseline.json"
+
+
+def _load_baseline(csv_path):
+    path = _baseline_path(csv_path)
+    if not os.path.isfile(path):
+        raise RuntimeError(
+            "Journal 04 baseline sidecar not found: {0}".format(path)
+        )
+    with open(path, "r", encoding="utf-8-sig") as handle:
+        baseline = json.load(handle)
+    if baseline.get("schema_version") != 1:
+        raise RuntimeError("Unsupported Journal 04 baseline schema.")
+    return baseline, path
+
+
+def _baseline_contract(config, key):
+    return [
+        {
+            "csv_column": column,
+            "logical_name": rule["logical_name"],
+            "category": rule["category"],
+            "attribute": rule["attribute"],
+            "type": rule["type"],
+        }
+        for column, rule in _mapped_specs(config, key)
+    ]
+
+
+def _validate_baseline_contract(baseline, config):
+    if baseline.get("identity_columns") != _baseline_contract(
+        config, "identity_columns"
+    ):
+        raise RuntimeError(
+            "Baseline identity mapping does not match the deployed config."
+        )
+    if baseline.get("business_columns") != _baseline_contract(
+        config, "business_columns"
+    ):
+        raise RuntimeError(
+            "Baseline business mapping does not match the deployed config."
+        )
 
 
 def _attribute_value(info):
     kind = _enum_name(getattr(info, "Type", ""))
-    field = {
-        "String": "StringValue",
-        "Real": "RealValue",
-        "Number": "RealValue",
-        "Integer": "IntegerValue",
-        "Boolean": "BooleanValue",
-        "Time": "TimeValue",
-        "Reference": "ReferenceValue",
-    }.get(kind)
-    return (getattr(info, field, "") if field else ""), kind
+    numeric_kind = getattr(info, "Type", None)
+    if kind in ("String", "5") or numeric_kind == 5:
+        return getattr(info, "StringValue", ""), "String"
+    if kind in ("Real", "Number", "4") or numeric_kind == 4:
+        return getattr(info, "RealValue", None), "Number"
+    if kind in ("Integer", "3") or numeric_kind == 3:
+        return getattr(info, "IntegerValue", None), "Integer"
+    if kind in ("Boolean", "1") or numeric_kind == 1:
+        return getattr(info, "BooleanValue", None), "Boolean"
+    return getattr(info, "StringValue", ""), kind or "String"
 
 
 def _read_attribute(nx_object, rule):
@@ -297,27 +323,43 @@ def _read_attribute(nx_object, rule):
         iterator.SetIncludeOnlyCategory(rule["category"])
         iterator.SetIncludeOnlyTitle(rule["attribute"])
         iterator.SetIncludeAlsoUnset(True)
-        infos = list(nx_object.GetUserAttributes(iterator))
         matches = [
             info
-            for info in infos
+            for info in nx_object.GetUserAttributes(iterator)
             if _clean(getattr(info, "Category", "")) == rule["category"]
             and _clean(getattr(info, "Title", "")) == rule["attribute"]
         ]
         if not matches:
-            return {"status": "MISSING", "raw": "", "type": rule["type"], "flags": {}}
+            return {
+                "status": "MISSING",
+                "raw": "",
+                "type": rule["type"],
+                "flags": {},
+            }
         if len(matches) > 1:
-            return {"status": "AMBIGUOUS", "raw": "", "type": rule["type"], "flags": {}}
+            return {
+                "status": "AMBIGUOUS",
+                "raw": "",
+                "type": rule["type"],
+                "flags": {},
+                "message": "Multiple category/title matches.",
+            }
         info = matches[0]
-        raw, kind = _attribute_value(info)
-        unset = bool(getattr(info, "Unset", False))
+        raw, actual_type = _attribute_value(info)
+        status = (
+            "UNSET"
+            if bool(getattr(info, "Unset", False))
+            else ("BLANK" if _clean(raw) == "" else "POPULATED")
+        )
         return {
-            "status": "UNSET" if unset else ("BLANK" if _clean(raw) == "" else "POPULATED"),
+            "status": status,
             "raw": raw,
-            "type": kind,
+            "type": actual_type,
             "flags": {
                 "locked": bool(getattr(info, "Locked", False)),
-                "owned_by_system": bool(getattr(info, "OwnedBySystem", False)),
+                "owned_by_system": bool(
+                    getattr(info, "OwnedBySystem", False)
+                ),
                 "pdm_based": bool(getattr(info, "PdmBased", False)),
                 "not_saved": bool(getattr(info, "NotSaved", False)),
             },
@@ -326,7 +368,7 @@ def _read_attribute(nx_object, rule):
         return {
             "status": "UNREADABLE",
             "raw": "",
-            "type": rule["type"],
+            "type": rule.get("type", ""),
             "flags": {},
             "message": _exception_details(exc),
         }
@@ -334,394 +376,551 @@ def _read_attribute(nx_object, rule):
         _dispose(iterator)
 
 
-def _normalize(value, rule, config):
-    raw = _clean(value)
-    mode = rule.get("comparison", "NORMALIZED_TEXT")
-    if mode == "EXACT":
-        return raw
-    if mode == "NUMBER":
-        try:
-            return format(float(raw), ".15g") if raw else ""
-        except (TypeError, ValueError):
-            return raw
-    if mode == "BOOLEAN_ALIAS":
-        upper = raw.upper()
-        for canonical, aliases in config.get("release_policy", {}).get("boolean_aliases", {}).items():
-            if upper in {_clean(alias).upper() for alias in aliases}:
-                return canonical
-        return upper
-    if mode == "TRIMMED_CASE_INSENSITIVE":
-        return raw.upper()
-    return _normalized_text(raw)
-
-
-def _validate_expected(value, rule, config):
-    normalized = _normalize(value, rule, config)
-    placeholders = {
-        _normalized_text(item)
-        for item in config.get("release_policy", {}).get("placeholder_values", [])
-    }
-    if _normalized_text(value) in placeholders:
-        return "Expected value is blank or a configured placeholder."
-    allowed = rule.get("allowed_values") or []
-    if allowed and normalized not in {_normalize(item, rule, config) for item in allowed}:
-        return "Expected value is outside the configured controlled vocabulary."
-    if rule.get("validation") == "GREATER_THAN_ZERO":
-        try:
-            if float(value) <= 0:
-                raise ValueError()
-        except (TypeError, ValueError):
-            return "Expected value must be numeric and greater than zero."
-    return ""
-
-
-def _root_component(part):
+def _read_identity_attribute(nx_object, rule):
+    """Read hard-coded NX/CAD identity by title, independent of category."""
     try:
-        return part.ComponentAssembly.RootComponent
+        raw = nx_object.GetStringAttribute(rule["attribute"])
+        return {
+            "status": "BLANK" if _clean(raw) == "" else "POPULATED",
+            "raw": raw,
+            "type": "String",
+            "flags": {},
+        }
+    except AttributeError:
+        return _read_attribute(nx_object, rule)
     except Exception:
-        return None
+        fallback = _read_attribute(nx_object, rule)
+        return fallback
 
 
-def _traverse(component):
-    if component is None:
-        return
-    for child in component.GetChildren():
-        try:
-            suppressed = bool(child.IsSuppressed)
-        except Exception:
-            suppressed = False
-        if suppressed:
-            continue
-        yield child
-        yield from _traverse(child)
+def _object_key(nx_object):
+    tag = getattr(nx_object, "Tag", None)
+    return ("TAG", _text(tag)) if tag is not None else ("PY", id(nx_object))
+
+
+def _object_identifier(nx_object):
+    for name in ("JournalIdentifier", "FullPath", "Name", "Leaf"):
+        value = getattr(nx_object, name, "")
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = ""
+        if _clean(value):
+            return _clean(value)
+    return _text(_object_key(nx_object))
+
+
+def _children(component):
+    try:
+        return list(component.GetChildren())
+    except Exception:
+        return []
+
+
+def _is_suppressed(component):
+    try:
+        return bool(component.IsSuppressed)
+    except Exception:
+        return False
 
 
 def _unique_model_parts(work_part):
-    result = []
-    seen = set()
+    unique = OrderedDict()
 
     def add(part):
-        if part is None:
-            return
-        key = _object_key(part)
-        if key not in seen:
-            seen.add(key)
-            result.append(part)
+        if part is not None:
+            unique.setdefault(_object_key(part), part)
 
     add(work_part)
-    for component in _traverse(_root_component(work_part)):
-        try:
-            add(component.Prototype)
-        except Exception:
-            pass
-    return result
-
-
-def _rule_map(config):
-    return {rule["logical_name"]: rule for rule in config["attributes"]}
-
-
-def _identity(part, rule_map):
-    pn = _clean(_read_attribute(part, rule_map["part_number"])["raw"])
-    rev = _clean(_read_attribute(part, rule_map["revision"])["raw"])
-    return pn, rev
-
-
-def _model_index(work_part, rule_map):
-    by_identity = {}
-    by_part_number = {}
-    for part in _unique_model_parts(work_part):
-        pn, rev = _identity(part, rule_map)
-        if not pn:
-            continue
-        by_identity.setdefault((_normalized_text(pn), _normalized_text(rev)), []).append(part)
-        by_part_number.setdefault(_normalized_text(pn), set()).add(_normalized_text(rev))
-    return by_identity, by_part_number
-
-
-def _loaded_parts(session):
-    try:
-        return list(session.Parts)
-    except Exception:
-        try:
-            return list(session.Parts.ToArray())
-        except Exception:
-            return []
-
-
-def _drawing_identifier(config, pn, rev, index):
-    return config["drawing"]["identifier_template"].format(
-        part_number=pn, revision=rev, index=index
+    root = getattr(
+        getattr(work_part, "ComponentAssembly", None), "RootComponent", None
     )
-
-
-def _find_loaded(session, identifier):
-    expected = _normalized_text(identifier)
-    for part in _loaded_parts(session):
-        if _normalized_text(_object_identifier(part)) == expected:
-            return part
-    return None
-
-
-def _open_drawing(session, config, pn, rev, index):
-    identifier = _drawing_identifier(config, pn, rev, index)
-    part = _find_loaded(session, identifier)
-    if part is not None:
-        return part, False, ""
-    try:
-        part = _unwrap(session.Parts.OpenDisplay(identifier))
-        if part is None:
-            return None, False, "OpenDisplay returned no part."
-        if _normalized_text(_object_identifier(part)) != _normalized_text(identifier):
-            return part, True, "OpenDisplay returned a different JournalIdentifier."
-        return part, True, ""
-    except Exception as exc:
-        return None, False, _exception_details(exc)
-
-
-def _close_part(part):
-    try:
-        part.Close(
-            NXOpen.BasePart.CloseWholeTree.FalseValue,
-            NXOpen.BasePart.CloseModified.CloseModified,
-            None,
-        )
-        return ""
-    except Exception as exc:
-        return _exception_details(exc)
-
-
-def _restore(session, display, work):
-    errors = []
-    if display is not None:
-        try:
-            _dispose(session.Parts.SetDisplay(display, False, True))
-        except Exception as exc:
-            errors.append("Display restore failed: " + _exception_details(exc))
-    if work is not None:
-        try:
-            session.Parts.SetWork(work)
-        except Exception as exc:
-            errors.append("Work-part restore failed: " + _exception_details(exc))
-    return errors
-
-
-def _drawing_scope(config):
-    default_name = config["inputs"]["drawing_scope_filename"]
-    path = _clean(os.environ.get("NX_DRAWING_SCOPE_FILE")) or os.path.join(_io_root(), default_name)
-    if not os.path.exists(path):
-        return {}
-    scope = {}
-    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
-        try:
-            with open(path, "r", encoding=encoding, newline="") as handle:
-                for row in csv.DictReader(handle):
-                    pn = _normalized_text(row.get("Item Number"))
-                    rev = _normalized_text(row.get("Item Rev"))
-                    decision = _normalized_text(row.get("Drawing Required"))
-                    if decision in ("Y", "TRUE", "1"):
-                        decision = "YES"
-                    if decision in ("N", "FALSE", "0"):
-                        decision = "NO"
-                    if decision in ("YES", "NO"):
-                        scope[(pn, rev)] = decision
-            return scope
-        except UnicodeDecodeError:
+    if root is None:
+        return list(unique.values())
+    stack = list(reversed(_children(root)))
+    while stack:
+        component = stack.pop()
+        if _is_suppressed(component):
             continue
-    return {}
+        add(getattr(component, "Prototype", None))
+        stack.extend(reversed(_children(component)))
+    return list(unique.values())
 
 
-def _base_report(timestamp, mode, row):
+def _model_index(work_part, config):
+    identity = {
+        rule["logical_name"]: rule for _column, rule in _identity_specs(config)
+    }
+    by_identity = {}
+    for part in _unique_model_parts(work_part):
+        part_number = _clean(
+            _read_identity_attribute(part, identity["part_number"])["raw"]
+        )
+        revision = _clean(
+            _read_identity_attribute(part, identity["revision"])["raw"]
+        )
+        if part_number and revision:
+            by_identity.setdefault(
+                (_normalized(part_number), _normalized(revision)), []
+            ).append(part)
+    return by_identity
+
+
+def _normalize_for_rule(value, rule, config):
+    comparison = _normalized(rule.get("comparison"))
+    if comparison == "BOOLEAN_ALIAS":
+        aliases = config.get("release_policy", {}).get(
+            "boolean_aliases", {}
+        )
+        normalized = _normalized(value)
+        for canonical, candidates in aliases.items():
+            if normalized in [_normalized(item) for item in candidates]:
+                return _normalized(canonical)
+    if comparison == "NUMBER":
+        try:
+            return "{0:.15g}".format(float(value))
+        except (TypeError, ValueError):
+            return _clean(value)
+    if comparison in (
+        "TRIMMED_CASE_INSENSITIVE",
+        "NORMALIZED_TEXT",
+        "BOOLEAN_ALIAS",
+    ):
+        return _normalized(value)
+    return _clean(value)
+
+
+def _validate_expected(value, rule, config):
+    if _clean(value) == "":
+        return "Populated-to-blank updates are not supported."
+    kind = _normalized(rule.get("type"))
+    if kind in ("NUMBER", "REAL"):
+        try:
+            float(value)
+        except ValueError:
+            return "Expected value is not a valid number."
+    elif kind == "INTEGER":
+        try:
+            int(value)
+        except ValueError:
+            return "Expected value is not a valid integer."
+    allowed = rule.get("allowed_values")
+    if allowed:
+        expected = _normalize_for_rule(value, rule, config)
+        allowed_normalized = [
+            _normalize_for_rule(item, rule, config) for item in allowed
+        ]
+        if expected not in allowed_normalized:
+            return "Expected value is outside the controlled value set."
+    return ""
+
+
+def _approved(row):
+    return _normalized(row.get("APPROVED")) in ("YES", "Y", "TRUE", "1")
+
+
+def _base_report(timestamp, mode, row, baseline_part=None):
+    baseline_part = baseline_part or {}
     return {
+        column: "" for column in REPORT_COLUMNS
+    } | {
         "RUN_TIMESTAMP": timestamp,
         "MODE": mode,
         "AUDIT_RUN_ID": row.get("AUDIT_RUN_ID", ""),
-        "PART_NUMBER": row.get("PART_NUMBER", ""),
-        "REVISION": row.get("REVISION", ""),
-        "TARGET_OBJECT": row.get("TARGET_OBJECT", ""),
-        "DRAWING_INDEX": row.get("DRAWING_INDEX", ""),
-        "TARGET_IDENTIFIER": "",
-        "LOGICAL_ATTRIBUTE": "",
-        "CATEGORY": row.get("CATEGORY", ""),
-        "NX_ATTRIBUTE_NAME": row.get("NX_ATTRIBUTE_NAME", ""),
-        "NX_ATTRIBUTE_TYPE": row.get("NX_ATTRIBUTE_TYPE", ""),
-        "AUDITED_CURRENT_VALUE": row.get("CURRENT_VALUE_FROM_AUDIT", ""),
-        "ACTUAL_CURRENT_VALUE": "",
-        "EXPECTED_VALUE": row.get("EXPECTED_VALUE", ""),
-        "AUTHORITATIVE_SOURCE": row.get("AUTHORITATIVE_SOURCE", ""),
+        "CSV_ROW": row.get("_CSV_ROW", ""),
+        "PART_NUMBER": baseline_part.get(
+            "part_number", row.get("Item Number", "")
+        ),
+        "REVISION": baseline_part.get(
+            "revision", row.get("Item Rev", "")
+        ),
         "APPROVED": row.get("APPROVED", ""),
         "ENGINEER": row.get("ENGINEER", ""),
-        "EVIDENCE_REFERENCE": row.get("EVIDENCE_REFERENCE", ""),
-        "ACTION": "ERROR",
         "WRITE_ATTEMPTED": "NO",
-        "ROLLBACK_RESULT": "NOT_REQUIRED",
-        "REREAD_VALUE": "",
-        "VERIFICATION_RESULT": "NOT_RUN",
-        "SAVE_RESULT": "NOT_RUN",
-        "MESSAGE": "",
     }
 
 
-def _resolve_rule(row, config):
-    matches = [
-        rule
-        for rule in config["attributes"]
-        if rule["category"] == row["CATEGORY"] and rule["attribute"] == row["NX_ATTRIBUTE_NAME"]
-    ]
-    if len(matches) != 1:
-        return None, "Correction does not resolve to exactly one configured category/title rule."
-    rule = matches[0]
-    if _normalized_text(row["NX_ATTRIBUTE_TYPE"]) != _normalized_text(rule["type"]):
-        return None, "Correction attribute type does not match configuration."
-    return rule, ""
+def _baseline_index(baseline):
+    result = {}
+    for part in baseline.get("parts", []):
+        key = (
+            _normalized(part.get("part_number")),
+            _normalized(part.get("revision")),
+        )
+        result.setdefault(key, []).append(part)
+    return result
 
 
-def _resolve_target(session, row, config, model_by_identity, revisions, opened):
-    pn_key = _normalized_text(row["PART_NUMBER"])
-    rev_key = _normalized_text(row["REVISION"])
-    if row["TARGET_OBJECT"] == "MODEL":
-        matches = model_by_identity.get((pn_key, rev_key), [])
-        if len(matches) == 1:
-            return matches[0], False, "", ""
-        if len(matches) > 1:
-            return None, False, "AMBIGUOUS_MATCH", "Multiple loaded models match part/revision."
-        if pn_key in revisions:
-            return None, False, "SKIPPED_REVISION_MISMATCH", "Part is loaded at a different revision."
-        return None, False, "SKIPPED_TARGET_NOT_FOUND", "Exact model target was not found."
+def _read_only(part):
+    value = getattr(part, "IsReadOnly", None)
     try:
-        index = int(row["DRAWING_INDEX"])
-    except (TypeError, ValueError):
-        return None, False, "SKIPPED_TARGET_NOT_FOUND", "Drawing target requires a numeric DRAWING_INDEX."
-    if index < 1 or index > int(config["drawing"]["max_index"]):
-        return None, False, "SKIPPED_TARGET_NOT_FOUND", "DRAWING_INDEX is outside configured range."
-    target, newly_opened, error = _open_drawing(
-        session, config, row["PART_NUMBER"], row["REVISION"], index
-    )
-    if target is None:
-        return None, False, "SKIPPED_TARGET_NOT_FOUND", error
-    if newly_opened and _object_key(target) not in {_object_key(part) for part in opened}:
-        opened.append(target)
-    if error:
-        return target, newly_opened, "SKIPPED_TARGET_NOT_FOUND", error
-    return target, newly_opened, "", ""
+        value = value() if callable(value) else value
+    except Exception:
+        return None
+    return None if value is None else bool(value)
 
 
-def _validate_row(session, timestamp, mode, row, config, rule_map, model_by_identity, revisions, opened):
-    report = _base_report(timestamp, mode, row)
-    row["TARGET_OBJECT"] = _normalized_text(row["TARGET_OBJECT"])
-    row["AUTHORITATIVE_SOURCE"] = _normalized_text(row["AUTHORITATIVE_SOURCE"])
-    report["TARGET_OBJECT"] = row["TARGET_OBJECT"]
-    report["AUTHORITATIVE_SOURCE"] = row["AUTHORITATIVE_SOURCE"]
-    if _normalized_text(row["APPROVED"]) != "YES":
-        report.update(ACTION="SKIPPED_NOT_APPROVED", MESSAGE="APPROVED must be exactly YES.")
-        return report, None
-    if row["TARGET_OBJECT"] not in ("MODEL", "DRAWING"):
-        report.update(ACTION="SKIPPED_TARGET_NOT_FOUND", MESSAGE="TARGET_OBJECT must be MODEL or DRAWING.")
-        return report, None
-    if row["AUTHORITATIVE_SOURCE"] not in VALID_SOURCES:
-        report.update(
-            ACTION="ERROR",
-            MESSAGE="AUTHORITATIVE_SOURCE must be ENGINEERING_APPROVAL or MODEL; BOM/MASTER is prohibited.",
-        )
-        return report, None
-    if row["AUTHORITATIVE_SOURCE"] == "MODEL" and row["TARGET_OBJECT"] != "DRAWING":
-        report.update(ACTION="ERROR", MESSAGE="MODEL authority is valid only for a DRAWING target.")
-        return report, None
-    if not row["ENGINEER"] or not row["EVIDENCE_REFERENCE"] or not row["AUDIT_RUN_ID"]:
-        report.update(ACTION="ERROR", MESSAGE="ENGINEER, EVIDENCE_REFERENCE, and AUDIT_RUN_ID are required.")
-        return report, None
-    if row["EXPECTED_VALUE"] == "":
-        report.update(ACTION="ERROR", MESSAGE="Blank expected values are not supported.")
-        return report, None
-    rule, rule_error = _resolve_rule(row, config)
-    if rule is None:
-        report.update(ACTION="SKIPPED_NOT_WRITABLE", MESSAGE=rule_error)
-        return report, None
-    report["LOGICAL_ATTRIBUTE"] = rule["logical_name"]
-    if (
-        rule["logical_name"] in PROTECTED_LOGICAL_WRITES
-        or not rule.get("writable")
-        or row["TARGET_OBJECT"] not in rule.get("write_targets", [])
-    ):
-        report.update(ACTION="SKIPPED_NOT_WRITABLE", MESSAGE="Configuration prohibits this target/attribute write.")
-        return report, None
-    expected_error = _validate_expected(row["EXPECTED_VALUE"], rule, config)
-    if expected_error:
-        report.update(ACTION="ERROR", MESSAGE=expected_error)
-        return report, None
-    target, newly_opened, target_code, target_error = _resolve_target(
-        session, row, config, model_by_identity, revisions, opened
-    )
-    if target is None or target_code:
-        report.update(ACTION=target_code or "SKIPPED_TARGET_NOT_FOUND", MESSAGE=target_error)
-        return report, None
-    report["TARGET_IDENTIFIER"] = _object_identifier(target)
-    actual = _read_attribute(target, rule)
-    report["ACTUAL_CURRENT_VALUE"] = actual["raw"]
-    if actual["status"] in ("UNREADABLE", "AMBIGUOUS"):
-        report.update(ACTION="ERROR", MESSAGE=actual.get("message", actual["status"]))
-        return report, None
-    flags = actual.get("flags", {})
-    if flags.get("locked") or flags.get("owned_by_system") or flags.get("pdm_based"):
-        report.update(ACTION="SKIPPED_NOT_WRITABLE", MESSAGE="Runtime attribute flags prohibit writing.")
-        return report, None
-    if _text(actual["raw"]) != _text(row["CURRENT_VALUE_FROM_AUDIT"]):
-        report.update(ACTION="STALE_AUDIT_VALUE", MESSAGE="Current raw value differs from the audited raw value.")
-        return report, None
-    if row["AUTHORITATIVE_SOURCE"] == "MODEL":
-        models = model_by_identity.get(
-            (_normalized_text(row["PART_NUMBER"]), _normalized_text(row["REVISION"])), []
-        )
-        if len(models) != 1:
-            report.update(ACTION="SKIPPED_TARGET_NOT_FOUND", MESSAGE="Exact authoritative model was not found.")
-            return report, None
-        model_value = _read_attribute(models[0], rule)
-        if _normalize(model_value["raw"], rule, config) != _normalize(row["EXPECTED_VALUE"], rule, config):
-            report.update(ACTION="STALE_AUDIT_VALUE", MESSAGE="Expected value no longer matches the model authority.")
-            return report, None
-    if _normalize(actual["raw"], rule, config) == _normalize(row["EXPECTED_VALUE"], rule, config):
-        report.update(
-            ACTION="NO_CHANGE_ALREADY_MATCHES",
-            REREAD_VALUE=actual["raw"],
-            VERIFICATION_RESULT="PASS",
-            SAVE_RESULT="NOT_REQUIRED",
-            MESSAGE="Target already matches expected value.",
-        )
-        return report, None
-    report.update(
-        ACTION="PROPOSED_UPDATE",
-        MESSAGE="Approved correction passed preflight." if mode == "DRY_RUN" else "Ready to apply.",
-    )
-    return report, {
-        "source_row": row,
-        "report": report,
-        "rule": rule,
-        "target": target,
-        "newly_opened": newly_opened,
+def _managed_mode(session):
+    value = getattr(session, "IsManagedMode", False)
+    try:
+        value = value() if callable(value) else value
+    except Exception:
+        return False
+    return bool(value)
+
+
+def _checked_out_members(work_part):
+    assembly = getattr(work_part, "ComponentAssembly", None)
+    method = getattr(assembly, "GetCheckedoutStatusOfObjects", None)
+    if not callable(method):
+        return None, None, "API_UNAVAILABLE"
+    try:
+        result = method()
+        if isinstance(result, tuple) and len(result) >= 2:
+            checked, unchecked = result[0], result[1]
+            return (
+                {_object_key(item) for item in checked},
+                {_object_key(item) for item in unchecked},
+                "",
+            )
+        return None, None, "UNRECOGNIZED_API_RESULT"
+    except Exception as exc:
+        return None, None, _exception_details(exc)
+
+
+def _checkout_state(work_part, target):
+    checked, unchecked, detail = _checked_out_members(work_part)
+    key = _object_key(target)
+    if checked is not None and key in checked:
+        return "CHECKED_OUT", detail
+    if unchecked is not None and key in unchecked:
+        return "NOT_CHECKED_OUT", detail
+    read_only = _read_only(target)
+    if read_only is True:
+        return "READ_ONLY_UNKNOWN_OWNER", detail
+    if read_only is False:
+        return "WRITABLE_STATUS_UNKNOWN", detail
+    return "UNKNOWN", detail
+
+
+def _pdm_part(target):
+    value = getattr(target, "PDMPart", None)
+    return value() if callable(value) else value
+
+
+def _checkout_target(session, work_part, target):
+    managed = _managed_mode(session)
+    before, before_detail = _checkout_state(work_part, target)
+    read_only_before = _read_only(target)
+    result = {
+        "success": False,
+        "before": before,
+        "action": "NONE",
+        "result": "",
+        "read_only_before": read_only_before,
+        "read_only_after": read_only_before,
+        "message": before_detail,
+        "exception_type": "",
+        "error_code": "",
     }
+    if not managed:
+        result["action"] = "NATIVE_MODE_NO_CHECKOUT"
+        result["success"] = read_only_before is not True
+        result["result"] = "WRITABLE" if result["success"] else "READ_ONLY"
+        return result
+
+    if before == "CHECKED_OUT" and read_only_before is not True:
+        result.update(success=True, result="ALREADY_CHECKED_OUT")
+        return result
+
+    result["action"] = "EXPLICIT_CHECKOUT"
+    try:
+        pdm_part = _pdm_part(target)
+        checkout = getattr(pdm_part, "Checkout", None)
+        if not callable(checkout):
+            raise RuntimeError("PDMPart.Checkout is unavailable.")
+        checkout()
+        after, after_detail = _checkout_state(work_part, target)
+        read_only_after = _read_only(target)
+        result["read_only_after"] = read_only_after
+        result["message"] = after_detail
+        if read_only_after is True or after == "NOT_CHECKED_OUT":
+            raise RuntimeError(
+                "Part did not become checked out and writable after the "
+                "explicit checkout call."
+            )
+        result["success"] = True
+        result["result"] = after or "CHECKOUT_API_SUCCEEDED"
+        return result
+    except Exception as exc:
+        exception_type, error_code = _exception_fields(exc)
+        result.update(
+            result="FAILED",
+            message=_exception_details(exc),
+            exception_type=exception_type,
+            error_code=error_code,
+            read_only_after=_read_only(target),
+        )
+        return result
+
+
+def prepare_updates(
+    session, work_part, config, rows, baseline, timestamp, mode
+):
+    _validate_baseline_contract(baseline, config)
+    reports = []
+    proposals = []
+    baseline_by_identity = _baseline_index(baseline)
+    models = _model_index(work_part, config)
+    business_specs = _business_specs(config)
+    expected_audit = _clean(baseline.get("audit_run_id"))
+
+    csv_counts = {}
+    for row in rows:
+        key = (
+            _normalized(row.get("Item Number")),
+            _normalized(row.get("Item Rev")),
+        )
+        csv_counts[key] = csv_counts.get(key, 0) + 1
+
+    for row in rows:
+        key = (
+            _normalized(row.get("Item Number")),
+            _normalized(row.get("Item Rev")),
+        )
+        baseline_matches = baseline_by_identity.get(key, [])
+        base = _base_report(timestamp, mode, row)
+        if csv_counts.get(key, 0) > 1:
+            base.update(
+                ACTION="ERROR_DUPLICATE_CSV_IDENTITY",
+                MESSAGE="Update CSV contains duplicate part/revision rows.",
+            )
+            reports.append(base)
+            continue
+        if len(baseline_matches) != 1:
+            base.update(
+                ACTION="ERROR_BASELINE_IDENTITY",
+                MESSAGE=(
+                    "Part/revision was edited or has no unique Journal 04 "
+                    "baseline."
+                ),
+            )
+            reports.append(base)
+            continue
+        baseline_part = baseline_matches[0]
+        base = _base_report(timestamp, mode, row, baseline_part)
+        if _clean(row.get("AUDIT_RUN_ID")) != expected_audit:
+            base.update(
+                ACTION="ERROR_BASELINE_RUN",
+                MESSAGE="AUDIT_RUN_ID does not match the baseline sidecar.",
+            )
+            reports.append(base)
+            continue
+        if _normalized(row.get("PULL_STATUS")) != "READY":
+            base.update(
+                ACTION="ERROR_PULL_REVIEW",
+                MESSAGE="Journal 04 marked this prototype for review.",
+            )
+            reports.append(base)
+            continue
+        if _normalized(row.get("Part Description")) != _normalized(
+            baseline_part.get("part_name")
+        ):
+            base.update(
+                ACTION="ERROR_PROTECTED_IDENTITY_EDIT",
+                MESSAGE="Part Description is read-only and was changed.",
+            )
+            reports.append(base)
+            continue
+
+        target_matches = models.get(key, [])
+        if len(target_matches) != 1:
+            base.update(
+                ACTION="ERROR_TARGET_IDENTITY",
+                MESSAGE="No unique loaded 3D master prototype matches the row.",
+            )
+            reports.append(base)
+            continue
+        target = target_matches[0]
+        approved = _approved(row)
+        row_change_count = 0
+        for column, rule in business_specs:
+            baseline_value = (
+                baseline_part.get("business_values", {})
+                .get(column, {})
+                .get("raw_value", "")
+            )
+            expected = row.get(column, "")
+            if _normalize_for_rule(
+                baseline_value, rule, config
+            ) == _normalize_for_rule(expected, rule, config):
+                continue
+            row_change_count += 1
+            report = dict(base)
+            report.update(
+                TARGET_IDENTIFIER=_object_identifier(target),
+                CSV_COLUMN=column,
+                LOGICAL_ATTRIBUTE=rule["logical_name"],
+                CATEGORY=rule["category"],
+                NX_ATTRIBUTE_NAME=rule["attribute"],
+                NX_ATTRIBUTE_TYPE=rule["type"],
+                BASELINE_VALUE=_text(baseline_value),
+                EXPECTED_VALUE=_text(expected),
+            )
+            if not approved:
+                report.update(
+                    ACTION="SKIPPED_NOT_APPROVED",
+                    MESSAGE="Row changes are not approved.",
+                )
+                reports.append(report)
+                continue
+            if not _clean(row.get("ENGINEER")):
+                report.update(
+                    ACTION="ERROR_APPROVAL",
+                    MESSAGE="ENGINEER is required for an approved row.",
+                )
+                reports.append(report)
+                continue
+            expected_error = _validate_expected(expected, rule, config)
+            if expected_error:
+                report.update(ACTION="ERROR_VALUE", MESSAGE=expected_error)
+                reports.append(report)
+                continue
+
+            actual = _read_attribute(target, rule)
+            report["ACTUAL_CURRENT_VALUE"] = _text(actual.get("raw", ""))
+            if actual["status"] in ("UNREADABLE", "AMBIGUOUS"):
+                report.update(
+                    ACTION="ERROR_ATTRIBUTE_READ",
+                    MESSAGE=actual.get("message", actual["status"]),
+                )
+                reports.append(report)
+                continue
+            flags = actual.get("flags", {})
+            if (
+                flags.get("locked")
+                or flags.get("owned_by_system")
+                or flags.get("pdm_based")
+            ):
+                report.update(
+                    ACTION="ERROR_ATTRIBUTE_NOT_WRITABLE",
+                    MESSAGE=(
+                        "Runtime attribute flags prohibit this business "
+                        "attribute write."
+                    ),
+                )
+                reports.append(report)
+                continue
+            if _text(actual.get("raw", "")) != _text(baseline_value):
+                report.update(
+                    ACTION="STALE_BASELINE_VALUE",
+                    MESSAGE=(
+                        "Current NX value differs from the Journal 04 "
+                        "baseline."
+                    ),
+                )
+                reports.append(report)
+                continue
+
+            checkout_before, checkout_message = _checkout_state(
+                work_part, target
+            )
+            report.update(
+                ACTION="PROPOSED_UPDATE",
+                CHECKOUT_BEFORE=checkout_before,
+                READ_ONLY_BEFORE=_text(_read_only(target)),
+                MESSAGE=(
+                    "Approved change passed preflight."
+                    + (
+                        " Checkout detail: " + checkout_message
+                        if checkout_message
+                        else ""
+                    )
+                ),
+            )
+            reports.append(report)
+            proposals.append(
+                {
+                    "source_row": row,
+                    "report": report,
+                    "rule": rule,
+                    "target": target,
+                    "expected": expected,
+                }
+            )
+
+        if row_change_count == 0:
+            no_change = dict(base)
+            no_change.update(
+                TARGET_IDENTIFIER=_object_identifier(target),
+                ACTION="NO_CHANGE",
+                SAVE_RESULT="NOT_REQUIRED",
+                MESSAGE="CSV business values match the Journal 04 baseline.",
+            )
+            reports.append(no_change)
+    return reports, proposals
+
+
+def _hard_preflight_error(report):
+    action = _clean(report.get("ACTION"))
+    return (
+        _approved(report)
+        and action not in (
+            "PROPOSED_UPDATE",
+            "NO_CHANGE",
+        )
+    )
+
+
+def _apply_checkout_results(proposals, results):
+    for proposal in proposals:
+        result = results[_object_key(proposal["target"])]
+        proposal["report"].update(
+            CHECKOUT_BEFORE=result["before"],
+            CHECKOUT_ACTION=result["action"],
+            CHECKOUT_RESULT=result["result"],
+            READ_ONLY_BEFORE=_text(result["read_only_before"]),
+            READ_ONLY_AFTER=_text(result["read_only_after"]),
+        )
+        if result.get("exception_type"):
+            proposal["report"]["NX_EXCEPTION_TYPE"] = result[
+                "exception_type"
+            ]
+            proposal["report"]["NX_ERROR_CODE"] = result["error_code"]
+
+
+def checkout_targets(session, work_part, proposals):
+    targets = OrderedDict()
+    for proposal in proposals:
+        targets.setdefault(_object_key(proposal["target"]), proposal["target"])
+    results = OrderedDict()
+    for key, target in targets.items():
+        results[key] = _checkout_target(session, work_part, target)
+    _apply_checkout_results(proposals, results)
+    return results
 
 
 def _builder_data_type(rule):
-    name = _normalized_text(rule["type"])
     enum = NXOpen.AttributePropertiesBaseBuilder.DataTypeOptions
-    if name == "BOOLEAN":
+    kind = _normalized(rule["type"])
+    if kind == "BOOLEAN":
         return enum.Boolean
-    if name == "INTEGER":
+    if kind == "INTEGER":
         return enum.Integer
-    if name in ("NUMBER", "REAL"):
+    if kind in ("NUMBER", "REAL"):
         return enum.Number
-    if name in ("DATE", "TIME"):
+    if kind in ("DATE", "TIME"):
         return enum.Date
     return enum.String
 
 
 def _set_builder_value(builder, rule, value):
-    kind = _normalized_text(rule["type"])
+    kind = _normalized(rule["type"])
     if kind == "BOOLEAN":
-        canonical = _normalized_text(value)
         builder.BooleanValue = (
             NXOpen.AttributePropertiesBaseBuilder.BooleanValueOptions.TrueValue
-            if canonical in ("Y", "YES", "TRUE", "1")
+            if _normalized(value) in ("Y", "YES", "TRUE", "1")
             else NXOpen.AttributePropertiesBaseBuilder.BooleanValueOptions.FalseValue
         )
     elif kind == "INTEGER":
@@ -760,27 +959,27 @@ def _save_target(target):
         unsaved_objects = int(getattr(status, "NumberUnsavedObjects", 0))
         if unsaved_parts or unsaved_objects:
             raise RuntimeError(
-                "NX reported {0} unsaved part(s) and {1} unsaved object(s).".format(
-                    unsaved_parts, unsaved_objects
-                )
+                "NX reported {0} unsaved part(s) and {1} unsaved "
+                "object(s).".format(unsaved_parts, unsaved_objects)
             )
     finally:
         _dispose(status)
 
 
-def _apply_groups(session, proposals, config):
+def apply_groups(session, proposals, config):
     grouped = OrderedDict()
     for proposal in proposals:
-        grouped.setdefault(_object_key(proposal["target"]), []).append(proposal)
+        grouped.setdefault(_object_key(proposal["target"]), []).append(
+            proposal
+        )
+    unsaved_modified = set()
     stop_saves = False
-    # Keys returned by this function identify targets that may still contain
-    # unsaved journal changes.  Journal-opened targets in this set must remain
-    # open so that a save or rollback failure is visible and recoverable.
-    unsaved_modified_keys = set()
     for group in grouped.values():
         target = group[0]["target"]
         mark_name = "J05 {0}".format(_object_identifier(target))
-        mark = session.SetUndoMark(NXOpen.Session.MarkVisibility.Invisible, mark_name)
+        mark = session.SetUndoMark(
+            NXOpen.Session.MarkVisibility.Invisible, mark_name
+        )
         failed = None
         try:
             for proposal in group:
@@ -790,39 +989,44 @@ def _apply_groups(session, proposals, config):
                     session,
                     target,
                     proposal["rule"],
-                    proposal["source_row"]["EXPECTED_VALUE"],
+                    proposal["expected"],
                 )
                 reread = _read_attribute(target, proposal["rule"])
-                report["REREAD_VALUE"] = reread["raw"]
-                if _normalize(reread["raw"], proposal["rule"], config) != _normalize(
-                    proposal["source_row"]["EXPECTED_VALUE"], proposal["rule"], config
+                report["REREAD_VALUE"] = _text(reread.get("raw", ""))
+                if _normalize_for_rule(
+                    reread.get("raw", ""), proposal["rule"], config
+                ) != _normalize_for_rule(
+                    proposal["expected"], proposal["rule"], config
                 ):
-                    raise RuntimeError("Immediate reread did not match expected value.")
+                    raise RuntimeError(
+                        "Immediate reread did not match expected value."
+                    )
                 report.update(
                     ACTION="UPDATED_VERIFIED",
                     VERIFICATION_RESULT="PASS",
                     MESSAGE="Attribute updated and reread successfully.",
                 )
-            unsaved_modified_keys.add(_object_key(target))
+            unsaved_modified.add(_object_key(target))
         except Exception as exc:
-            failed = _exception_details(exc)
+            failed = exc
             try:
                 session.UndoToMark(mark, mark_name)
                 rollback = "PASS"
             except Exception as rollback_exc:
                 rollback = "FAILED: " + _exception_details(rollback_exc)
+            exception_type, error_code = _exception_fields(exc)
             for proposal in group:
                 proposal["report"].update(
                     ACTION="UPDATED_VERIFICATION_FAILED",
                     ROLLBACK_RESULT=rollback,
                     VERIFICATION_RESULT="FAIL",
                     SAVE_RESULT="NOT_ATTEMPTED",
-                    MESSAGE=failed,
+                    NX_EXCEPTION_TYPE=exception_type,
+                    NX_ERROR_CODE=error_code,
+                    MESSAGE=_exception_details(exc),
                 )
             if rollback == "PASS":
-                unsaved_modified_keys.discard(_object_key(target))
-            else:
-                unsaved_modified_keys.add(_object_key(target))
+                unsaved_modified.discard(_object_key(target))
         finally:
             try:
                 session.DeleteUndoMark(mark, mark_name)
@@ -830,190 +1034,193 @@ def _apply_groups(session, proposals, config):
                 pass
         if failed:
             continue
-        if config["save_policy"] == "NO_SAVE":
-            for proposal in group:
-                proposal["report"]["SAVE_RESULT"] = "NO_SAVE"
-            continue
         if stop_saves:
             for proposal in group:
                 proposal["report"].update(
+                    ACTION="ERROR_SAVE_NOT_ATTEMPTED",
                     SAVE_RESULT="NOT_ATTEMPTED",
                     MESSAGE="A previous save failed; later saves were stopped.",
                 )
             continue
         try:
             _save_target(target)
-            unsaved_modified_keys.discard(_object_key(target))
+            unsaved_modified.discard(_object_key(target))
             for proposal in group:
                 proposal["report"]["SAVE_RESULT"] = "SAVED"
         except Exception as exc:
             stop_saves = True
+            exception_type, error_code = _exception_fields(exc)
             for proposal in group:
                 proposal["report"].update(
-                    ACTION="ERROR",
+                    ACTION="ERROR_SAVE_FAILED",
                     SAVE_RESULT="SAVE_FAILED_PART_LEFT_MODIFIED",
-                    MESSAGE="Save failed; target remains visibly modified: " + _exception_details(exc),
+                    NX_EXCEPTION_TYPE=exception_type,
+                    NX_ERROR_CODE=error_code,
+                    MESSAGE=(
+                        "Save failed; target remains checked out and visibly "
+                        "modified: " + _exception_details(exc)
+                    ),
                 )
-    return unsaved_modified_keys
+    return unsaved_modified
 
 
-def _run_pull(session, work_part, config, timestamp, opened):
-    rule_map = _rule_map(config)
-    models = _unique_model_parts(work_part)
-    rows = []
+def execute(
+    session,
+    work_part,
+    config,
+    rows,
+    baseline,
+    timestamp,
+    mode,
+):
+    reports, proposals = prepare_updates(
+        session, work_part, config, rows, baseline, timestamp, mode
+    )
+    if mode == "DRY_RUN" or not proposals:
+        return reports, set()
+    if config.get("save_policy") != "SAVE_CHANGED_PARTS":
+        for proposal in proposals:
+            proposal["report"].update(
+                ACTION="SAVE_GATE_DISABLED",
+                SAVE_RESULT="NOT_ATTEMPTED",
+                MESSAGE=(
+                    "Production save gate is NO_SAVE. Pass Journal 11 runtime "
+                    "acceptance before enabling SAVE_CHANGED_PARTS."
+                ),
+            )
+        return reports, set()
+    if any(_hard_preflight_error(report) for report in reports):
+        for proposal in proposals:
+            proposal["report"].update(
+                ACTION="BATCH_ABORTED_PREFLIGHT",
+                SAVE_RESULT="NOT_ATTEMPTED",
+                MESSAGE="An approved row failed preflight; no checkout occurred.",
+            )
+        return reports, set()
 
-    def add_target(part, target_object, drawing_index=""):
-        pn, rev = _identity(part, rule_map)
-        for rule in config["attributes"]:
-            if target_object not in rule.get("required_on", []) and target_object not in rule.get(
-                "write_targets", []
-            ):
-                continue
-            result = _read_attribute(part, rule)
-            flags = result.get("flags", {})
-            rows.append(
-                {
-                    "RUN_TIMESTAMP": timestamp,
-                    "PART_NUMBER": pn,
-                    "REVISION": rev,
-                    "TARGET_OBJECT": target_object,
-                    "DRAWING_INDEX": drawing_index,
-                    "TARGET_IDENTIFIER": _object_identifier(part),
-                    "LOGICAL_ATTRIBUTE": rule["logical_name"],
-                    "CATEGORY": rule["category"],
-                    "NX_ATTRIBUTE_NAME": rule["attribute"],
-                    "NX_ATTRIBUTE_TYPE": result["type"],
-                    "ATTRIBUTE_STATUS": result["status"],
-                    "RAW_VALUE": result["raw"],
-                    "NORMALIZED_VALUE": _normalize(result["raw"], rule, config),
-                    "LOCKED": flags.get("locked", ""),
-                    "OWNED_BY_SYSTEM": flags.get("owned_by_system", ""),
-                    "PDM_BASED": flags.get("pdm_based", ""),
-                    "NOT_SAVED": flags.get("not_saved", ""),
-                }
+    checkout_results = checkout_targets(session, work_part, proposals)
+    if any(not result["success"] for result in checkout_results.values()):
+        for proposal in proposals:
+            result = checkout_results[_object_key(proposal["target"])]
+            proposal["report"].update(
+                ACTION=(
+                    "CHECKOUT_FAILED"
+                    if not result["success"]
+                    else "BATCH_ABORTED_CHECKOUT"
+                ),
+                SAVE_RESULT="NOT_ATTEMPTED",
+                MESSAGE=(
+                    result["message"]
+                    if not result["success"]
+                    else (
+                        "Another target failed checkout; no attributes were "
+                        "changed. This target remains checked out."
+                    )
+                ),
+            )
+        return reports, set()
+    return reports, apply_groups(session, proposals, config)
+
+
+def _write_csv(path, rows):
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=REPORT_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {column: row.get(column, "") for column in REPORT_COLUMNS}
             )
 
-    scope = _drawing_scope(config)
-    for model in models:
-        add_target(model, "MODEL")
-        pn, rev = _identity(model, rule_map)
-        if scope.get((_normalized_text(pn), _normalized_text(rev))) != "YES":
-            continue
-        for index in range(1, int(config["drawing"]["max_index"]) + 1):
-            drawing, newly_opened, error = _open_drawing(session, config, pn, rev, index)
-            if drawing is None or error:
-                continue
-            if newly_opened and _object_key(drawing) not in {_object_key(part) for part in opened}:
-                opened.append(drawing)
-            add_target(drawing, "DRAWING", index)
-    output = os.path.join(_io_root(), "PULL_{0}.csv".format(timestamp.replace(":", "").replace("-", "")))
-    _write_csv(output, PULL_COLUMNS, rows)
-    _log(session, "PULL complete.\n  Rows: {0}\n  Report: {1}".format(len(rows), output))
-    return set()
+
+def _listing_window(session):
+    listing = getattr(session, "ListingWindow", None)
+    if listing is not None:
+        try:
+            listing.Open()
+        except Exception:
+            pass
+    return listing
+
+
+def _log(listing, message):
+    if listing is not None:
+        try:
+            listing.WriteLine(_text(message))
+            return
+        except Exception:
+            pass
+    print(_text(message))
 
 
 def main(session):
-    work_part = session.Parts.Work
+    work_part = getattr(getattr(session, "Parts", None), "Work", None)
     if work_part is None:
-        _log(session, "ERROR: No work part loaded.")
-        return
-    mode = _normalized_text(os.environ.get("NX_J05_MODE") or "DRY_RUN")
-    if mode not in VALID_MODES:
-        raise RuntimeError("NX_J05_MODE must be PULL, DRY_RUN, or APPLY_APPROVED.")
+        raise RuntimeError("Open the source 3D assembly before Journal 05.")
     config = _load_config()
-    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    original_display = session.Parts.Display
-    original_work = session.Parts.Work
-    opened = []
-    unsaved_modified_keys = set()
-    reports = []
-    try:
-        if mode == "PULL":
-            unsaved_modified_keys = _run_pull(session, work_part, config, timestamp, opened)
-            return
-        correction_name = config["inputs"]["corrections_filename"]
-        correction_path = _clean(os.environ.get("NX_ATTRIBUTE_CORRECTIONS_FILE")) or os.path.join(
-            _io_root(), correction_name
+    mode = _normalized(os.environ.get("NX_J05_MODE") or "DRY_RUN")
+    if mode not in VALID_MODES:
+        raise RuntimeError(
+            "NX_J05_MODE must be DRY_RUN or APPLY_APPROVED."
         )
-        if not os.path.exists(correction_path):
-            raise RuntimeError("Correction CSV not found: {0}".format(correction_path))
-        rows = _read_csv(correction_path)
-        rule_map = _rule_map(config)
-        model_by_identity, revisions = _model_index(work_part, rule_map)
-        proposals = []
-        for row in rows:
-            report, proposal = _validate_row(
-                session,
-                timestamp,
-                mode,
-                row,
-                config,
-                rule_map,
-                model_by_identity,
-                revisions,
-                opened,
-            )
-            reports.append(report)
-            if proposal is not None:
-                proposals.append(proposal)
-        if mode == "APPLY_APPROVED":
-            unsaved_modified_keys = _apply_groups(session, proposals, config)
-        report_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = os.path.join(_io_root(), "J05_{0}_{1}.csv".format(mode, report_stamp))
-        _write_csv(report_path, REPORT_COLUMNS, reports)
-        counts = OrderedDict()
-        for report in reports:
-            action = report["ACTION"]
-            counts[action] = counts.get(action, 0) + 1
-        lines = [
-            "J05 {0} complete.".format(mode),
-            "  Save policy : {0}".format(config["save_policy"]),
-            "  Input rows  : {0}".format(len(rows)),
-            "  Report      : {0}".format(report_path),
-        ]
-        lines.extend("  {0}: {1}".format(action, count) for action, count in counts.items())
-        _log(session, "\n".join(lines))
-    finally:
-        restore_errors = _restore(session, original_display, original_work)
-        for part in reversed(opened):
-            if _object_key(part) in unsaved_modified_keys:
-                restore_errors.append(
-                    "Journal-opened target left open because it may contain unsaved changes: {0}".format(
-                        _object_identifier(part)
-                    )
-                )
-                continue
-            error = _close_part(part)
-            if error:
-                restore_errors.append("Unable to close {0}: {1}".format(_object_identifier(part), error))
-        if restore_errors:
-            _log(session, "\n".join("WARNING: " + message for message in restore_errors))
+    input_path = _clean(os.environ.get("NX_ATTRIBUTE_UPDATE_FILE"))
+    if not input_path:
+        raise RuntimeError(
+            "Set NX_ATTRIBUTE_UPDATE_FILE to the edited Journal 04 CSV."
+        )
+    input_path = os.path.abspath(input_path)
+    if not os.path.isfile(input_path):
+        raise RuntimeError("Update CSV not found: " + input_path)
+
+    baseline, baseline_path = _load_baseline(input_path)
+    rows = _read_csv(input_path, config)
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    reports, unsaved = execute(
+        session,
+        work_part,
+        config,
+        rows,
+        baseline,
+        timestamp,
+        mode,
+    )
+    report_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_root = _io_root()
+    os.makedirs(output_root, exist_ok=True)
+    report_path = os.path.join(
+        output_root, "J05_{0}_{1}.csv".format(mode, report_stamp)
+    )
+    _write_csv(report_path, reports)
+
+    listing = _listing_window(session)
+    _log(listing, "Journal 05 complete.")
+    _log(listing, "  Mode: " + mode)
+    _log(listing, "  Input: " + input_path)
+    _log(listing, "  Baseline: " + baseline_path)
+    _log(listing, "  Save gate: " + config["save_policy"])
+    _log(listing, "  Report: " + report_path)
+    if unsaved:
+        _log(
+            listing,
+            "  WARNING: {0} target(s) may contain unsaved changes.".format(
+                len(unsaved)
+            ),
+        )
+    _log(
+        listing,
+        "Journal 05 never checks Teamcenter parts in automatically.",
+    )
+    return report_path
 
 
 def _run_journal():
-    session = None
+    session = NXOpen.Session.GetSession()
+    listing = _listing_window(session)
     try:
-        session = _session()
-        _log(
-            session,
-            "\n".join(
-                [
-                    "J05 startup diagnostics",
-                    "  Journal path : {0}".format(_journal_path() or "(unavailable)"),
-                    "  Runtime root : {0}".format(_runtime_root()),
-                    "  Config path  : {0}".format(_config_path()),
-                    "  IO root      : {0}".format(_io_root()),
-                    "  Python       : {0}".format(sys.version),
-                ]
-            ),
-        )
         main(session)
-    except Exception:
-        message = "ERROR: Unhandled J05 exception.\n" + traceback.format_exc()
-        if session is not None:
-            _log(session, message)
-        else:
-            print(message)
+    except Exception as exc:
+        _log(listing, "JOURNAL 05 FAILED: " + _exception_details(exc))
+        _log(listing, traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":

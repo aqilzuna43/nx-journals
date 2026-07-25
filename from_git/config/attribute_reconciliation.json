@@ -14,7 +14,34 @@
   "inputs": {
     "drawing_scope_filename": "NX_DRAWING_SCOPE.csv",
     "master_reference_filename": "NX_ATTRIBUTE_MASTER_REFERENCE.csv",
-    "corrections_filename": "NX_ATTRIBUTE_CORRECTIONS.csv"
+    "corrections_filename": "NX_ATTRIBUTE_CORRECTIONS.csv",
+    "attribute_update_filename": "NX_ATTRIBUTE_UPDATE.csv"
+  },
+  "update_workflow": {
+    "schema_version": 1,
+    "identity_columns": [
+      {"csv_column": "Item Number", "logical_name": "part_number"},
+      {"csv_column": "Part Description", "logical_name": "part_name"},
+      {"csv_column": "Item Rev", "logical_name": "revision"}
+    ],
+    "business_columns": [
+      {"csv_column": "UOM", "logical_name": "uom"},
+      {"csv_column": "Mfr. Name", "logical_name": "manufacturer"},
+      {"csv_column": "Mfr. Part Number", "logical_name": "manufacturer_part_number"},
+      {"csv_column": "Reference Notes", "logical_name": "stocking_type"},
+      {"csv_column": "WAE_VERSION", "logical_name": "wae_version"},
+      {"csv_column": "NX_FINISH", "logical_name": "finish"},
+      {"csv_column": "COMPONENT_CLASS", "logical_name": "component_class"},
+      {"csv_column": "LIFED", "logical_name": "shelf_life_limited"},
+      {"csv_column": "SERIAL_NUMBERED_PART", "logical_name": "traceability"},
+      {"csv_column": "Temperature_Sensitive", "logical_name": "temperature_sensitive"},
+      {"csv_column": "Hazardous", "logical_name": "hazardous"},
+      {"csv_column": "COMMODITYTYPE", "logical_name": "commodity_type"},
+      {"csv_column": "Commodity_Code", "logical_name": "commodity_code"},
+      {"csv_column": "Serviceable_item_flag", "logical_name": "serviceable_item"},
+      {"csv_column": "Export_Control_Number", "logical_name": "export_control_number"},
+      {"csv_column": "Country_of_Origin", "logical_name": "country_of_origin"}
+    ]
   },
   "release_policy": {
     "placeholder_values": ["", "TBC", "TBD", "00-JAN-0"],
@@ -375,6 +402,18 @@
       "bom_column": "Stocking_Type"
     },
     {
+      "logical_name": "wae_version",
+      "category": "WAEItem",
+      "attribute": "WAE_VERSION",
+      "type": "String",
+      "source_owner": "NX_TEAMCENTER_METADATA",
+      "required_for_certification": false,
+      "required_on": ["MODEL"],
+      "comparison": "NORMALIZED_TEXT",
+      "writable": true,
+      "write_targets": ["MODEL"]
+    },
+    {
       "logical_name": "finish",
       "category": "WAEItem",
       "attribute": "NX_FINISH",
@@ -384,7 +423,7 @@
       "required_on": ["MODEL", "DRAWING"],
       "comparison": "NORMALIZED_TEXT",
       "writable": true,
-      "write_targets": ["DRAWING"]
+      "write_targets": ["MODEL"]
     }
   ]
 }

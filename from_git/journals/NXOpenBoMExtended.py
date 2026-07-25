@@ -85,11 +85,10 @@ def get_safe_attribute(nx_object, attr_name, attr_type="String"):
 
 
 def get_component_attribute(component, attr_name, attr_type="String"):
-    """Read an occurrence attribute, then fall back to its prototype."""
-    value = get_safe_attribute(component, attr_name, attr_type)
-    if value is None and component.Prototype is not None:
-        value = get_safe_attribute(component.Prototype, attr_name, attr_type)
-    return value
+    """Read only the 3D master prototype represented by a BOM component."""
+    prototype = getattr(component, "Prototype", None)
+    target = prototype if prototype is not None else component
+    return get_safe_attribute(target, attr_name, attr_type)
 
 
 def fz_attribute_values(component):
@@ -161,9 +160,9 @@ def walk_assembly_tree(component, level, csv_writer, quantity=1):
                 continue
             
             # Get the child's Source of Truth attribute for accurate grouping
-            child_db_part_no = get_safe_attribute(child, SOURCE_OF_TRUTH_ATTR)
-            if child_db_part_no is None and child.Prototype is not None:
-                child_db_part_no = get_safe_attribute(child.Prototype, SOURCE_OF_TRUTH_ATTR)
+            child_db_part_no = get_component_attribute(
+                child, SOURCE_OF_TRUTH_ATTR
+            )
             
             # The Source of Truth for grouping (fallback to DisplayName if missing)
             nx_id = child_db_part_no if child_db_part_no else child.DisplayName

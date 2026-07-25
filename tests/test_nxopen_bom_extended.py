@@ -160,6 +160,44 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         self.assertEqual("String", configured_types["WAE_VERSION"])
         self.assertIn(("Hazardous", "WAE_Hazardous", "String"), self.module.FZ_ATTRIBUTE_SPECS)
 
+    def test_j04_j05_business_mapping_matches_extended_bom(self):
+        import json
+
+        config = json.loads(
+            (
+                ROOT
+                / "from_git"
+                / "config"
+                / "attribute_reconciliation.json"
+            ).read_text(encoding="utf-8")
+        )
+        rules = {
+            rule["logical_name"]: rule
+            for rule in config["attributes"]
+        }
+        extended = {
+            column: (title, attribute_type)
+            for column, title, attribute_type
+            in self.module.FZ_ATTRIBUTE_SPECS
+        }
+        xml_templates = {
+            template.attrib["title"]: template.attrib
+            for template in ElementTree.parse(
+                ATTRIBUTE_XML_PATH
+            ).getroot().findall("Template")
+        }
+
+        for mapping in config["update_workflow"]["business_columns"]:
+            rule = rules[mapping["logical_name"]]
+            self.assertEqual(
+                (rule["attribute"], rule["type"]),
+                extended[mapping["csv_column"]],
+            )
+            template = xml_templates[rule["attribute"]]
+            self.assertEqual("WAEItem", template["category"])
+            self.assertEqual("false", template["ownedBySystem"])
+            self.assertEqual("false", template["pdmBasedPartAttribute"])
+
     def test_typed_reads_preserve_numeric_zero_and_missing_values(self):
         nx_object = FakeNxObject(
             strings={"NX_MATERIAL": "Copper"},
@@ -180,7 +218,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.module.get_safe_attribute(nx_object, "NX_Mass", "Unsupported")
 
-    def test_component_values_take_precedence_then_fall_back_to_prototype(self):
+    def test_component_values_always_come_from_prototype(self):
         prototype = FakeNxObject(
             strings={"NX_MATERIAL": "Prototype material"},
             numbers={"NX_Mass": 4.25},
@@ -191,7 +229,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            "Occurrence material",
+            "Prototype material",
             self.module.get_component_attribute(component, "NX_MATERIAL", "String"),
         )
         self.assertEqual(
@@ -288,49 +326,39 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         self.assertEqual("DRAFT", row[4])
 
 
-class Journal04OrderedDictTests(unittest.TestCase):
+class Journal04ModelPullTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.journal = load_with_fake_nxopen("journal_04_under_test", JOURNAL_04_PATH)
 
-    def test_empty_model_audit_initializes_ordered_unique_parts(self):
-        context = {
-            "config": {
-                "attributes": [],
-                "release_policy": {"mass_relative_tolerance": 0.000001},
-            }
-        }
+    def test_update_columns_are_business_only_and_bom_aligned(self):
+        import json
 
-        self.assertEqual(([], []), self.journal._audit_models(context, [], None))
+        config = json.loads(
+            (
+                ROOT
+                / "from_git"
+                / "config"
+                / "attribute_reconciliation.json"
+            ).read_text(encoding="utf-8")
+        )
+        columns = self.journal.update_columns(config)
 
-    def test_runtime_root_discovery_accepts_repository_parent_override(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repository_root = Path(temp_dir) / "deployed-repository"
-            runtime_root = repository_root / "from_git"
-            (runtime_root / "utils").mkdir(parents=True)
-            (runtime_root / "config").mkdir()
-            for relative_path in self.journal._REQUIRED_RUNTIME_FILES:
-                path = runtime_root / relative_path
-                path.write_text("", encoding="utf-8")
+        self.assertIn("Item Number", columns)
+        self.assertIn("Part Description", columns)
+        self.assertIn("Item Rev", columns)
+        self.assertIn("WAE_VERSION", columns)
+        self.assertIn("Hazardous", columns)
+        self.assertNotIn("Qty", columns)
+        self.assertNotIn("NX_MASS", columns)
+        self.assertNotIn("NX_MATERIAL", columns)
 
-            discovered = self.journal._find_runtime_root(
-                script_path=str(Path(temp_dir) / "nx-stage" / "journal_04.py"),
-                configured_root=str(repository_root),
-                working_directory=str(Path(temp_dir) / "nx-stage"),
-                python_paths=[],
-            )
+    def test_journal04_has_no_shared_utils_dependency(self):
+        source = JOURNAL_04_PATH.read_text(encoding="utf-8")
 
-        self.assertEqual(str(runtime_root), discovered)
-
-    def test_missing_runtime_payload_reports_deployment_action(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(ImportError, "set NX_JOURNALS_ROOT"):
-                self.journal._find_runtime_root(
-                    script_path=str(Path(temp_dir) / "journal_04.py"),
-                    configured_root=str(Path(temp_dir) / "missing"),
-                    working_directory=temp_dir,
-                    python_paths=[],
-                )
+        self.assertNotIn("from utils", source)
+        self.assertNotIn("drawing_scope", source.lower())
+        self.assertIn(".baseline.json", source)
 
 
 if __name__ == "__main__":

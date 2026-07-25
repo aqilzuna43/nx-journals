@@ -158,6 +158,28 @@ def load_j05():
             sys.modules["NXOpen.UF"] = prior_uf
 
 
+def load_j04():
+    nxopen = types.ModuleType("NXOpen")
+    prior_nx = sys.modules.get("NXOpen")
+    sys.modules["NXOpen"] = nxopen
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "j04_under_test",
+            ROOT
+            / "from_git"
+            / "journals"
+            / "04_assembly_attribute_audit.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if prior_nx is None:
+            sys.modules.pop("NXOpen", None)
+        else:
+            sys.modules["NXOpen"] = prior_nx
+
+
 class ConfigAndValuesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -373,6 +395,75 @@ class ScopeAndDriftTests(unittest.TestCase):
         self.assertTrue(all(item["code"] == "DOWNSTREAM_BOM_DRIFT" for item in findings))
 
 
+class J04Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.j04 = load_j04()
+        cls.config = json.loads(
+            (
+                ROOT
+                / "from_git"
+                / "config"
+                / "attribute_reconciliation.json"
+            ).read_text(encoding="utf-8")
+        )
+
+    def test_unique_prototype_pull_and_missing_business_values_are_ready(self):
+        root = FakePart(
+            "ROOT",
+            attrs("ROOT", "A", "ROOT MODEL")
+            + [FakeAttribute("WAEItem", "Commodity_Code", "ROOT-CODE")],
+        )
+        child = FakePart(
+            "CHILD",
+            attrs("CHILD", "A", "CHILD MODEL")
+            + [FakeAttribute("WAEItem", "WAE_VERSION", "1.0")],
+        )
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [
+                FakeComponent("CHILD-1", child),
+                FakeComponent("CHILD-2", child),
+            ],
+        )
+
+        records, diagnostics = self.j04.build_pull_records(
+            root, self.config, "RUN1"
+        )
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(["ROOT", "CHILD"], [
+            record["row"]["Item Number"] for record in records
+        ])
+        self.assertTrue(all(
+            record["row"]["PULL_STATUS"] == "READY"
+            for record in records
+        ))
+        self.assertEqual("1.0", records[1]["row"]["WAE_VERSION"])
+
+    def test_identity_reads_do_not_depend_on_teamcenter_category(self):
+        part = FakePart(
+            "DIRECT",
+            [FakeAttribute("WAEItem", "Commodity_Code", "CODE")],
+        )
+        direct_values = {
+            "DB_PART_NO": "DIRECT-PN",
+            "DB_PART_NAME": "DIRECT NAME",
+            "DB_PART_REV": "B",
+        }
+        part.GetStringAttribute = direct_values.__getitem__
+
+        records, _ = self.j04.build_pull_records(
+            part, self.config, "RUN2"
+        )
+
+        self.assertEqual("DIRECT-PN", records[0]["row"]["Item Number"])
+        self.assertEqual("DIRECT NAME", records[0]["row"]["Part Description"])
+        self.assertEqual("B", records[0]["row"]["Item Rev"])
+        self.assertEqual("READY", records[0]["row"]["PULL_STATUS"])
+
+
 class J05Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -381,118 +472,273 @@ class J05Tests(unittest.TestCase):
             (ROOT / "from_git" / "config" / "attribute_reconciliation.json").read_text(encoding="utf-8")
         )
 
+    def target(self, value="OLD", **flags):
+        part = FakePart(
+            "P1",
+            attrs("P1", "A", "PART ONE")
+            + [
+                FakeAttribute(
+                    "WAEItem",
+                    "Commodity_Code",
+                    value,
+                    **flags,
+                )
+            ],
+        )
+        part.IsReadOnly = False
+        return part
+
+    def baseline(self, value="OLD"):
+        values = {}
+        for column, _rule in self.j05._business_specs(self.config):
+            values[column] = {
+                "status": (
+                    "POPULATED" if column == "Commodity_Code" else "MISSING"
+                ),
+                "raw_value": value if column == "Commodity_Code" else "",
+            }
+        return {
+            "schema_version": 1,
+            "audit_run_id": "RUN1",
+            "identity_columns": self.j05._baseline_contract(
+                self.config, "identity_columns"
+            ),
+            "business_columns": self.j05._baseline_contract(
+                self.config, "business_columns"
+            ),
+            "parts": [
+                {
+                    "part_number": "P1",
+                    "part_name": "PART ONE",
+                    "revision": "A",
+                    "business_values": values,
+                }
+            ],
+        }
+
     def row(self, **updates):
-        row = {column: "" for column in self.j05.CORRECTION_COLUMNS}
+        row = {
+            column: ""
+            for column in self.j05.update_columns(self.config)
+        }
         row.update(
-            APPROVED="YES",
-            PART_NUMBER="P1",
-            REVISION="A",
-            TARGET_OBJECT="MODEL",
-            CATEGORY="WAEItem",
-            NX_ATTRIBUTE_NAME="Commodity_Code",
-            NX_ATTRIBUTE_TYPE="String",
-            CURRENT_VALUE_FROM_AUDIT="OLD",
-            EXPECTED_VALUE="NEW",
-            AUTHORITATIVE_SOURCE="ENGINEERING_APPROVAL",
-            AUDIT_RUN_ID="RUN1",
-            ENGINEER="Engineer",
-            EVIDENCE_REFERENCE="EVIDENCE-1",
+            {
+                "AUDIT_RUN_ID": "RUN1",
+                "APPROVED": "YES",
+                "ENGINEER": "Engineer",
+                "PULL_STATUS": "READY",
+                "Item Number": "P1",
+                "Part Description": "PART ONE",
+                "Item Rev": "A",
+                "Commodity_Code": "NEW",
+                "_CSV_ROW": 2,
+            }
         )
         row.update(updates)
         return row
 
-    def validate(self, row, target=None):
-        target = target or FakePart("P1", [FakeAttribute("WAEItem", "Commodity_Code", "OLD")])
-        return self.j05._validate_row(
-            None,
+    def prepare(self, row=None, target=None, baseline=None):
+        target = target or self.target()
+        reports, proposals = self.j05.prepare_updates(
+            types.SimpleNamespace(IsManagedMode=True),
+            target,
+            self.config,
+            [row or self.row()],
+            baseline or self.baseline(),
             "timestamp",
             "DRY_RUN",
-            row,
-            self.config,
-            self.j05._rule_map(self.config),
-            {("P1", "A"): [target]},
-            {"P1": {"A"}},
-            [],
+        )
+        return reports, proposals
+
+    def test_business_allowlist_and_model_write_targets(self):
+        columns = [
+            column
+            for column, _rule in self.j05._business_specs(self.config)
+        ]
+        self.assertIn("WAE_VERSION", columns)
+        self.assertIn("NX_FINISH", columns)
+        self.assertNotIn("NX_MATERIAL", columns)
+        self.assertNotIn("NX_MASS", columns)
+        finish = next(
+            rule
+            for rule in self.config["attributes"]
+            if rule["logical_name"] == "finish"
+        )
+        self.assertEqual(["MODEL"], finish["write_targets"])
+
+    def test_approved_change_unapproved_change_and_stale_value(self):
+        reports, proposals = self.prepare()
+        self.assertEqual(["PROPOSED_UPDATE"], [r["ACTION"] for r in reports])
+        self.assertEqual(1, len(proposals))
+
+        reports, proposals = self.prepare(self.row(APPROVED="NO"))
+        self.assertEqual("SKIPPED_NOT_APPROVED", reports[0]["ACTION"])
+        self.assertFalse(proposals)
+
+        reports, proposals = self.prepare(target=self.target("CURRENT"))
+        self.assertEqual("STALE_BASELINE_VALUE", reports[0]["ACTION"])
+        self.assertFalse(proposals)
+
+    def test_baseline_mapping_must_match_deployed_contract(self):
+        baseline = self.baseline()
+        baseline["business_columns"][0]["attribute"] = "WRONG"
+
+        with self.assertRaisesRegex(RuntimeError, "business mapping"):
+            self.prepare(baseline=baseline)
+
+    def test_identity_blank_controlled_and_runtime_flags_fail_closed(self):
+        reports, _ = self.prepare(
+            self.row(**{"Part Description": "EDITED"})
+        )
+        self.assertEqual(
+            "ERROR_PROTECTED_IDENTITY_EDIT", reports[0]["ACTION"]
         )
 
-    def test_unapproved_master_prohibited_and_physical_fields_are_rejected(self):
-        report, proposal = self.validate(self.row(APPROVED="NO"))
-        self.assertEqual("SKIPPED_NOT_APPROVED", report["ACTION"])
-        self.assertIsNone(proposal)
-        report, _ = self.validate(self.row(AUTHORITATIVE_SOURCE="MASTER"))
-        self.assertEqual("ERROR", report["ACTION"])
-        report, _ = self.validate(
-            self.row(CATEGORY="Materials", NX_ATTRIBUTE_NAME="NX_Mass", NX_ATTRIBUTE_TYPE="Number")
-        )
-        self.assertEqual("SKIPPED_NOT_WRITABLE", report["ACTION"])
+        reports, _ = self.prepare(self.row(Commodity_Code=""))
+        self.assertEqual("ERROR_VALUE", reports[0]["ACTION"])
 
-    def test_stale_pdm_no_change_and_valid_proposal(self):
-        report, _ = self.validate(self.row(CURRENT_VALUE_FROM_AUDIT="STALE"))
-        self.assertEqual("STALE_AUDIT_VALUE", report["ACTION"])
-        pdm_target = FakePart(
-            "P1", [FakeAttribute("WAEItem", "Commodity_Code", "OLD", pdm_based=True)]
+        base = self.baseline()
+        base["parts"][0]["business_values"]["UOM"]["raw_value"] = "ea"
+        row = self.row(Commodity_Code="OLD", UOM="TBC")
+        target = self.target()
+        target.attributes.append(
+            FakeAttribute("WAEItem", "Unit_Of_Measure", "ea")
         )
-        report, _ = self.validate(self.row(), pdm_target)
-        self.assertEqual("SKIPPED_NOT_WRITABLE", report["ACTION"])
-        report, proposal = self.validate(self.row(EXPECTED_VALUE="OLD"))
-        self.assertEqual("NO_CHANGE_ALREADY_MATCHES", report["ACTION"])
-        self.assertIsNone(proposal)
-        report, proposal = self.validate(self.row())
-        self.assertEqual("PROPOSED_UPDATE", report["ACTION"])
-        self.assertIsNotNone(proposal)
+        reports, _ = self.prepare(row, target, base)
+        self.assertEqual("ERROR_VALUE", reports[0]["ACTION"])
 
-    def test_exact_revision_and_placeholder_expected_value_are_rejected(self):
-        report, _ = self.validate(self.row(REVISION="B"))
-        self.assertEqual("SKIPPED_REVISION_MISMATCH", report["ACTION"])
-        report, _ = self.validate(self.row(EXPECTED_VALUE="TBC"))
-        self.assertEqual("ERROR", report["ACTION"])
-        self.assertIn("placeholder", report["MESSAGE"])
+        reports, _ = self.prepare(
+            target=self.target(pdm_based=True)
+        )
+        self.assertEqual(
+            "ERROR_ATTRIBUTE_NOT_WRITABLE", reports[0]["ACTION"]
+        )
+
+    def test_free_text_tbc_is_allowed(self):
+        base = self.baseline()
+        base["parts"][0]["business_values"]["Mfr. Name"][
+            "raw_value"
+        ] = "OLD MFG"
+        row = self.row(Commodity_Code="OLD", **{"Mfr. Name": "TBC"})
+        target = self.target()
+        target.attributes.append(
+            FakeAttribute("WAEItem", "MFG", "OLD MFG")
+        )
+        reports, proposals = self.prepare(row, target, base)
+        self.assertEqual("PROPOSED_UPDATE", reports[0]["ACTION"])
+        self.assertEqual(1, len(proposals))
+
+    def test_no_save_gate_prevents_checkout_and_write(self):
+        target = self.target()
+        with mock.patch.object(
+            self.j05, "checkout_targets"
+        ) as checkout, mock.patch.object(
+            self.j05, "apply_groups"
+        ) as apply:
+            reports, unsaved = self.j05.execute(
+                types.SimpleNamespace(IsManagedMode=True),
+                target,
+                self.config,
+                [self.row()],
+                self.baseline(),
+                "timestamp",
+                "APPLY_APPROVED",
+            )
+        checkout.assert_not_called()
+        apply.assert_not_called()
+        self.assertFalse(unsaved)
+        self.assertEqual("SAVE_GATE_DISABLED", reports[0]["ACTION"])
+
+    def test_checkout_failure_aborts_before_attribute_write(self):
+        target = self.target()
+        config = dict(self.config, save_policy="SAVE_CHANGED_PARTS")
+        failed = {
+            "success": False,
+            "before": "NOT_CHECKED_OUT",
+            "action": "EXPLICIT_CHECKOUT",
+            "result": "FAILED",
+            "read_only_before": True,
+            "read_only_after": True,
+            "message": "checked out by another user",
+            "exception_type": "NXException",
+            "error_code": "123",
+        }
+        with mock.patch.object(
+            self.j05, "_checkout_target", return_value=failed
+        ), mock.patch.object(self.j05, "apply_groups") as apply:
+            reports, unsaved = self.j05.execute(
+                types.SimpleNamespace(IsManagedMode=True),
+                target,
+                config,
+                [self.row()],
+                self.baseline(),
+                "timestamp",
+                "APPLY_APPROVED",
+            )
+        apply.assert_not_called()
+        self.assertFalse(unsaved)
+        self.assertEqual("CHECKOUT_FAILED", reports[0]["ACTION"])
 
     def proposal(self, target):
-        rule = next(rule for rule in self.config["attributes"] if rule["logical_name"] == "commodity_code")
-        report = self.j05._base_report("timestamp", "APPLY_APPROVED", self.row())
+        rule = next(
+            rule
+            for rule in self.config["attributes"]
+            if rule["logical_name"] == "commodity_code"
+        )
+        report = {
+            column: "" for column in self.j05.REPORT_COLUMNS
+        }
+        report["ACTION"] = "PROPOSED_UPDATE"
         return {
             "source_row": self.row(),
             "report": report,
             "rule": rule,
             "target": target,
-            "newly_opened": True,
+            "expected": "NEW",
         }
 
     def test_verification_failure_rolls_back_without_save(self):
-        target = FakePart("P1")
+        target = self.target()
         session = mock.Mock()
         session.SetUndoMark.return_value = 7
         proposal = self.proposal(target)
-        with mock.patch.object(self.j05, "_write_attribute"), mock.patch.object(
-            self.j05, "_read_attribute", return_value={"raw": "WRONG"}
+        with mock.patch.object(
+            self.j05, "_write_attribute"
+        ), mock.patch.object(
+            self.j05,
+            "_read_attribute",
+            return_value={"raw": "WRONG"},
         ), mock.patch.object(self.j05, "_save_target") as save:
-            unsaved = self.j05._apply_groups(session, [proposal], dict(self.config, save_policy="SAVE_CHANGED_PARTS"))
+            unsaved = self.j05.apply_groups(
+                session,
+                [proposal],
+                dict(self.config, save_policy="SAVE_CHANGED_PARTS"),
+            )
         session.UndoToMark.assert_called_once()
         save.assert_not_called()
         self.assertNotIn(self.j05._object_key(target), unsaved)
-        self.assertEqual("UPDATED_VERIFICATION_FAILED", proposal["report"]["ACTION"])
-
-    def test_save_failure_stops_later_saves_and_preserves_unsaved_keys(self):
-        first = FakePart("P1")
-        second = FakePart("P2")
-        first_proposal = self.proposal(first)
-        second_proposal = self.proposal(second)
-        second_proposal["source_row"] = self.row(PART_NUMBER="P2")
-        session = mock.Mock()
-        session.SetUndoMark.side_effect = [1, 2]
-        with mock.patch.object(self.j05, "_write_attribute"), mock.patch.object(
-            self.j05, "_read_attribute", side_effect=lambda target, rule: {"raw": "NEW"}
-        ), mock.patch.object(self.j05, "_save_target", side_effect=RuntimeError("save failed")) as save:
-            unsaved = self.j05._apply_groups(
-                session, [first_proposal, second_proposal], dict(self.config, save_policy="SAVE_CHANGED_PARTS")
-            )
-        self.assertEqual(1, save.call_count)
         self.assertEqual(
-            {self.j05._object_key(first), self.j05._object_key(second)}, unsaved
+            "UPDATED_VERIFICATION_FAILED",
+            proposal["report"]["ACTION"],
         )
-        self.assertEqual("SAVE_FAILED_PART_LEFT_MODIFIED", first_proposal["report"]["SAVE_RESULT"])
-        self.assertEqual("NOT_ATTEMPTED", second_proposal["report"]["SAVE_RESULT"])
+
+    def test_successful_explicit_checkout_becomes_writable(self):
+        target = self.target()
+        target.IsReadOnly = True
+
+        class Pdm:
+            def Checkout(inner_self):
+                target.IsReadOnly = False
+
+        target.PDMPart = Pdm()
+        result = self.j05._checkout_target(
+            types.SimpleNamespace(IsManagedMode=True),
+            target,
+            target,
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual("EXPLICIT_CHECKOUT", result["action"])
+        self.assertFalse(result["read_only_after"])
 
 
 class StaticSafetyTests(unittest.TestCase):
@@ -502,8 +748,21 @@ class StaticSafetyTests(unittest.TestCase):
         )
         for forbidden in ("SetUserAttribute", "CreateAttributePropertiesBuilder", ".Save("):
             self.assertNotIn(forbidden, source)
-        self.assertIn("if blocker_count == 0:", source)
-        self.assertIn("NX_CERTIFIED_BOM_", source)
+        self.assertNotIn("drawing_scope", source.lower())
+        self.assertIn(".baseline.json", source)
+        self.assertIn("collect_unique_prototypes", source)
+
+    def test_j11_is_guarded_and_never_checks_in(self):
+        source = (
+            ROOT
+            / "from_git"
+            / "journals"
+            / "11_test_teamcenter_attribute_checkout.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("NX_J11_ALLOW_MUTATION", source)
+        self.assertIn("FULL_REVERSIBLE", source)
+        self.assertIn("RESTORATION_REQUIRED", source)
+        self.assertNotIn(".Checkin", source)
 
     def test_j07_step_fix_is_fail_closed(self):
         source = (

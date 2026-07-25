@@ -3,7 +3,7 @@ discover_attributes.py - Run once in NX to reveal internal attribute names.
 
 NX Open shows display aliases in the UI, but the internal title used by
 GetUserAttribute() may differ. This journal dumps every attribute on the
-current work part so you can build config/attribute_mapping.json.
+current work part so you can verify config/attribute_reconciliation.json.
 """
 
 import os

@@ -1,794 +1,579 @@
-"""Journal 04 - NX-authoritative attribute and BOM certification gate.
+"""Journal 04 - pull editable business attributes from 3D master models.
 
-The journal never changes or saves NX data.  It audits the active model tree,
-applicable Teamcenter drawing specifications, FZ-required metadata, and an
-optional downstream MASTER export.  A certified BOM is emitted only with zero
-blocking findings.
+The journal is deliberately read-only.  It traverses the active assembly,
+deduplicates prototype parts, and writes one wide CSV row per 3D master model.
+The CSV can be edited and passed directly to Journal 05.  A JSON sidecar keeps
+the exact typed baseline required for stale-value protection.
 """
 
+import csv
+import json
 import os
-import sys
-from collections import Counter, OrderedDict
+import re
+import traceback
+from collections import OrderedDict
 from datetime import datetime
 
 import NXOpen
-import NXOpen.UF
 
 
-_REQUIRED_RUNTIME_FILES = (
-    os.path.join("utils", "attribute_reconciliation.py"),
-    os.path.join("utils", "nx_helpers.py"),
-    os.path.join("config", "attribute_reconciliation.json"),
-)
-
-
-def _runtime_root_candidates(
-    script_path=None,
-    configured_root=None,
-    working_directory=None,
-    python_paths=None,
-):
-    """Return possible `from_git` roots in deterministic priority order."""
-    script_path = script_path or __file__
-    configured_root = configured_root or os.environ.get("NX_JOURNALS_ROOT")
-    working_directory = working_directory or os.getcwd()
-    python_paths = sys.path if python_paths is None else python_paths
-
-    seeds = [
-        configured_root,
-        os.path.dirname(os.path.abspath(script_path)),
-        working_directory,
-    ] + list(python_paths)
-    candidates = []
-    seen = set()
-
-    for seed in seeds:
-        if not seed:
-            continue
-        current = os.path.abspath(os.path.expanduser(os.path.expandvars(seed)))
-        for _level in range(4):
-            for candidate in (current, os.path.join(current, "from_git")):
-                normalized = os.path.normcase(os.path.normpath(candidate))
-                if normalized not in seen:
-                    seen.add(normalized)
-                    candidates.append(candidate)
-            parent = os.path.dirname(current)
-            if parent == current:
-                break
-            current = parent
-
-    return candidates
-
-
-def _find_runtime_root(
-    script_path=None,
-    configured_root=None,
-    working_directory=None,
-    python_paths=None,
-):
-    candidates = _runtime_root_candidates(
-        script_path=script_path,
-        configured_root=configured_root,
-        working_directory=working_directory,
-        python_paths=python_paths,
-    )
-    for candidate in candidates:
-        if all(os.path.isfile(os.path.join(candidate, name)) for name in _REQUIRED_RUNTIME_FILES):
-            return candidate
-
-    checked = "\n  - ".join(candidates[:12])
-    raise ImportError(
-        "Journal 04 could not locate its complete from_git runtime payload.\n"
-        "Keep config/, journals/, and utils/ together, or set NX_JOURNALS_ROOT "
-        "to the repository root or from_git folder before starting NX.\n"
-        "Checked:\n  - {0}".format(checked or "(no candidate paths)")
-    )
-
-
-_REPO_ROOT = _find_runtime_root()
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
-from utils.attribute_reconciliation import (  # noqa: E402
-    FZ_BOM_COLUMNS,
-    ReconciliationError,
-    bom_export_rows,
-    clean_text,
-    collect_bom_nodes,
-    compare_master_reference,
-    config_path,
-    config_sha256,
-    drawing_decision,
-    exact_model_dimensions,
-    file_sha256,
-    identity_from_attributes,
-    load_config,
-    load_drawing_scope,
-    mass_density_volume_consistent,
-    new_run_id,
-    normalize_value,
-    normalized_text,
-    object_identifier,
-    object_key,
-    read_attributes,
-    rules_by_logical,
-    validate_attribute_value,
-    write_csv,
-)
-from utils.nx_helpers import (  # noqa: E402
-    get_input_folder,
-    get_output_folder,
-    log_info,
-    require_work_part,
-    run_journal,
-)
-
-
-DETAIL_COLUMNS = [
-    "RUN_ID",
-    "RUN_TIMESTAMP",
-    "CONFIG_SHA256",
-    "DRAWING_SCOPE_SHA256",
-    "MASTER_REFERENCE_SHA256",
-    "OCCURRENCE_PATH",
-    "PARENT_PART_NUMBER",
-    "PARENT_REVISION",
-    "PART_NUMBER",
-    "REVISION",
-    "BOM_LEVEL",
-    "NX_QUANTITY",
-    "MODEL_IDENTIFIER",
-    "DRAWING_REQUIRED",
-    "DRAWING_INDEX",
-    "DRAWING_IDENTIFIER",
-    "LOGICAL_ATTRIBUTE",
-    "CATEGORY",
-    "NX_ATTRIBUTE_NAME",
-    "ATTRIBUTE_TYPE",
-    "AUTHORITATIVE_SOURCE",
-    "EXPECTED_VALUE",
-    "MODEL_VALUE",
-    "DRAWING_VALUE",
-    "NORMALIZED_EXPECTED",
-    "NORMALIZED_MODEL",
-    "NORMALIZED_DRAWING",
-    "SEVERITY",
-    "COMPARISON_RESULT",
-    "FAILURE_CODE",
-    "NX_EXCEPTION_TYPE",
-    "NX_ERROR_CODE",
-    "MESSAGE",
+CONTROL_COLUMNS = [
+    "AUDIT_RUN_ID",
+    "APPROVED",
+    "ENGINEER",
+    "APPROVAL_NOTE",
+    "PULL_STATUS",
+    "PULL_MESSAGE",
 ]
 
 
-def _env_path(name, default_name):
-    value = clean_text(os.environ.get(name))
-    return value if value else os.path.join(get_input_folder(), default_name)
+def _text(value):
+    return "" if value is None else str(value)
+
+
+def _clean(value):
+    return _text(value).strip()
+
+
+def _normalized(value):
+    return " ".join(_clean(value).split()).upper()
+
+
+def _enum_name(value):
+    if value is None:
+        return ""
+    name = getattr(value, "name", None)
+    return _text(name if name is not None else value).split(".")[-1]
 
 
 def _dispose(value):
     if value is None:
         return
-    for method_name in ("Dispose", "FreeResource"):
-        try:
-            getattr(value, method_name)()
+    for name in ("Dispose", "FreeResource"):
+        method = getattr(value, name, None)
+        if callable(method):
+            try:
+                method()
+            except Exception:
+                pass
             return
-        except Exception:
-            pass
-
-
-def _unwrap(value):
-    if isinstance(value, tuple):
-        first = value[0] if value else None
-        for extra in value[1:]:
-            _dispose(extra)
-        return first
-    return value
 
 
 def _exception_details(error):
-    code = getattr(error, "ErrorCode", None)
-    if code is None:
-        return "{0}: {1}".format(type(error).__name__, error)
-    return "{0}: {1} (ErrorCode={2})".format(type(error).__name__, error, code)
-
-
-def _exception_fields(error):
     code = getattr(error, "ErrorCode", "")
-    return {
-        "exception_type": type(error).__name__,
-        "error_code": "" if code is None else code,
-    }
+    return "{0}{1}".format(
+        type(error).__name__,
+        ": {0}".format(code) if code not in ("", None) else "",
+    ) + " - " + _text(error)
 
 
-def _loaded_parts(session):
-    try:
-        return list(session.Parts)
-    except Exception:
-        try:
-            return list(session.Parts.ToArray())
-        except Exception:
-            return []
+def _journal_path():
+    return os.path.abspath(__file__)
 
 
-def _journal_identifier(part):
-    try:
-        return clean_text(part.JournalIdentifier)
-    except Exception:
-        return object_identifier(part)
+def _runtime_candidates():
+    script = _journal_path()
+    script_parent = os.path.dirname(script)
+    configured = _clean(os.environ.get("NX_JOURNALS_ROOT"))
+    candidates = [
+        configured,
+        os.path.join(configured, "from_git") if configured else "",
+        os.path.dirname(script_parent),
+        os.getcwd(),
+        os.path.join(os.getcwd(), "from_git"),
+    ]
+    result = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        absolute = os.path.abspath(candidate)
+        if absolute not in result:
+            result.append(absolute)
+    return result
 
 
-def _find_loaded(session, expected_identifier):
-    expected = normalized_text(expected_identifier)
-    for part in _loaded_parts(session):
-        if normalized_text(_journal_identifier(part)) == expected:
-            return part
-    return None
-
-
-def _drawing_identifier(config, part_number, revision, index):
-    return config["drawing"]["identifier_template"].format(
-        part_number=part_number, revision=revision, index=index
-    )
-
-
-def _open_drawing(session, config, part_number, revision, index):
-    expected = _drawing_identifier(config, part_number, revision, index)
-    loaded = _find_loaded(session, expected)
-    if loaded is not None:
-        return loaded, False, ""
-    try:
-        opened = _unwrap(session.Parts.OpenDisplay(expected))
-        if opened is None:
-            return None, False, "OpenDisplay returned no part for {0}.".format(expected)
-        if normalized_text(_journal_identifier(opened)) != normalized_text(expected):
-            return opened, True, "OpenDisplay returned a different JournalIdentifier."
-        return opened, True, ""
-    except Exception as exc:
-        return None, False, _exception_details(exc)
-
-
-def _sheet_count(part):
-    try:
-        return len(list(part.DrawingSheets))
-    except Exception:
-        try:
-            return int(part.DrawingSheets.Count)
-        except Exception:
-            return -1
-
-
-def _restore_state(session, display_part, work_part):
-    messages = []
-    if display_part is not None:
-        try:
-            _dispose(session.Parts.SetDisplay(display_part, False, True))
-        except Exception as exc:
-            messages.append("Display restore failed: " + _exception_details(exc))
-    if work_part is not None:
-        try:
-            session.Parts.SetWork(work_part)
-        except Exception as exc:
-            messages.append("Work-part restore failed: " + _exception_details(exc))
-    return messages
-
-
-def _close_opened(part):
-    try:
-        part.Close(
-            NXOpen.BasePart.CloseWholeTree.FalseValue,
-            NXOpen.BasePart.CloseModified.CloseModified,
-            None,
+def _runtime_root():
+    attempted = []
+    for candidate in _runtime_candidates():
+        attempted.append(candidate)
+        if os.path.isfile(
+            os.path.join(candidate, "config", "attribute_reconciliation.json")
+        ):
+            return candidate
+    raise RuntimeError(
+        "Journal 04 configuration was not found. Deploy the config folder beside "
+        "journals or set NX_JOURNALS_ROOT. Attempted: {0}".format(
+            " | ".join(attempted)
         )
-        return ""
+    )
+
+
+def _io_root():
+    configured = _clean(os.environ.get("NX_JOURNALS_IO_DIR"))
+    if configured:
+        return os.path.abspath(configured)
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    return desktop if os.path.isdir(desktop) else os.getcwd()
+
+
+def _load_config():
+    path = os.path.join(
+        _runtime_root(), "config", "attribute_reconciliation.json"
+    )
+    with open(path, "r", encoding="utf-8-sig") as handle:
+        config = json.load(handle)
+    workflow = config.get("update_workflow", {})
+    if workflow.get("schema_version") != 1:
+        raise RuntimeError("Unsupported or missing update_workflow schema.")
+    if not workflow.get("identity_columns") or not workflow.get(
+        "business_columns"
+    ):
+        raise RuntimeError("Update workflow has no identity/business columns.")
+    return config
+
+
+def _rule_map(config):
+    rules = {}
+    for rule in config.get("attributes", []):
+        logical_name = _clean(rule.get("logical_name"))
+        if logical_name:
+            rules[logical_name] = rule
+    return rules
+
+
+def _column_specs(config, key):
+    rules = _rule_map(config)
+    specs = []
+    seen_columns = set()
+    for item in config["update_workflow"][key]:
+        column = _clean(item.get("csv_column"))
+        logical_name = _clean(item.get("logical_name"))
+        rule = rules.get(logical_name)
+        if not column or rule is None:
+            raise RuntimeError(
+                "Invalid {0} mapping for {1}.".format(key, logical_name)
+            )
+        if column in seen_columns:
+            raise RuntimeError("Duplicate update CSV column: " + column)
+        seen_columns.add(column)
+        specs.append((column, rule))
+    return specs
+
+
+def update_columns(config):
+    return (
+        list(CONTROL_COLUMNS)
+        + [column for column, _rule in _column_specs(config, "identity_columns")]
+        + [column for column, _rule in _column_specs(config, "business_columns")]
+    )
+
+
+def _attribute_value(info):
+    kind = _enum_name(getattr(info, "Type", ""))
+    numeric_kind = getattr(info, "Type", None)
+    if kind in ("String", "5") or numeric_kind == 5:
+        return getattr(info, "StringValue", ""), "String"
+    if kind in ("Real", "Number", "4") or numeric_kind == 4:
+        return getattr(info, "RealValue", None), "Number"
+    if kind in ("Integer", "3") or numeric_kind == 3:
+        return getattr(info, "IntegerValue", None), "Integer"
+    if kind in ("Boolean", "1") or numeric_kind == 1:
+        return getattr(info, "BooleanValue", None), "Boolean"
+    return getattr(info, "StringValue", ""), kind or "String"
+
+
+def _read_attribute(nx_object, rule):
+    iterator = None
+    try:
+        iterator = nx_object.CreateAttributeIterator()
+        iterator.SetIncludeOnlyCategory(rule["category"])
+        iterator.SetIncludeOnlyTitle(rule["attribute"])
+        iterator.SetIncludeAlsoUnset(True)
+        matches = [
+            info
+            for info in nx_object.GetUserAttributes(iterator)
+            if _clean(getattr(info, "Category", "")) == rule["category"]
+            and _clean(getattr(info, "Title", "")) == rule["attribute"]
+        ]
+        if not matches:
+            return {
+                "status": "MISSING",
+                "raw_value": "",
+                "type": rule["type"],
+                "flags": {},
+            }
+        if len(matches) > 1:
+            return {
+                "status": "AMBIGUOUS",
+                "raw_value": "",
+                "type": rule["type"],
+                "flags": {},
+                "message": "Multiple category/title matches.",
+            }
+        info = matches[0]
+        raw_value, actual_type = _attribute_value(info)
+        unset = bool(getattr(info, "Unset", False))
+        status = "UNSET" if unset else (
+            "BLANK" if _clean(raw_value) == "" else "POPULATED"
+        )
+        return {
+            "status": status,
+            "raw_value": raw_value,
+            "type": actual_type,
+            "flags": {
+                "locked": bool(getattr(info, "Locked", False)),
+                "owned_by_system": bool(
+                    getattr(info, "OwnedBySystem", False)
+                ),
+                "pdm_based": bool(getattr(info, "PdmBased", False)),
+                "not_saved": bool(getattr(info, "NotSaved", False)),
+            },
+        }
     except Exception as exc:
-        return _exception_details(exc)
-
-
-def _base_detail(context, node=None):
-    node = node or {}
-    return {
-        "RUN_ID": context["run_id"],
-        "RUN_TIMESTAMP": context["timestamp"],
-        "CONFIG_SHA256": context["config_hash"],
-        "DRAWING_SCOPE_SHA256": context.get("scope_hash", ""),
-        "MASTER_REFERENCE_SHA256": context.get("master_hash", ""),
-        "OCCURRENCE_PATH": node.get("occurrence_path", ""),
-        "PARENT_PART_NUMBER": node.get("parent_part_number", ""),
-        "PARENT_REVISION": node.get("parent_revision", ""),
-        "PART_NUMBER": node.get("part_number", ""),
-        "REVISION": node.get("revision", ""),
-        "BOM_LEVEL": node.get("level", ""),
-        "NX_QUANTITY": node.get("quantity", ""),
-        "MODEL_IDENTIFIER": object_identifier(node.get("part")) if node.get("part") is not None else "",
-        "DRAWING_REQUIRED": "",
-        "DRAWING_INDEX": "",
-        "DRAWING_IDENTIFIER": "",
-        "LOGICAL_ATTRIBUTE": "",
-        "CATEGORY": "",
-        "NX_ATTRIBUTE_NAME": "",
-        "ATTRIBUTE_TYPE": "",
-        "AUTHORITATIVE_SOURCE": "",
-        "EXPECTED_VALUE": "",
-        "MODEL_VALUE": "",
-        "DRAWING_VALUE": "",
-        "NORMALIZED_EXPECTED": "",
-        "NORMALIZED_MODEL": "",
-        "NORMALIZED_DRAWING": "",
-        "SEVERITY": "BLOCK",
-        "COMPARISON_RESULT": "FAIL",
-        "FAILURE_CODE": "ERROR",
-        "NX_EXCEPTION_TYPE": "",
-        "NX_ERROR_CODE": "",
-        "MESSAGE": "",
-    }
-
-
-def _finding_detail(context, finding, node=None):
-    row = _base_detail(context, node)
-    row.update(
-        {
-            "OCCURRENCE_PATH": finding.get("occurrence_path", row["OCCURRENCE_PATH"]),
-            "PART_NUMBER": finding.get("part_number", row["PART_NUMBER"]),
-            "REVISION": finding.get("revision", row["REVISION"]),
-            "FAILURE_CODE": finding.get("code", "ERROR"),
-            "NX_EXCEPTION_TYPE": finding.get("exception_type", ""),
-            "NX_ERROR_CODE": finding.get("error_code", ""),
-            "MESSAGE": finding.get("message", ""),
+        return {
+            "status": "UNREADABLE",
+            "raw_value": "",
+            "type": rule.get("type", ""),
+            "flags": {},
+            "message": _exception_details(exc),
         }
-    )
-    return row
+    finally:
+        _dispose(iterator)
 
 
-def _attribute_detail(context, node, rule, result):
-    severity, code, message = validate_attribute_value(result, rule, context["config"])
-    raw = result.get("raw_value", "")
-    row = _base_detail(context, node)
-    row.update(
-        {
-            "LOGICAL_ATTRIBUTE": rule["logical_name"],
-            "CATEGORY": rule["category"],
-            "NX_ATTRIBUTE_NAME": rule["attribute"],
-            "ATTRIBUTE_TYPE": result.get("type", rule["type"]),
-            "AUTHORITATIVE_SOURCE": rule["source_owner"],
-            "EXPECTED_VALUE": raw,
-            "MODEL_VALUE": raw,
-            "NORMALIZED_EXPECTED": normalize_value(raw, rule, context["config"]),
-            "NORMALIZED_MODEL": normalize_value(raw, rule, context["config"]),
-            "SEVERITY": severity,
-            "COMPARISON_RESULT": "PASS" if severity == "PASS" else severity,
-            "FAILURE_CODE": code,
-            "MESSAGE": message,
+def _read_identity_attribute(nx_object, rule):
+    """Read hard-coded NX/CAD identity by title, independent of category."""
+    try:
+        raw_value = nx_object.GetStringAttribute(rule["attribute"])
+        return {
+            "status": (
+                "BLANK" if _clean(raw_value) == "" else "POPULATED"
+            ),
+            "raw_value": raw_value,
+            "type": "String",
+            "flags": {},
         }
-    )
-    return row
+    except AttributeError:
+        return _read_attribute(nx_object, rule)
+    except Exception as exc:
+        fallback = _read_attribute(nx_object, rule)
+        if fallback["status"] != "MISSING":
+            return fallback
+        fallback["message"] = _exception_details(exc)
+        return fallback
 
 
-def _drawing_attribute_detail(context, node, rule, model_result, drawing_result, decision, index, drawing):
-    row = _base_detail(context, node)
-    model_raw = model_result.get("raw_value", "")
-    drawing_raw = drawing_result.get("raw_value", "")
-    row.update(
-        {
-            "DRAWING_REQUIRED": decision,
-            "DRAWING_INDEX": index,
-            "DRAWING_IDENTIFIER": _journal_identifier(drawing),
-            "LOGICAL_ATTRIBUTE": rule["logical_name"],
-            "CATEGORY": rule["category"],
-            "NX_ATTRIBUTE_NAME": rule["attribute"],
-            "ATTRIBUTE_TYPE": drawing_result.get("type", rule["type"]),
-            "AUTHORITATIVE_SOURCE": rule["source_owner"],
-            "EXPECTED_VALUE": model_raw,
-            "MODEL_VALUE": model_raw,
-            "DRAWING_VALUE": drawing_raw,
-            "NORMALIZED_EXPECTED": normalize_value(model_raw, rule, context["config"]),
-            "NORMALIZED_MODEL": normalize_value(model_raw, rule, context["config"]),
-            "NORMALIZED_DRAWING": normalize_value(drawing_raw, rule, context["config"]),
-        }
+def _object_key(nx_object):
+    tag = getattr(nx_object, "Tag", None)
+    return ("TAG", _text(tag)) if tag is not None else ("PY", id(nx_object))
+
+
+def _object_identifier(nx_object):
+    for name in ("JournalIdentifier", "FullPath", "Name", "Leaf"):
+        value = getattr(nx_object, name, "")
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = ""
+        if _clean(value):
+            return _clean(value)
+    return _text(_object_key(nx_object))
+
+
+def _children(component):
+    try:
+        return list(component.GetChildren())
+    except Exception:
+        return []
+
+
+def _is_suppressed(component):
+    try:
+        return bool(component.IsSuppressed)
+    except Exception:
+        return False
+
+
+def collect_unique_prototypes(work_part):
+    """Return ordered unique prototype parts and traversal diagnostics."""
+    unique = OrderedDict()
+    diagnostics = []
+
+    def add_part(part):
+        if part is not None:
+            unique.setdefault(_object_key(part), part)
+
+    add_part(work_part)
+    root_component = getattr(
+        getattr(work_part, "ComponentAssembly", None), "RootComponent", None
     )
-    if drawing_result.get("status") in ("MISSING", "UNSET", "BLANK"):
-        if rule.get("required_for_certification"):
-            row.update(
-                SEVERITY="BLOCK",
-                COMPARISON_RESULT="FAIL",
-                FAILURE_CODE="ATTRIBUTE_MISSING_DRAWING",
-                MESSAGE="Required drawing attribute is not populated.",
+    if root_component is None:
+        return list(unique.values()), diagnostics
+
+    stack = list(reversed(_children(root_component)))
+    while stack:
+        component = stack.pop()
+        if _is_suppressed(component):
+            continue
+        prototype = getattr(component, "Prototype", None)
+        if prototype is None:
+            diagnostics.append(
+                {
+                    "code": "MISSING_MODEL",
+                    "message": "Component has no loaded prototype: {0}".format(
+                        _clean(getattr(component, "DisplayName", ""))
+                        or _clean(getattr(component, "Name", ""))
+                        or "<unknown>"
+                    ),
+                }
             )
         else:
-            row.update(
-                SEVERITY="INFO",
-                COMPARISON_RESULT="NOT_APPLICABLE",
-                FAILURE_CODE="NOT_APPLICABLE",
-                MESSAGE="Optional drawing attribute is not populated.",
-            )
-        return row
-    if drawing_result.get("status") == "UNREADABLE":
-        row.update(
-            SEVERITY="BLOCK",
-            COMPARISON_RESULT="FAIL",
-            FAILURE_CODE="UNREADABLE_ATTRIBUTE",
-            MESSAGE=drawing_result.get("message", "Drawing attribute could not be read."),
-        )
-        return row
-    if normalize_value(model_raw, rule, context["config"]) != normalize_value(
-        drawing_raw, rule, context["config"]
-    ):
-        row.update(
-            SEVERITY="BLOCK",
-            COMPARISON_RESULT="FAIL",
-            FAILURE_CODE="MODEL_DRAWING_MISMATCH",
-            MESSAGE="Drawing value does not match the NX-authoritative model value.",
-        )
-        return row
-    row.update(
-        SEVERITY="PASS",
-        COMPARISON_RESULT="PASS",
-        FAILURE_CODE="PASS",
-        MESSAGE="Drawing value matches the NX-authoritative model value.",
-    )
-    return row
+            add_part(prototype)
+        stack.extend(reversed(_children(component)))
+    return list(unique.values()), diagnostics
 
 
-def _audit_models(context, nodes, uf_session):
-    rows = []
-    config = context["config"]
-    rules = rules_by_logical(config)
-    unique = OrderedDict()
-    for node in nodes:
-        key = (normalized_text(node["part_number"]), normalized_text(node["revision"]))
-        unique.setdefault(key, node)
-        for rule in config["attributes"]:
-            if "MODEL" in rule.get("required_on", []):
-                rows.append(_attribute_detail(context, node, rule, node["attributes"][rule["logical_name"]]))
+def _sidecar_value(result):
+    raw = result.get("raw_value", "")
+    return {
+        "status": result.get("status", ""),
+        "raw_value": raw,
+        "normalized_value": _normalized(raw),
+        "type": result.get("type", ""),
+        "flags": result.get("flags", {}),
+        "message": result.get("message", ""),
+    }
 
-    tolerance = config["release_policy"]["mass_relative_tolerance"]
-    for node in unique.values():
-        values = node["attributes"]
-        consistent, calculated = mass_density_volume_consistent(
-            values.get("mass_kg", {}).get("raw_value"),
-            values.get("density_kg_per_mm3", {}).get("raw_value"),
-            values.get("volume_mm3", {}).get("raw_value"),
-            tolerance,
-        )
-        row = _base_detail(context, node)
+
+def build_pull_records(work_part, config, run_id):
+    identity_specs = _column_specs(config, "identity_columns")
+    business_specs = _column_specs(config, "business_columns")
+    parts, traversal_diagnostics = collect_unique_prototypes(work_part)
+    records = []
+
+    for part in parts:
+        messages = []
+        identity_values = OrderedDict()
+        identity_results = {}
+        for column, rule in identity_specs:
+            result = _read_identity_attribute(part, rule)
+            identity_results[column] = result
+            identity_values[column] = _text(result.get("raw_value", ""))
+            if result["status"] in (
+                "MISSING",
+                "UNSET",
+                "BLANK",
+                "UNREADABLE",
+                "AMBIGUOUS",
+            ):
+                messages.append(
+                    "{0}: {1}".format(column, result["status"])
+                )
+
+        business_values = OrderedDict()
+        business_results = {}
+        for column, rule in business_specs:
+            result = _read_attribute(part, rule)
+            business_results[column] = result
+            business_values[column] = _text(result.get("raw_value", ""))
+            if result["status"] in ("UNREADABLE", "AMBIGUOUS"):
+                messages.append(
+                    "{0}: {1}{2}".format(
+                        column,
+                        result["status"],
+                        " - " + result.get("message", "")
+                        if result.get("message")
+                        else "",
+                    )
+                )
+
+        row = OrderedDict()
         row.update(
-            LOGICAL_ATTRIBUTE="mass_density_volume_consistency",
-            CATEGORY="DERIVED_NX",
-            NX_ATTRIBUTE_NAME="NX_Mass ~= NX_Density * NX_Volume",
-            ATTRIBUTE_TYPE="Number",
-            AUTHORITATIVE_SOURCE="DERIVED_NX",
-            EXPECTED_VALUE=calculated,
-            MODEL_VALUE=values.get("mass_kg", {}).get("raw_value", ""),
-            SEVERITY="PASS" if consistent else "BLOCK",
-            COMPARISON_RESULT="PASS" if consistent else "FAIL",
-            FAILURE_CODE="PASS" if consistent else "ATTRIBUTE_MISMATCH",
-            MESSAGE="Mass is consistent with density and volume." if consistent else (
-                "Mass is not consistent with density and volume."
-            ),
+            {
+                "AUDIT_RUN_ID": run_id,
+                "APPROVED": "NO",
+                "ENGINEER": "",
+                "APPROVAL_NOTE": "",
+                "PULL_STATUS": "REVIEW" if messages else "READY",
+                "PULL_MESSAGE": " | ".join(messages),
+            }
         )
-        rows.append(row)
+        row.update(identity_values)
+        row.update(business_values)
+        records.append(
+            {
+                "part": part,
+                "row": row,
+                "identity_results": identity_results,
+                "business_results": business_results,
+                "messages": messages,
+            }
+        )
+
+    identities = {}
+    for record in records:
+        key = (
+            _normalized(record["row"].get("Item Number")),
+            _normalized(record["row"].get("Item Rev")),
+        )
+        identities.setdefault(key, []).append(record)
+    for key, matches in identities.items():
+        if not all(key) or len(matches) < 2:
+            continue
+        message = "Duplicate prototype identity: {0}/{1}".format(*key)
+        for record in matches:
+            record["messages"].append(message)
+            record["row"]["PULL_STATUS"] = "REVIEW"
+            record["row"]["PULL_MESSAGE"] = " | ".join(record["messages"])
+
+    return records, traversal_diagnostics
+
+
+def _safe_filename(value):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", _clean(value))
+    return cleaned.strip("._") or "UNKNOWN"
+
+
+def _write_csv(path, columns, rows):
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({column: row.get(column, "") for column in columns})
+
+
+def _write_json(path, payload):
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+
+
+def _listing_window(session):
+    listing = getattr(session, "ListingWindow", None)
+    if listing is not None:
         try:
-            dimensions = exact_model_dimensions(node["part"], uf_session)
-            for axis, value in zip(("length_x_mm", "width_y_mm", "height_z_mm"), dimensions):
-                dimension_row = _base_detail(context, node)
-                dimension_row.update(
-                    LOGICAL_ATTRIBUTE=axis,
-                    CATEGORY="DERIVED_NX",
-                    NX_ATTRIBUTE_NAME="EXACT_BOUNDING_BOX_" + axis.split("_")[1].upper(),
-                    ATTRIBUTE_TYPE="Number",
-                    AUTHORITATIVE_SOURCE="DERIVED_NX",
-                    EXPECTED_VALUE=value,
-                    MODEL_VALUE=value,
-                    NORMALIZED_EXPECTED=format(value, ".15g"),
-                    NORMALIZED_MODEL=format(value, ".15g"),
-                    SEVERITY="PASS" if value > 0 else "BLOCK",
-                    COMPARISON_RESULT="PASS" if value > 0 else "FAIL",
-                    FAILURE_CODE="PASS" if value > 0 else "DIMENSION_DERIVATION_FAILED",
-                    MESSAGE="Exact model-coordinate bounding-box extent." if value > 0 else (
-                        "Bounding-box extent must be greater than zero."
-                    ),
-                )
-                rows.append(dimension_row)
-        except Exception as exc:
-            dimension_row = _base_detail(context, node)
-            dimension_row.update(
-                LOGICAL_ATTRIBUTE="dimensions_xyz_mm",
-                CATEGORY="DERIVED_NX",
-                NX_ATTRIBUTE_NAME="EXACT_BOUNDING_BOX_XYZ",
-                ATTRIBUTE_TYPE="Number",
-                AUTHORITATIVE_SOURCE="DERIVED_NX",
-                SEVERITY="BLOCK",
-                COMPARISON_RESULT="FAIL",
-                FAILURE_CODE="DIMENSION_DERIVATION_FAILED",
-                NX_EXCEPTION_TYPE=type(exc).__name__,
-                NX_ERROR_CODE="" if getattr(exc, "ErrorCode", None) is None else getattr(exc, "ErrorCode"),
-                MESSAGE=_exception_details(exc),
-            )
-            rows.append(dimension_row)
-    return rows, list(unique.values())
+            listing.Open()
+        except Exception:
+            pass
+    return listing
 
 
-def _audit_drawings(session, context, unique_nodes, scope, opened_parts):
-    rows = []
-    config = context["config"]
-    drawing_rules = [rule for rule in config["attributes"] if "DRAWING" in rule.get("required_on", [])]
-    for node in unique_nodes:
-        decision = drawing_decision(scope, node["part_number"], node["revision"])
-        if decision != "YES":
-            row = _base_detail(context, node)
-            row.update(
-                DRAWING_REQUIRED=decision,
-                LOGICAL_ATTRIBUTE="drawing_scope",
-                CATEGORY="GOVERNANCE",
-                NX_ATTRIBUTE_NAME="Drawing Required",
-                ATTRIBUTE_TYPE="String",
-                AUTHORITATIVE_SOURCE="DATAPACK_SCOPE",
-                EXPECTED_VALUE=decision,
-                SEVERITY="INFO" if decision == "NO" else "BLOCK",
-                COMPARISON_RESULT="NOT_APPLICABLE" if decision == "NO" else "FAIL",
-                FAILURE_CODE="NOT_APPLICABLE" if decision == "NO" else "DRAWING_SCOPE_REVIEW",
-                MESSAGE="Drawing is not required." if decision == "NO" else (
-                    "Drawing applicability is missing or requires review."
-                ),
-            )
-            rows.append(row)
-            continue
-        found = []
-        open_errors = []
-        for index in range(1, int(config["drawing"]["max_index"]) + 1):
-            drawing, newly_opened, error = _open_drawing(
-                session, config, node["part_number"], node["revision"], index
-            )
-            if newly_opened and drawing is not None and object_key(drawing) not in {
-                object_key(part) for part in opened_parts
-            }:
-                opened_parts.append(drawing)
-            if error:
-                open_errors.append("dwg{0}: {1}".format(index, error))
-                if drawing is not None:
-                    identity_row = _base_detail(context, node)
-                    identity_row.update(
-                        DRAWING_REQUIRED="YES",
-                        DRAWING_INDEX=index,
-                        DRAWING_IDENTIFIER=_journal_identifier(drawing),
-                        LOGICAL_ATTRIBUTE="drawing_resolution",
-                        CATEGORY="DRAWING",
-                        NX_ATTRIBUTE_NAME="JournalIdentifier",
-                        ATTRIBUTE_TYPE="String",
-                        AUTHORITATIVE_SOURCE="NX_TEAMCENTER_IDENTITY",
-                        EXPECTED_VALUE=_drawing_identifier(
-                            config, node["part_number"], node["revision"], index
-                        ),
-                        DRAWING_VALUE=_journal_identifier(drawing),
-                        SEVERITY="BLOCK",
-                        COMPARISON_RESULT="FAIL",
-                        FAILURE_CODE="DRAWING_IDENTITY_MISMATCH",
-                        MESSAGE=error,
-                    )
-                    rows.append(identity_row)
-                continue
-            if drawing is None:
-                continue
-            found.append((index, drawing))
-        if not found:
-            row = _base_detail(context, node)
-            row.update(
-                DRAWING_REQUIRED="YES",
-                LOGICAL_ATTRIBUTE="drawing_resolution",
-                CATEGORY="DRAWING",
-                NX_ATTRIBUTE_NAME="JournalIdentifier",
-                ATTRIBUTE_TYPE="String",
-                AUTHORITATIVE_SOURCE="DATAPACK_SCOPE",
-                SEVERITY="BLOCK",
-                COMPARISON_RESULT="FAIL",
-                FAILURE_CODE="MISSING_DRAWING",
-                MESSAGE="No canonical drawing opened. " + " | ".join(open_errors),
-            )
-            rows.append(row)
-            continue
-        for index, drawing in found:
-            sheet_count = _sheet_count(drawing)
-            sheet_row = _base_detail(context, node)
-            sheet_row.update(
-                DRAWING_REQUIRED="YES",
-                DRAWING_INDEX=index,
-                DRAWING_IDENTIFIER=_journal_identifier(drawing),
-                LOGICAL_ATTRIBUTE="drawing_sheet_count",
-                CATEGORY="DRAWING",
-                NX_ATTRIBUTE_NAME="DrawingSheets",
-                ATTRIBUTE_TYPE="Integer",
-                AUTHORITATIVE_SOURCE="DRAWING",
-                EXPECTED_VALUE=">=1",
-                DRAWING_VALUE=sheet_count,
-                SEVERITY="PASS" if sheet_count > 0 else "BLOCK",
-                COMPARISON_RESULT="PASS" if sheet_count > 0 else "FAIL",
-                FAILURE_CODE="PASS" if sheet_count > 0 else "MISSING_DRAWING",
-                MESSAGE="Drawing contains at least one sheet." if sheet_count > 0 else (
-                    "Drawing opened but contains no readable sheets."
-                ),
-            )
-            rows.append(sheet_row)
-            drawing_values = read_attributes(drawing, config)
-            for rule in drawing_rules:
-                rows.append(
-                    _drawing_attribute_detail(
-                        context,
-                        node,
-                        rule,
-                        node["attributes"][rule["logical_name"]],
-                        drawing_values[rule["logical_name"]],
-                        "YES",
-                        index,
-                        drawing,
-                    )
-                )
-    return rows
+def _log(listing, message):
+    if listing is not None:
+        try:
+            listing.WriteLine(_text(message))
+            return
+        except Exception:
+            pass
+    print(_text(message))
 
 
 def main(session):
-    work_part = require_work_part(session)
+    work_part = getattr(getattr(session, "Parts", None), "Work", None)
     if work_part is None:
-        return
-    original_display = session.Parts.Display
-    original_work = session.Parts.Work
-    opened_parts = []
-    detail_rows = []
-    restore_messages = []
-    config = load_config(_REPO_ROOT)
-    nodes, traversal_findings = collect_bom_nodes(work_part, config)
-    root_part_number = nodes[0]["part_number"] if nodes else "UNKNOWN"
-    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    context = {
-        "config": config,
-        "run_id": new_run_id(root_part_number),
-        "timestamp": timestamp,
-        "config_hash": config_sha256(config),
-        "scope_hash": "",
-        "master_hash": "",
-    }
-    scope_path = _env_path(
-        "NX_DRAWING_SCOPE_FILE", config["inputs"]["drawing_scope_filename"]
+        raise RuntimeError("Open an NX 3D master part or assembly first.")
+
+    config = _load_config()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = "{0}_{1}".format(
+        _safe_filename(_object_identifier(work_part)), timestamp
     )
-    master_override = clean_text(os.environ.get("NX_ATTRIBUTE_MASTER_FILE"))
-    master_path = _env_path(
-        "NX_ATTRIBUTE_MASTER_FILE", config["inputs"]["master_reference_filename"]
+    records, traversal_diagnostics = build_pull_records(
+        work_part, config, run_id
     )
-    scope = {}
-    scope_available = False
 
-    try:
-        for finding in traversal_findings:
-            detail_rows.append(_finding_detail(context, finding))
-        if os.path.exists(scope_path):
-            context["scope_hash"] = file_sha256(scope_path)
-            scope, scope_findings = load_drawing_scope(scope_path)
-            scope_available = True
-            for finding in scope_findings:
-                detail_rows.append(_finding_detail(context, finding))
-        else:
-            detail_rows.append(
-                _finding_detail(
-                    context,
-                    {
-                        "code": "DRAWING_SCOPE_REVIEW",
-                        "message": "Required drawing-scope CSV not found: {0}".format(scope_path),
-                    },
-                )
-            )
+    output_root = _io_root()
+    os.makedirs(output_root, exist_ok=True)
+    stem = "NX_ATTRIBUTE_UPDATE_{0}".format(run_id)
+    csv_path = os.path.join(output_root, stem + ".csv")
+    sidecar_path = os.path.join(output_root, stem + ".baseline.json")
+    columns = update_columns(config)
+    _write_csv(csv_path, columns, [record["row"] for record in records])
 
-        uf_session = NXOpen.UF.UFSession.GetUFSession()
-        model_rows, unique_nodes = _audit_models(context, nodes, uf_session)
-        detail_rows.extend(model_rows)
-        if scope_available:
-            detail_rows.extend(_audit_drawings(session, context, unique_nodes, scope, opened_parts))
-
-        nx_bom_rows = bom_export_rows(nodes)
-        if os.path.exists(master_path):
-            context["master_hash"] = file_sha256(master_path)
-            for finding in compare_master_reference(master_path, root_part_number, nx_bom_rows):
-                detail_rows.append(_finding_detail(context, finding))
-        elif master_override:
-            detail_rows.append(
-                _finding_detail(
-                    context,
-                    {
-                        "code": "DOWNSTREAM_BOM_DRIFT",
-                        "message": "Explicit MASTER reference file was not found: {0}".format(
-                            master_path
-                        ),
-                    },
-                )
-            )
-    except Exception as exc:
-        exception_fields = _exception_fields(exc)
-        detail_rows.append(
-            _finding_detail(
-                context,
-                {
-                    "code": "ERROR",
-                    "message": "Unhandled audit stage: " + _exception_details(exc),
-                    "exception_type": exception_fields["exception_type"],
-                    "error_code": exception_fields["error_code"],
+    identity_specs = _column_specs(config, "identity_columns")
+    business_specs = _column_specs(config, "business_columns")
+    sidecar = {
+        "schema_version": 1,
+        "audit_run_id": run_id,
+        "generated_at": datetime.now().isoformat(),
+        "source_journal": "04_assembly_attribute_audit.py",
+        "root_identifier": _object_identifier(work_part),
+        "csv_filename": os.path.basename(csv_path),
+        "identity_columns": [
+            {
+                "csv_column": column,
+                "logical_name": rule["logical_name"],
+                "category": rule["category"],
+                "attribute": rule["attribute"],
+                "type": rule["type"],
+            }
+            for column, rule in identity_specs
+        ],
+        "business_columns": [
+            {
+                "csv_column": column,
+                "logical_name": rule["logical_name"],
+                "category": rule["category"],
+                "attribute": rule["attribute"],
+                "type": rule["type"],
+            }
+            for column, rule in business_specs
+        ],
+        "traversal_diagnostics": traversal_diagnostics,
+        "parts": [
+            {
+                "part_number": record["row"].get("Item Number", ""),
+                "part_name": record["row"].get("Part Description", ""),
+                "revision": record["row"].get("Item Rev", ""),
+                "model_identifier": _object_identifier(record["part"]),
+                "pull_status": record["row"]["PULL_STATUS"],
+                "pull_message": record["row"]["PULL_MESSAGE"],
+                "identity": {
+                    column: _sidecar_value(record["identity_results"][column])
+                    for column, _rule in identity_specs
                 },
-            )
-        )
-    finally:
-        restore_messages.extend(_restore_state(session, original_display, original_work))
-        for opened in reversed(opened_parts):
-            close_error = _close_opened(opened)
-            if close_error:
-                restore_messages.append(
-                    "Unable to close journal-opened drawing {0}: {1}".format(
-                        _journal_identifier(opened), close_error
-                    )
-                )
+                "business_values": {
+                    column: _sidecar_value(record["business_results"][column])
+                    for column, _rule in business_specs
+                },
+            }
+            for record in records
+        ],
+    }
+    _write_json(sidecar_path, sidecar)
 
-    for message in restore_messages:
-        detail_rows.append(
-            _finding_detail(context, {"code": "ERROR", "message": message})
-        )
-
-    # Hashes are finalized after optional inputs are processed.  Backfill all
-    # rows so each detail line independently identifies the complete run input.
-    for row in detail_rows:
-        row["CONFIG_SHA256"] = context["config_hash"]
-        row["DRAWING_SCOPE_SHA256"] = context["scope_hash"]
-        row["MASTER_REFERENCE_SHA256"] = context["master_hash"]
-
-    output_folder = get_output_folder()
-    detail_path = os.path.join(
-        output_folder, "RECONCILIATION_{0}.csv".format(context["run_id"])
+    listing = _listing_window(session)
+    ready_count = sum(
+        1 for record in records if record["row"]["PULL_STATUS"] == "READY"
     )
-    summary_path = os.path.join(
-        output_folder, "RECONCILIATION_SUMMARY_{0}.csv".format(context["run_id"])
+    _log(listing, "Journal 04 model attribute pull complete.")
+    _log(listing, "  Unique 3D master models: {0}".format(len(records)))
+    _log(listing, "  Ready rows: {0}".format(ready_count))
+    _log(listing, "  Review rows: {0}".format(len(records) - ready_count))
+    _log(
+        listing,
+        "  Traversal diagnostics: {0}".format(len(traversal_diagnostics)),
     )
-    write_csv(detail_path, DETAIL_COLUMNS, detail_rows)
-    counts = Counter(row.get("FAILURE_CODE", "") for row in detail_rows)
-    blocker_count = sum(1 for row in detail_rows if row.get("SEVERITY") == "BLOCK")
-    warning_count = sum(1 for row in detail_rows if row.get("SEVERITY") == "WARN")
-    summary_rows = [
-        ["RUN_ID", context["run_id"]],
-        ["ROOT_PART_NUMBER", root_part_number],
-        ["AUTHORITY", "NX_TEAMCENTER"],
-        ["CONFIG_FILE", config_path(_REPO_ROOT)],
-        ["CONFIG_SHA256", context["config_hash"]],
-        ["DRAWING_SCOPE_FILE", scope_path],
-        ["DRAWING_SCOPE_SHA256", context["scope_hash"]],
-        ["MASTER_REFERENCE_FILE", master_path if os.path.exists(master_path) else "NOT_SUPPLIED"],
-        ["MASTER_REFERENCE_SHA256", context["master_hash"]],
-        ["BOM_ROWS", len(nodes)],
-        ["DETAIL_ROWS", len(detail_rows)],
-        ["BLOCKING_FINDINGS", blocker_count],
-        ["WARNINGS", warning_count],
-        ["CERTIFICATION", "PASS" if blocker_count == 0 else "FAIL"],
-    ]
-    summary_rows.extend([["FAILURE_CODE_" + code, count] for code, count in sorted(counts.items())])
-    write_csv(summary_path, ["Metric", "Value"], summary_rows)
-
-    certified_path = ""
-    if blocker_count == 0:
-        certified_path = os.path.join(
-            output_folder, "NX_CERTIFIED_BOM_{0}.csv".format(context["run_id"])
-        )
-        write_csv(certified_path, FZ_BOM_COLUMNS, bom_export_rows(nodes))
-
-    log_info(
-        session,
-        "\n".join(
-            [
-                "J04 NX-authoritative reconciliation complete.",
-                "  Run ID             : {0}".format(context["run_id"]),
-                "  BOM rows           : {0}".format(len(nodes)),
-                "  Blocking findings  : {0}".format(blocker_count),
-                "  Warnings           : {0}".format(warning_count),
-                "  Certification      : {0}".format("PASS" if blocker_count == 0 else "FAIL"),
-                "  Detail report      : {0}".format(detail_path),
-                "  Summary report     : {0}".format(summary_path),
-                "  Certified BOM      : {0}".format(certified_path or "WITHHELD"),
-            ]
-        ),
+    _log(listing, "  Editable CSV: " + csv_path)
+    _log(listing, "  Baseline: " + sidecar_path)
+    _log(
+        listing,
+        "Edit business fields, set APPROVED=YES, populate ENGINEER, "
+        "then run Journal 05.",
     )
+    return csv_path, sidecar_path
+
+
+def _run_journal():
+    session = NXOpen.Session.GetSession()
+    listing = _listing_window(session)
+    try:
+        main(session)
+    except Exception as exc:
+        _log(listing, "JOURNAL 04 FAILED: " + _exception_details(exc))
+        _log(listing, traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":
-    run_journal(main)
+    _run_journal()

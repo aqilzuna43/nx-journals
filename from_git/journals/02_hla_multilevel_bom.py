@@ -1,7 +1,8 @@
 """Journal 02 - NX-authoritative draft multilevel BOM.
 
-Exports the active NX assembly in the FZ NX-import schema.  This journal is a
-draft snapshot only; Journal 04 is the certification gate.
+Exports the active NX assembly in the FZ NX-import schema. This journal is a
+draft structural snapshot; Journal 04 independently pulls editable business
+attributes from unique 3D master prototypes.
 """
 
 import os
@@ -48,7 +49,7 @@ def main(session):
 
     messages = [
         "Draft NX BOM exported.",
-        "  Certification : DRAFT (run Journal 04 to certify)",
+        "  Status        : DRAFT structural BOM",
         "  BOM rows       : {0}".format(len(rows)),
         "  Findings       : {0}".format(len(findings)),
         "  Report         : {0}".format(output_path),
