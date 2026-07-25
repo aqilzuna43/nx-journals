@@ -1,0 +1,74 @@
+{
+  "journal": "11_test_teamcenter_attribute_checkout.py",
+  "timestamp": "2026-07-25T11:21:24.609528",
+  "mode": "PROBE",
+  "probe": {
+    "python_version": "3.12.9 (main, Feb 24 2025, 12:24:11) [MSC v.1929 64 bit (AMD64)]",
+    "nxopen_module": "C:\\Program Files\\Siemens\\NXX2506\\nxbin\\python\\NXOpen.pyd",
+    "ugii_version": "",
+    "ugii_full_version": "",
+    "managed_mode": false,
+    "part_number": "264MN033036A01",
+    "revision": "A",
+    "part_identifier": "@DB/264MN033036A01/A",
+    "read_only": false,
+    "checkout_status": {
+      "state": "NOT_RETURNED",
+      "detail": ""
+    },
+    "autolock": {
+      "status": "AVAILABLE",
+      "value": false
+    },
+    "part_members": [
+      "CheckerData",
+      "CloseAfterSave",
+      "GetPdmReferenceAttributeValue",
+      "GetUserAttributeLock",
+      "IsReadOnly",
+      "PDMPart",
+      "RemoveTransienceForSaveAs",
+      "Reopen",
+      "ReopenAs",
+      "RequirementChecks",
+      "Save",
+      "SaveAs",
+      "SaveBookmark",
+      "SaveComponents",
+      "SaveDisplayFacets",
+      "SaveOptions",
+      "SetPdmReferenceAttribute",
+      "SetUserAttributeLock"
+    ],
+    "pdm_part_type": "PdmPart",
+    "pdm_part_members": [
+      "CheckinInput",
+      "CheckinParts",
+      "Checkout",
+      "CheckoutInput",
+      "CheckoutParts",
+      "ClearPreciseStructureOnSave",
+      "GetCheckedoutStatusAndUser",
+      "SetPreciseStructureOnSave"
+    ],
+    "session_members": [
+      "CheckerDataStatus",
+      "PdmManager",
+      "PdmSearchManager",
+      "PdmSession",
+      "SpreadsheetManager"
+    ],
+    "close_whole_tree_enum": [
+      "FalseValue",
+      "TrueValue",
+      "ValueOf"
+    ],
+    "close_modified_enum": [
+      "CloseModified",
+      "DontCloseModified",
+      "UseResponses",
+      "ValueOf"
+    ]
+  },
+  "result": "PROBE_COMPLETE"
+}
