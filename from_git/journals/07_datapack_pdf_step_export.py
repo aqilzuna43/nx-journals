@@ -8,6 +8,7 @@ For PDF:
 - Reuse matching drawing specifications already loaded in the NX session.
 - Otherwise try Teamcenter non-master drawing specifications dwg1..dwg9.
 - Make each drawing the active display part before exporting every sheet.
+- Apply DRAFT_<revision>.<WAE_VERSION> to every page using the PDF builder.
 
 For STEP:
 - Reuse a matching loaded master part.
@@ -33,10 +34,12 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-CANONICAL-SPEC-OPEN-V1"
+JOURNAL_BUILD_ID = "J07-NX2506-DRAFT-WATERMARK-V2"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
+PDF_DRAFT_PREFIX = "DRAFT"
+WAE_VERSION_ATTRIBUTE = "WAE_VERSION"
 STEP_BODY_TOKENS = (
     "MANIFOLD_SOLID_BREP",
     "BREP_WITH_VOIDS",
@@ -1013,9 +1016,64 @@ def build_pdf_filename(
     return filename + ".pdf"
 
 
-def export_drawing_pdf(drawing_part, sheets, output_path):
+def build_pdf_watermark(revision, wae_version):
+    watermark = PDF_DRAFT_PREFIX
+    cleaned_revision = normalize_text(revision)
+    cleaned_wae_version = normalize_text(wae_version)
+
+    if cleaned_revision:
+        watermark += "_" + cleaned_revision
+    if cleaned_wae_version:
+        watermark += "." + cleaned_wae_version
+
+    return watermark
+
+
+def resolve_pdf_watermark(session, number, revision, candidates):
+    model_part = loaded_master_candidate(session, number, revision)
+    if model_part is not None:
+        wae_version = get_string_attribute(
+            model_part,
+            WAE_VERSION_ATTRIBUTE,
+        )
+        if wae_version:
+            return (
+                build_pdf_watermark(revision, wae_version),
+                "loaded model {0}".format(WAE_VERSION_ATTRIBUTE),
+                "",
+            )
+
+    for candidate in candidates:
+        drawing_part = candidate.get("part")
+        wae_version = get_string_attribute(
+            drawing_part,
+            WAE_VERSION_ATTRIBUTE,
+        )
+        if wae_version:
+            return (
+                build_pdf_watermark(revision, wae_version),
+                "drawing {0}".format(WAE_VERSION_ATTRIBUTE),
+                "",
+            )
+
+    watermark = build_pdf_watermark(revision, "")
+    warning = (
+        "{0} is blank or unavailable; PDF exported with revision-only "
+        "watermark {1}."
+    ).format(WAE_VERSION_ATTRIBUTE, watermark)
+    return watermark, "revision-only fallback", warning
+
+
+def export_drawing_pdf(
+    drawing_part,
+    sheets,
+    output_path,
+    watermark,
+):
     if not sheets:
         raise RuntimeError("Drawing contains no sheets to export.")
+    if not normalize_text(watermark):
+        raise RuntimeError("A PDF draft watermark is required.")
 
     sheets[0].Open()
     builder = drawing_part.PlotManager.CreatePrintPdfbuilder()
@@ -1023,6 +1081,13 @@ def export_drawing_pdf(drawing_part, sheets, output_path):
         builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
         builder.Filename = output_path
         builder.Append = False
+        try:
+            builder.Watermark = watermark
+        except Exception as error:
+            raise RuntimeError(
+                "NX PrintPDFBuilder could not apply required watermark "
+                "{0}: {1}".format(watermark, error)
+            )
         builder.SourceBuilder.SetSheets(sheets)
         builder.Commit()
     finally:
@@ -1058,8 +1123,32 @@ def export_pdfs_for_instruction(
 
     successful_paths = []
     failures = []
+    messages = []
     drawing_count = len(candidates)
     output_tokens = unique_drawing_tokens(candidates)
+    watermark, watermark_source, watermark_warning = (
+        resolve_pdf_watermark(
+            session,
+            number,
+            revision,
+            candidates,
+        )
+    )
+    log_line(
+        session,
+        "  PDF watermark: {0} ({1})".format(
+            watermark,
+            watermark_source,
+        ),
+        log_buffer,
+    )
+    if watermark_warning:
+        messages.append(watermark_warning)
+        log_line(
+            session,
+            "  WARNING: " + watermark_warning,
+            log_buffer,
+        )
 
     try:
         for candidate, token in zip(candidates, output_tokens):
@@ -1136,6 +1225,7 @@ def export_pdfs_for_instruction(
                     drawing_part,
                     sheets,
                     output_path,
+                    watermark,
                 )
 
                 if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
@@ -1206,11 +1296,15 @@ def export_pdfs_for_instruction(
         "result": result,
         "paths": successful_paths,
         "message": " | ".join(
-            failure["message"]
-            for failure in failures
+            messages
+            + [
+                failure["message"]
+                for failure in failures
+            ]
         ),
         "failures": failures,
         "attempts": attempts,
+        "watermark": watermark,
     }
 
 

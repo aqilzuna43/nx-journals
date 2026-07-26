@@ -102,6 +102,88 @@ class PdfGroupingTests(unittest.TestCase):
             "264MN020016A01_REVA_DWG2.pdf",
         )
 
+    def test_draft_watermark_combines_revision_and_exact_wae_version(self):
+        self.assertEqual(
+            self.journal.build_pdf_watermark("A", "2"),
+            "DRAFT_A.2",
+        )
+        self.assertEqual(
+            self.journal.build_pdf_watermark("A", "2.0"),
+            "DRAFT_A.2.0",
+        )
+
+    def test_watermark_prefers_loaded_model_wae_version(self):
+        model = types.SimpleNamespace(
+            GetStringAttribute=lambda name: (
+                "2" if name == "WAE_VERSION" else ""
+            )
+        )
+        drawing = types.SimpleNamespace(
+            GetStringAttribute=lambda name: (
+                "9" if name == "WAE_VERSION" else ""
+            )
+        )
+        with mock.patch.object(
+            self.journal,
+            "loaded_master_candidate",
+            return_value=model,
+        ):
+            watermark, source, warning = (
+                self.journal.resolve_pdf_watermark(
+                    types.SimpleNamespace(),
+                    "264MN020016A01",
+                    "A",
+                    [{"part": drawing}],
+                )
+            )
+
+        self.assertEqual(watermark, "DRAFT_A.2")
+        self.assertEqual(source, "loaded model WAE_VERSION")
+        self.assertEqual(warning, "")
+
+    def test_watermark_falls_back_to_drawing_wae_version(self):
+        drawing = types.SimpleNamespace(
+            GetStringAttribute=lambda name: (
+                "3" if name == "WAE_VERSION" else ""
+            )
+        )
+        with mock.patch.object(
+            self.journal,
+            "loaded_master_candidate",
+            return_value=None,
+        ):
+            watermark, source, warning = (
+                self.journal.resolve_pdf_watermark(
+                    types.SimpleNamespace(),
+                    "264MN020016A01",
+                    "A",
+                    [{"part": drawing}],
+                )
+            )
+
+        self.assertEqual(watermark, "DRAFT_A.3")
+        self.assertEqual(source, "drawing WAE_VERSION")
+        self.assertEqual(warning, "")
+
+    def test_missing_wae_version_uses_revision_only_with_warning(self):
+        with mock.patch.object(
+            self.journal,
+            "loaded_master_candidate",
+            return_value=None,
+        ):
+            watermark, source, warning = (
+                self.journal.resolve_pdf_watermark(
+                    types.SimpleNamespace(),
+                    "264MN020016A01",
+                    "A",
+                    [{"part": object()}],
+                )
+            )
+
+        self.assertEqual(watermark, "DRAFT_A")
+        self.assertEqual(source, "revision-only fallback")
+        self.assertIn("WAE_VERSION is blank or unavailable", warning)
+
     def test_drawing_specs_use_canonical_specification_identifier(self):
         self.assertEqual(
             self.journal.teamcenter_drawing_specs(
@@ -120,7 +202,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-CANONICAL-SPEC-OPEN-V1",
+            "J07-NX2506-DRAFT-WATERMARK-V2",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
@@ -291,24 +373,81 @@ class PdfGroupingTests(unittest.TestCase):
             drawing_part,
             sheets,
             "combined.pdf",
+            "DRAFT_A.2",
         )
 
         self.assertIs(builder.SourceBuilder.sheets, sheets)
         self.assertEqual(builder.Filename, "combined.pdf")
         self.assertFalse(builder.Append)
+        self.assertEqual(builder.Watermark, "DRAFT_A.2")
         self.assertEqual(builder.commit_count, 1)
         self.assertEqual(builder.destroy_count, 1)
         self.assertEqual(sheets[0].open_count, 1)
         self.assertEqual(sheets[1].open_count, 0)
         self.assertEqual(sheets[2].open_count, 0)
 
-    def run_grouped_export(self, candidates):
+    def test_pdf_export_fails_when_nx_rejects_required_watermark(self):
+        class Sheet:
+            def Open(self):
+                pass
+
+        class Builder:
+            def __init__(self):
+                self.SourceBuilder = types.SimpleNamespace(
+                    SetSheets=lambda sheets: None
+                )
+                self.destroy_count = 0
+
+            def __setattr__(self, name, value):
+                if name == "Watermark":
+                    raise RuntimeError("watermark API unavailable")
+                object.__setattr__(self, name, value)
+
+            def Commit(self):
+                raise AssertionError("Commit must not run")
+
+            def Destroy(self):
+                self.destroy_count += 1
+
+        builder = Builder()
+        drawing_part = types.SimpleNamespace(
+            PlotManager=types.SimpleNamespace(
+                CreatePrintPdfbuilder=lambda: builder
+            )
+        )
+        self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
+            ActionOption=types.SimpleNamespace(Native="Native")
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "could not apply required watermark DRAFT_A.2",
+        ):
+            self.journal.export_drawing_pdf(
+                drawing_part,
+                [Sheet()],
+                "combined.pdf",
+                "DRAFT_A.2",
+            )
+
+        self.assertEqual(builder.destroy_count, 1)
+
+    def run_grouped_export(self, candidates, wae_version="2"):
         session = types.SimpleNamespace()
         original_display = object()
         original_work = object()
         logs = []
+        model = (
+            types.SimpleNamespace(
+                GetStringAttribute=lambda name: (
+                    wae_version if name == "WAE_VERSION" else ""
+                )
+            )
+            if wae_version is not None
+            else None
+        )
 
-        def create_pdf(_part, _sheets, output_path):
+        def create_pdf(_part, _sheets, output_path, _watermark):
             Path(output_path).write_bytes(b"%PDF-test")
 
         folder = tempfile.TemporaryDirectory()
@@ -324,6 +463,10 @@ class PdfGroupingTests(unittest.TestCase):
             self.journal,
             "restore_parts",
         ) as restorer, mock.patch.object(
+            self.journal,
+            "loaded_master_candidate",
+            return_value=model,
+        ), mock.patch.object(
             self.journal,
             "export_drawing_pdf",
             side_effect=create_pdf,
@@ -369,6 +512,27 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.assertEqual(exporter.call_count, 1)
         self.assertEqual(exporter.call_args.args[1], sheets)
+        self.assertEqual(exporter.call_args.args[3], "DRAFT_A.2")
+
+    def test_missing_wae_warning_is_reported_without_failing_pdf(self):
+        candidate = {
+            "part": types.SimpleNamespace(
+                Name="drawing",
+                DrawingSheets=[object()],
+            ),
+            "drawing_index": 1,
+            "opened_by_journal": False,
+        }
+
+        result, exporter = self.run_grouped_export(
+            [candidate],
+            wae_version=None,
+        )
+
+        self.assertEqual(result["result"], "SUCCESS")
+        self.assertEqual(result["watermark"], "DRAFT_A")
+        self.assertIn("WAE_VERSION is blank or unavailable", result["message"])
+        self.assertEqual(exporter.call_args.args[3], "DRAFT_A")
 
     def test_two_drawings_return_two_suffixed_pdf_paths(self):
         candidates = [

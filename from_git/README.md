@@ -69,6 +69,12 @@ part-number/revision pairs and writes a timestamped `NX_BULK_EXPORT` run with
 one combined multipage PDF per drawing, AP214 STEP files, a UTF-8-BOM result
 CSV, and a text log.
 
+Every J07 PDF page receives the native NX watermark
+`DRAFT_<revision>.<WAE_VERSION>`. The value is read from the already-loaded
+model first and then the drawing. Missing `WAE_VERSION` produces a
+revision-only watermark such as `DRAFT_A` plus a report warning; filenames do
+not change.
+
 J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
 duplicate part/revision requests, reports invalid input, missing parts, and
 revision mismatches, and verifies that each expected export file exists. It
@@ -85,7 +91,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-CANONICAL-SPEC-OPEN-V1
+Journal build: J07-NX2506-DRAFT-WATERMARK-V2
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
