@@ -45,6 +45,7 @@ shared helpers from `from_git\utils`.
 | 09 | `from_git/journals/09_test_teamcenter_specification_open.py` | Tests automatic opening of one canonical Teamcenter drawing specification |
 | 10 | `from_git/journals/10_test_step_export.py` | Diagnoses STEP export and validates body geometry |
 | 11 | `from_git/journals/11_test_teamcenter_attribute_checkout.py` | Guarded Teamcenter checkout/save/reopen/restoration acceptance |
+| 12 | `from_git/journals/12_diagnose_pdf_watermark_symbols.py` | Compares PDF watermark, text, and NX catalog-symbol rendering settings |
 
 ## Key Runtime Notes
 
@@ -160,7 +161,7 @@ or upload generated files.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-DRAFT-WATERMARK-V2
+Journal build: J07-NX2506-WATERMARK-ENABLE-V3
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
@@ -219,6 +220,25 @@ Journal 09 can be redirected without editing the file by setting
 `NX_TEST_PART_NO`, `NX_TEST_PART_REV`, `NX_TEST_DWG_INDEX`, or
 `NX_TEST_EXPECTED_SHEET_COUNT` in the NX environment.
 
+### Journal 12 PDF symbol diagnostic
+
+Use Journal 12 when symbols such as omega or pi are visible in NX but absent
+from the exported PDF:
+
+1. Display the affected drawing and run Journal 12.
+2. Inspect the five PDFs in the timestamped `PRELOADED` folder.
+3. Close the drawing completely and run Journal 12 again.
+4. Inspect the five PDFs in the `CLOSED_AUTO` folder.
+5. Return both logs and identify the first variant containing both the
+   watermark and all catalog symbols.
+
+The first run stores the canonical drawing identity in
+`NX_PDF_DIAGNOSTIC\LAST_TARGET.json`; the second run reuses it through
+`session.Parts.OpenDisplay`. The journal inventories sheets, views, and
+non-empty object layers but never changes layer state, updates, or saves the
+drawing. It restores the original display/work parts and closes only a drawing
+it opened.
+
 ## Output File Naming
 
 | Journal | Output pattern |
@@ -231,6 +251,7 @@ Journal 09 can be redirected without editing the file by setting
 | J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
 | J07 | `NX_BULK_EXPORT\<timestamp>\PDF`, `STEP`, `REPORTS`, and `LOGS` |
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
+| J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 
 ## Notes
 

@@ -202,7 +202,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-DRAFT-WATERMARK-V2",
+            "J07-NX2506-WATERMARK-ENABLE-V3",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
@@ -379,6 +379,7 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertIs(builder.SourceBuilder.sheets, sheets)
         self.assertEqual(builder.Filename, "combined.pdf")
         self.assertFalse(builder.Append)
+        self.assertTrue(builder.AddWatermark)
         self.assertEqual(builder.Watermark, "DRAFT_A.2")
         self.assertEqual(builder.commit_count, 1)
         self.assertEqual(builder.destroy_count, 1)
@@ -401,6 +402,52 @@ class PdfGroupingTests(unittest.TestCase):
             def __setattr__(self, name, value):
                 if name == "Watermark":
                     raise RuntimeError("watermark API unavailable")
+                object.__setattr__(self, name, value)
+
+            def Commit(self):
+                raise AssertionError("Commit must not run")
+
+            def Destroy(self):
+                self.destroy_count += 1
+
+        builder = Builder()
+        drawing_part = types.SimpleNamespace(
+            PlotManager=types.SimpleNamespace(
+                CreatePrintPdfbuilder=lambda: builder
+            )
+        )
+        self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
+            ActionOption=types.SimpleNamespace(Native="Native")
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "could not apply required watermark DRAFT_A.2",
+        ):
+            self.journal.export_drawing_pdf(
+                drawing_part,
+                [Sheet()],
+                "combined.pdf",
+                "DRAFT_A.2",
+            )
+
+        self.assertEqual(builder.destroy_count, 1)
+
+    def test_pdf_export_fails_when_nx_rejects_watermark_enable(self):
+        class Sheet:
+            def Open(self):
+                pass
+
+        class Builder:
+            def __init__(self):
+                self.SourceBuilder = types.SimpleNamespace(
+                    SetSheets=lambda sheets: None
+                )
+                self.destroy_count = 0
+
+            def __setattr__(self, name, value):
+                if name == "AddWatermark":
+                    raise RuntimeError("watermark enable unavailable")
                 object.__setattr__(self, name, value)
 
             def Commit(self):

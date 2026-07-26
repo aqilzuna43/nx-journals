@@ -28,6 +28,7 @@ Available production journals:
 09_test_teamcenter_specification_open.py Closed-drawing specification-open test
 10_test_step_export.py         STEP export and body-validation diagnostic
 11_test_teamcenter_attribute_checkout.py Guarded checkout/save acceptance
+12_diagnose_pdf_watermark_symbols.py PDF watermark/catalog-symbol matrix
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -91,8 +92,15 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-DRAFT-WATERMARK-V2
+Journal build: J07-NX2506-WATERMARK-ENABLE-V3
 Drawing resolver: canonical Teamcenter specification identifier
 ```
+
+J12 is the read-only PDF rendering diagnostic. Display the affected drawing
+and run it once to store the canonical target and create five `PRELOADED`
+comparison PDFs. Close the drawing completely and rerun J12 to create the
+matching `CLOSED_AUTO` matrix through `Parts.OpenDisplay`. Results are written
+under `NX_PDF_DIAGNOSTIC`. J12 does not change layer states, update or save the
+drawing, and closes only the drawing it opened.
 
 No third-party Python packages are required.

@@ -34,7 +34,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-DRAFT-WATERMARK-V2"
+JOURNAL_BUILD_ID = "J07-NX2506-WATERMARK-ENABLE-V3"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -1082,6 +1082,7 @@ def export_drawing_pdf(
         builder.Filename = output_path
         builder.Append = False
         try:
+            builder.AddWatermark = True
             builder.Watermark = watermark
         except Exception as error:
             raise RuntimeError(
