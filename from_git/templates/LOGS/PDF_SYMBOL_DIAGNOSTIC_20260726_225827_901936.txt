@@ -1,0 +1,71 @@
+﻿==============================================================================
+JOURNAL 12 - PDF WATERMARK AND CATALOG SYMBOL DIAGNOSTIC
+==============================================================================
+Journal build: J12-NX2506-PDF-SYMBOL-MATRIX-V1
+Journal source: C:\Program Files\Siemens\NXX2506\NXBIN\python\12_diagnose_pdf_watermark_symbols.py
+Target file: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\LAST_TARGET.json
+Original display: 264MN025450A01/A;1-PRT-DCDC HARNESS TRAY INDUCTOR (specification: 264MN025450A01-A-dwg2)
+Original work: 264MN025450A01/A;1-PRT-DCDC HARNESS TRAY INDUCTOR (specification: 264MN025450A01-A-dwg2)
+Captured target: @DB/264MN025450A01/A/specification/264MN025450A01-A-dwg2
+Mode: PRELOADED
+Run folder: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED
+Drawing name: 264MN025450A01/A;1-PRT-DCDC HARNESS TRAY INDUCTOR (specification: 264MN025450A01-A-dwg2)
+Drawing identifier: @DB/264MN025450A01/A/specification/264MN025450A01-A-dwg2
+Opened by Journal 12: False
+Drawing sheets: 1
+  Sheet 1: name=SHEET-1, out_of_date=False
+    Drafting views: 6
+      BaseView: name=Top@1, out_of_date=False
+      ProjectedView: name=ORTHO@2, out_of_date=False
+      BaseView: name=Isometric@3, out_of_date=False
+      DetailView: name=DETAIL@5, out_of_date=False
+      DetailView: name=DETAIL@6, out_of_date=False
+      DetailView: name=DETAIL@7, out_of_date=False
+Work layer: 1
+Non-empty object layers:
+  Layer 1: state=0, objects=625 [Body=1, CenterMark=24, Centerline2d=3, Component=1, DisplayableObject=5, DraftingBody=6, Edge=155, Face=71, HoleDimension=1, HorizontalDimension=5, HorizontalOrdinateDimension=13, IntersectionSymbol=1, Label=4, MinorAngularDimension=1, Note=5, OrdinateOriginDimension=3, PerpendicularDimension=8, RadiusDimension=1, Spline=3, Table=5, TableCell=231, TableColumn=22, TableRow=47, TableSection=2, VerticalDimension=1, VerticalOrdinateDimension=4, ViewAlignment=2]
+  Layer 256: state=2, objects=122 [Hatch=4, Line=76, Note=40, TitleBlock=2]
+
+Variant: 00_WATERMARK_DISABLED_BASELINE
+  Output: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\00_WATERMARK_DISABLED_BASELINE.pdf
+  Requested settings: AddWatermark=False, OutputText=None, CustomSymbolsInForeground=None
+  Builder defaults: {'AddWatermark': 'False', 'Watermark': '<unavailable>', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  Applied settings: {'AddWatermark': 'False', 'Watermark': 'J12_WATERMARK_TEST', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  PDF created.
+
+Variant: 01_TEXT_WATERMARK
+  Output: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\01_TEXT_WATERMARK.pdf
+  Requested settings: AddWatermark=True, OutputText=TEXT, CustomSymbolsInForeground=False
+  Builder defaults: {'AddWatermark': 'False', 'Watermark': '<unavailable>', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  Applied settings: {'AddWatermark': 'True', 'Watermark': 'J12_WATERMARK_TEST', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  PDF created.
+
+Variant: 02_TEXT_FOREGROUND_SYMBOLS
+  Output: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\02_TEXT_FOREGROUND_SYMBOLS.pdf
+  Requested settings: AddWatermark=True, OutputText=TEXT, CustomSymbolsInForeground=True
+  Builder defaults: {'AddWatermark': 'False', 'Watermark': '<unavailable>', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  Applied settings: {'AddWatermark': 'True', 'Watermark': 'J12_WATERMARK_TEST', 'OutputText': '0', 'CustomSymbolsInForeground': 'True', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  PDF created.
+
+Variant: 03_POLYLINE_WATERMARK
+  Output: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\03_POLYLINE_WATERMARK.pdf
+  Requested settings: AddWatermark=True, OutputText=POLYLINES, CustomSymbolsInForeground=False
+  Builder defaults: {'AddWatermark': 'False', 'Watermark': '<unavailable>', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  Applied settings: {'AddWatermark': 'True', 'Watermark': 'J12_WATERMARK_TEST', 'OutputText': '1', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  PDF created.
+
+Variant: 04_POLYLINE_FOREGROUND_SYMBOLS
+  Output: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\04_POLYLINE_FOREGROUND_SYMBOLS.pdf
+  Requested settings: AddWatermark=True, OutputText=POLYLINES, CustomSymbolsInForeground=True
+  Builder defaults: {'AddWatermark': 'False', 'Watermark': '<unavailable>', 'OutputText': '0', 'CustomSymbolsInForeground': 'False', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  Applied settings: {'AddWatermark': 'True', 'Watermark': 'J12_WATERMARK_TEST', 'OutputText': '1', 'CustomSymbolsInForeground': 'True', 'Colors': '0', 'RasterImages': 'False', 'ShadedGeometry': 'False', 'ImageResolution': '0'}
+  PDF created.
+Variant failures: 0
+Restoring original NX display/work parts...
+  Display restored: 264MN025450A01/A;1-PRT-DCDC HARNESS TRAY INDUCTOR (specification: 264MN025450A01-A-dwg2)
+  Work restored: 264MN025450A01/A;1-PRT-DCDC HARNESS TRAY INDUCTOR (specification: 264MN025450A01-A-dwg2)
+  Original drawing sheet restored.
+
+Generated PDF count: 5
+FINAL STATUS: SUCCESS
+Log: C:\Users\my62022696\Desktop\NX_PDF_DIAGNOSTIC\20260726_225827_901936_PRELOADED\PDF_SYMBOL_DIAGNOSTIC_20260726_225827_901936.txt
