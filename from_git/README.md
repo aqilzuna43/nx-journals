@@ -74,7 +74,8 @@ Every J07 PDF page receives the native NX watermark
 `DRAFT_<revision>.<WAE_VERSION>`. The value is read from the already-loaded
 model first and then the drawing. Missing `WAE_VERSION` produces a
 revision-only watermark such as `DRAFT_A` plus a report warning; filenames do
-not change.
+not change. PDF text is converted to polylines so NX catalog symbols remain
+visible; the resulting PDF text is not searchable or selectable.
 
 J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
 duplicate part/revision requests, reports invalid input, missing parts, and
@@ -92,7 +93,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-WATERMARK-ENABLE-V3
+Journal build: J07-NX2506-PDF-POLYLINES-V4
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

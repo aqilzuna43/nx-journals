@@ -161,7 +161,7 @@ or upload generated files.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-WATERMARK-ENABLE-V3
+Journal build: J07-NX2506-PDF-POLYLINES-V4
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
@@ -192,7 +192,11 @@ DRAFT_<DB_PART_REV>.<WAE_VERSION>
 Journal 07 reads `WAE_VERSION` from the already-loaded model first and then
 from the drawing. If it is unavailable, the PDF is still exported with a
 revision-only watermark such as `DRAFT_A`, and the result report records a
-warning. PDF filenames are unchanged.
+warning. PDF filenames are unchanged. Journal 07 converts PDF text to
+polylines so NX catalog symbols remain visible; consequently, exported PDF
+text is not searchable or selectable. `CustomSymbolsInForeground` remains at
+the NX default because the foreground option was not required by the
+diagnostic result.
 
 The UTF-8-BOM result CSV contains one row per valid unique request plus each
 invalid input row. Principal results are `SUCCESS`, `PARTIAL_SUCCESS`,
@@ -213,7 +217,9 @@ parts even when an individual export fails.
 3. Run Journal 09 with its defaults.
 4. Require the canonical `/specification/` identifier, `Drawing sheets returned: 3`, and `FINAL STATUS: SUCCESS`.
 5. Run Journal 07 with PDF and STEP enabled.
-6. Require the Journal 07 build and resolver banners, one multipage PDF with the draft watermark visible on every page, successful STEP body validation, and restored display/work parts.
+6. Require the Journal 07 build and resolver banners, one multipage PDF with
+   the draft watermark and catalog symbols visible on every page, successful
+   STEP body validation, and restored display/work parts.
 7. Repeat Journal 07 with the drawing preloaded and compare the resulting PDF.
 
 Journal 09 can be redirected without editing the file by setting

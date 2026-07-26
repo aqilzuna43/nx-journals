@@ -9,6 +9,7 @@ For PDF:
 - Otherwise try Teamcenter non-master drawing specifications dwg1..dwg9.
 - Make each drawing the active display part before exporting every sheet.
 - Apply DRAFT_<revision>.<WAE_VERSION> to every page using the PDF builder.
+- Convert PDF text to polylines so NX catalog symbols remain visible.
 
 For STEP:
 - Reuse a matching loaded master part.
@@ -34,7 +35,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-WATERMARK-ENABLE-V3"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-V4"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -1081,6 +1082,15 @@ def export_drawing_pdf(
         builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
         builder.Filename = output_path
         builder.Append = False
+        try:
+            builder.OutputText = (
+                NXOpen.PrintPDFBuilder.OutputTextOption.Polylines
+            )
+        except Exception as error:
+            raise RuntimeError(
+                "NX PrintPDFBuilder could not apply required polyline "
+                "text output: {0}".format(error)
+            )
         try:
             builder.AddWatermark = True
             builder.Watermark = watermark
