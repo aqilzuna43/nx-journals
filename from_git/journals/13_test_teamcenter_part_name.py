@@ -71,11 +71,21 @@ def get_item_id(work_part):
 
 
 def ask_part_tag(ugmgr, item_id):
-    """Python NXOpen wrapper returns the C# 'out Tag' as the return value."""
+    """Return the Teamcenter database-part tag from the Python UF wrapper."""
     result = ugmgr.AskPartTag(item_id)
     if isinstance(result, tuple):
         return result[-1]
     return result
+
+
+def is_null_tag(tag_value):
+    """NXOpen Python represents UF tags as integer-like values; NULL_TAG is 0."""
+    if tag_value is None:
+        return True
+    try:
+        return int(tag_value) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def ask_part_name_desc(ugmgr, database_part_tag):
@@ -149,8 +159,11 @@ def main():
             log(listing, "NX error code: {}".format(error_code))
         return
 
-    if database_part_tag is None or database_part_tag == NXOpen.Tag.Null:
-        log(listing, "FAIL: AskPartTag returned a null database part tag.")
+    log(listing, "Database part tag raw: {!r}".format(database_part_tag))
+    log(listing, "Database part tag type: {}".format(type(database_part_tag).__name__))
+
+    if is_null_tag(database_part_tag):
+        log(listing, "FAIL: AskPartTag returned a null database part tag (0/None).")
         return
 
     log(listing, "Database part tag: {}".format(database_part_tag))
