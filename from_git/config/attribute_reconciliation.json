@@ -331,7 +331,7 @@
       "required_for_certification": true,
       "required_on": ["MODEL"],
       "comparison": "BOOLEAN_ALIAS",
-      "allowed_values": ["Y", "N"],
+      "allowed_values": ["Y", "N", "TBC"],
       "writable": true,
       "write_targets": ["MODEL"]
     },
@@ -344,7 +344,7 @@
       "required_for_certification": true,
       "required_on": ["MODEL"],
       "comparison": "BOOLEAN_ALIAS",
-      "allowed_values": ["Y", "N"],
+      "allowed_values": ["Y", "N", "TBC"],
       "writable": true,
       "write_targets": ["MODEL"]
     },
@@ -357,7 +357,7 @@
       "required_for_certification": true,
       "required_on": ["MODEL"],
       "comparison": "NORMALIZED_TEXT",
-      "allowed_values": ["Adhesive", "ADM (Additive Manufacturing)", "Assembly", "Busbar / Laminated Busbar", "Casting / Die Casting", "CATAPULT", "Cell", "Coating/Painting", "Composite", "Connectors", "Coolant Hose / Cooling Plate", "Electronics / PCBA", "Extrusion", "Fabrication", "Fastener", "Fluid", "Foam/Tape", "Glass", "Harness", "Hydraulic Line", "In House", "Injection Moulding", "Machine", "Pressing / Stamping", "Proprietary", "Roll Bonded", "Rubber Seal", "Thermal Management / TIM", "Vacuum Forming", "Unassigned"],
+      "allowed_values": ["Adhesive", "ADM (Additive Manufacturing)", "Assembly", "Busbar / Laminated Busbar", "Casting / Die Casting", "CATAPULT", "Cell", "Coating/Painting", "Composite", "Connectors", "Coolant Hose / Cooling Plate", "Electronics / PCBA", "Extrusion", "Fabrication", "Fastener", "Fluid", "Foam/Tape", "Glass", "Harness", "Hydraulic Line", "In House", "Injection Moulding", "Machine", "Pressing / Stamping", "Proprietary", "Roll Bonded", "Rubber Seal", "Thermal Management / TIM", "Vacuum Forming", "Unassigned", "TBC"],
       "writable": true,
       "write_targets": ["MODEL"]
     },
