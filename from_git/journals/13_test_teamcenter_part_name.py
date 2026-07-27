@@ -1,18 +1,30 @@
 # NXOpen Python journal
-# Purpose: Test changing Teamcenter Item Name (DB_PART_NAME) for the CURRENT work part only.
-# Scope: Part Name only. No revision change. No CSV/bulk processing.
+# Purpose: Test changing the Teamcenter Item Name through the legacy
+#          UF_UGMGR SetPartNameDesc API.
+# Scope: Dummy Part Name test only. NO revision change. NO CSV/bulk processing.
+#
+# Why this test exists:
+# - DatabaseAttributeManager.SetAttribute("DB_PART_NAME", ...) returned NX 940049
+#   ("The database attribute is not writable") on Teamcenter X.
+# - UF_UGMGR_set_part_name_desc is a separate managed-mode database operation
+#   intended to reset the name/description of an already-saved database part.
 #
 # IMPORTANT:
-# - Run only on a disposable / dummy Teamcenter item.
-# - This changes the Teamcenter Item Name, not the Item ID / Part Number.
-# - The journal deliberately does NOT auto-checkout or save geometry.
-# - Edit NEW_PART_NAME below before running.
+# - Run ONLY on a disposable Teamcenter item.
+# - The default guard allows only Item ID AQIL-TEST.
+# - This changes Item Name only, NOT Item ID / Part Number and NOT Revision.
+# - No checkout, geometry save, revision, delete, or rollback is attempted.
+# - If the server rejects the operation, capture the Listing Window output.
 
 import NXOpen
 import NXOpen.PDM
+import NXOpen.UF
 
-NEW_PART_NAME = "DUMMY-PART-NAME-CHANGE-TEST"
-ATTRIBUTE_NAME = "DB_PART_NAME"
+
+EXPECTED_ITEM_ID = "AQIL-TEST"
+NEW_PART_NAME = "DUMMY-PART-NAME-UFUN-TEST"
+DB_PART_NO = "DB_PART_NO"
+DB_PART_NAME = "DB_PART_NAME"
 
 
 def log(listing_window, text=""):
@@ -28,26 +40,67 @@ def safe_dispose(obj):
         pass
 
 
-def read_part_name(pdm_part):
+def read_database_attribute(work_part, attribute_name):
+    """Fresh read of a Teamcenter database attribute through PDMPart."""
     manager = None
     try:
+        pdm_part = work_part.PDMPart
+        if pdm_part is None:
+            return None
         manager = pdm_part.NewDatabaseAttributeManager()
         manager.LoadAttributes(True)
-        return manager.GetAttribute(ATTRIBUTE_NAME)
+        return manager.GetAttribute(attribute_name)
+    except Exception:
+        return None
     finally:
         safe_dispose(manager)
 
 
+def get_item_id(work_part):
+    """Prefer DB_PART_NO; fall back to parsing the managed-mode work-part name."""
+    item_id = read_database_attribute(work_part, DB_PART_NO)
+    if item_id:
+        return str(item_id).strip()
+
+    leaf = str(work_part.Leaf).strip()
+    if leaf.startswith("@DB/"):
+        leaf = leaf[4:]
+    if "/" in leaf:
+        leaf = leaf.split("/", 1)[0]
+    return leaf.strip()
+
+
+def ask_part_tag(ugmgr, item_id):
+    """Python NXOpen wrapper returns the C# 'out Tag' as the return value."""
+    result = ugmgr.AskPartTag(item_id)
+    if isinstance(result, tuple):
+        return result[-1]
+    return result
+
+
+def ask_part_name_desc(ugmgr, database_part_tag):
+    """Return (part_name, part_description) from UF_UGMGR."""
+    result = ugmgr.AskPartNameDesc(database_part_tag)
+    if isinstance(result, tuple):
+        if len(result) >= 2:
+            return result[0], result[1]
+    # Defensive fallback in case a future wrapper returns an object-like result.
+    return str(result), ""
+
+
 def main():
     session = NXOpen.Session.GetSession()
+    uf_session = NXOpen.UF.UFSession.GetUFSession()
+    ugmgr = uf_session.Ugmgr
+
     listing = session.ListingWindow
     listing.Open()
 
     work_part = session.Parts.Work
 
-    log(listing, "=" * 72)
-    log(listing, "TEAMCENTER PART NAME CHANGE - DUMMY TEST")
-    log(listing, "=" * 72)
+    log(listing, "=" * 76)
+    log(listing, "TEAMCENTER PART NAME CHANGE - TEST 2 - UF_UGMGR")
+    log(listing, "=" * 76)
 
     if work_part is None:
         log(listing, "FAIL: No work part is open.")
@@ -64,95 +117,124 @@ def main():
     except Exception:
         pass
 
+    item_id = get_item_id(work_part)
     new_name = NEW_PART_NAME.strip()
 
+    log(listing, "Detected Item ID: {}".format(item_id))
+    log(listing, "Safety Item ID  : {}".format(EXPECTED_ITEM_ID))
+
+    if not item_id:
+        log(listing, "FAIL: Could not determine the Teamcenter Item ID.")
+        return
+
+    if item_id.upper() != EXPECTED_ITEM_ID.strip().upper():
+        log(listing, "")
+        log(listing, "SAFETY STOP: Current Item ID does not match EXPECTED_ITEM_ID.")
+        log(listing, "Nothing was changed.")
+        return
+
     if not new_name:
-        log(listing, "FAIL: NEW_PART_NAME is blank. Nothing changed.")
+        log(listing, "FAIL: NEW_PART_NAME is blank. Nothing was changed.")
         return
 
     try:
-        pdm_part = work_part.PDMPart
+        database_part_tag = ask_part_tag(ugmgr, item_id)
     except Exception as ex:
-        log(listing, "FAIL: Could not access work_part.PDMPart.")
-        log(listing, "This journal must be run in Teamcenter managed mode.")
-        log(listing, "Exception: {}".format(ex))
+        log(listing, "")
+        log(listing, "FAIL: UF_UGMGR could not resolve the Teamcenter Item.")
+        log(listing, "Exception type: {}".format(type(ex).__name__))
+        log(listing, "Message: {}".format(ex))
+        error_code = getattr(ex, "ErrorCode", None)
+        if error_code is not None:
+            log(listing, "NX error code: {}".format(error_code))
         return
 
-    if pdm_part is None:
-        log(listing, "FAIL: PDMPart is unavailable. Is this NX session Teamcenter-managed?")
+    if database_part_tag is None or database_part_tag == NXOpen.Tag.Null:
+        log(listing, "FAIL: AskPartTag returned a null database part tag.")
         return
 
-    manager = None
-    old_name = None
+    log(listing, "Database part tag: {}".format(database_part_tag))
 
     try:
-        manager = pdm_part.NewDatabaseAttributeManager()
-        manager.LoadAttributes(True)
-
-        old_name = manager.GetAttribute(ATTRIBUTE_NAME)
-
-        log(listing, "")
-        log(listing, "Current DB_PART_NAME : {}".format(old_name))
-        log(listing, "Requested new name  : {}".format(new_name))
-        log(listing, "")
-
-        if old_name == new_name:
-            log(listing, "NO CHANGE: Teamcenter Part Name already matches NEW_PART_NAME.")
-            return
-
-        manager.SetAttribute(ATTRIBUTE_NAME, new_name)
-        log(listing, "Staged DB_PART_NAME update.")
-        log(listing, "Calling StoreAttributes() ...")
-
-        manager.StoreAttributes()
-
-        log(listing, "StoreAttributes() completed without an NXOpen exception.")
-
+        old_name, old_desc = ask_part_name_desc(ugmgr, database_part_tag)
     except Exception as ex:
         log(listing, "")
-        log(listing, "FAIL: Teamcenter rejected or could not store the Part Name change.")
+        log(listing, "FAIL: UF_UGMGR AskPartNameDesc failed before any write attempt.")
+        log(listing, "Exception type: {}".format(type(ex).__name__))
+        log(listing, "Message: {}".format(ex))
+        error_code = getattr(ex, "ErrorCode", None)
+        if error_code is not None:
+            log(listing, "NX error code: {}".format(error_code))
+        return
+
+    log(listing, "")
+    log(listing, "UF_UGMGR current name : {}".format(old_name))
+    log(listing, "UF_UGMGR description  : {}".format(old_desc))
+    log(listing, "Requested new name    : {}".format(new_name))
+
+    if str(old_name) == new_name:
+        log(listing, "NO CHANGE: UF_UGMGR already reports the requested Part Name.")
+        return
+
+    log(listing, "")
+    log(listing, "Calling UF_UGMGR SetPartNameDesc() ...")
+    log(listing, "Description argument is blank so the existing description is not changed.")
+
+    try:
+        # UF_UGMGR documentation states that an empty part_desc leaves the
+        # description unchanged. This test changes the Item Name only.
+        ugmgr.SetPartNameDesc(database_part_tag, new_name, "")
+        log(listing, "SetPartNameDesc() returned without an NXOpen exception.")
+    except Exception as ex:
+        log(listing, "")
+        log(listing, "FAIL: Teamcenter rejected the UF_UGMGR Part Name operation.")
         log(listing, "Exception type: {}".format(type(ex).__name__))
         log(listing, "Message: {}".format(ex))
         error_code = getattr(ex, "ErrorCode", None)
         if error_code is not None:
             log(listing, "NX error code: {}".format(error_code))
         log(listing, "")
+        log(listing, "No DB_PART_NAME attribute write was attempted.")
         log(listing, "No revision operation was attempted.")
-        log(listing, "If this is a permissions/checkout error, capture this Listing Window output.")
+        log(listing, "No retry or bypass was attempted.")
         return
 
-    finally:
-        safe_dispose(manager)
-
+    # Verification 1: query the Teamcenter database again through UF_UGMGR.
     try:
-        verified_name = read_part_name(pdm_part)
-
+        verified_name, verified_desc = ask_part_name_desc(ugmgr, database_part_tag)
         log(listing, "")
-        log(listing, "VERIFY FROM TEAMCENTER")
-        log(listing, "DB_PART_NAME read-back: {}".format(verified_name))
-
-        if verified_name == new_name:
-            log(listing, "")
-            log(listing, "PASS: Teamcenter Part Name was changed successfully.")
-            log(listing, "Old name: {}".format(old_name))
-            log(listing, "New name: {}".format(verified_name))
-        else:
-            log(listing, "")
-            log(listing, "WARNING: StoreAttributes() returned successfully,")
-            log(listing, "but Teamcenter read-back does not match the requested name.")
-            log(listing, "Expected: {}".format(new_name))
-            log(listing, "Actual  : {}".format(verified_name))
-            log(listing, "Treat this as NOT VERIFIED.")
-
+        log(listing, "VERIFY 1 - UF_UGMGR DATABASE READ-BACK")
+        log(listing, "Part Name   : {}".format(verified_name))
+        log(listing, "Description : {}".format(verified_desc))
     except Exception as ex:
         log(listing, "")
-        log(listing, "WARNING: Change was submitted, but fresh read-back failed.")
+        log(listing, "WARNING: SetPartNameDesc returned, but UF_UGMGR read-back failed.")
         log(listing, "Message: {}".format(ex))
-        log(listing, "Check the Item Name directly in Teamcenter before rerunning.")
+        verified_name = None
+
+    # Verification 2: refresh/read the familiar NX database attribute mapping.
+    mapped_name = read_database_attribute(work_part, DB_PART_NAME)
+    log(listing, "")
+    log(listing, "VERIFY 2 - NX DB_PART_NAME READ-BACK")
+    log(listing, "DB_PART_NAME: {}".format(mapped_name))
 
     log(listing, "")
-    log(listing, "NOTE: This journal does not change DB_PART_REV and performs no revision action.")
-    log(listing, "=" * 72)
+    if str(verified_name) == new_name:
+        log(listing, "PASS: UF_UGMGR reports the Teamcenter Item Name was changed.")
+        if mapped_name is not None and str(mapped_name) != new_name:
+            log(listing, "NOTE: NX DB_PART_NAME has not refreshed to the new value yet.")
+            log(listing, "Reopen/refresh the part in NX and verify the Teamcenter UI.")
+    else:
+        log(listing, "NOT VERIFIED: The UF_UGMGR database read-back did not match.")
+        log(listing, "Expected: {}".format(new_name))
+        log(listing, "Actual  : {}".format(verified_name))
+
+    log(listing, "")
+    log(listing, "Original name: {}".format(old_name))
+    log(listing, "Requested name: {}".format(new_name))
+    log(listing, "")
+    log(listing, "NOTE: This journal does NOT change Item ID or Revision.")
+    log(listing, "=" * 76)
 
 
 if __name__ == "__main__":
