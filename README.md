@@ -46,6 +46,8 @@ shared helpers from `from_git\utils`.
 | 10 | `from_git/journals/10_test_step_export.py` | Diagnoses STEP export and validates body geometry |
 | 11 | `from_git/journals/11_test_teamcenter_attribute_checkout.py` | Guarded Teamcenter checkout/save/reopen/restoration acceptance |
 | 12 | `from_git/journals/12_diagnose_pdf_watermark_symbols.py` | Compares PDF watermark, text, and NX catalog-symbol rendering settings |
+| 13 | `from_git/journals/13_test_teamcenter_part_name.py` | Disposable Teamcenter Item Name rename test |
+| 14 | `from_git/journals/14_bulk_part_name_updater.py` | Approved bulk Teamcenter Item Name update |
 
 ## Key Runtime Notes
 
@@ -59,44 +61,46 @@ shared helpers from `from_git\utils`.
   - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
 - To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
 
-## 3D Business-Attribute Round Trip
+## Journal 04 + 05 - Business Attribute Update
 
-J04, J05, Extended BOM, and J11 use the exact XML-backed NX attribute titles.
-The normal workflow is:
+1. Open and fully load the required 3D assembly.
+2. Run **J04**. It creates `NX_ATTRIBUTE_UPDATE_*.csv` and a matching `.baseline.json`.
+3. Edit the CSV business fields only. For rows to update, set `APPROVED=YES` and fill `ENGINEER`.
+4. In **J05**, set:
 
-1. Open and fully load the intended 3D assembly.
-2. Run J04. It reads prototype models only and creates
-   `NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.csv` with a matching
-   `.baseline.json`.
-3. Edit only business columns. Set `APPROVED=YES` and populate `ENGINEER` on
-   each row to apply.
-4. Open J05 and edit the two clearly marked user settings near the top:
-   paste the J04 CSV path into `USER_UPDATE_CSV` and leave
-   `USER_MODE = "DRY_RUN"`.
-5. Resolve every stale, identity, controlled-value, permission, or checkout
-   error before considering apply mode.
+```python
+USER_UPDATE_CSV = r"C:\path\to\NX_ATTRIBUTE_UPDATE_....csv"
+USER_MODE = "DRY_RUN"
+```
 
-PowerShell is not required. For automation, `NX_ATTRIBUTE_UPDATE_FILE` and
-`NX_J05_MODE` remain optional environment-variable overrides.
+5. Run J05 and resolve all errors in the report.
+6. When clean, change `USER_MODE` to `"APPLY_APPROVED"` and run again.
 
-Part number, part name, revision, quantity, lifecycle, material, dimensions,
-mass, and roll-up mass are read-only NX/CAD values. J05 can change only the
-business allowlist in `attribute_reconciliation.json`, including
-`WAE_VERSION`, `NX_FINISH`, commodity, traceability, service, manufacturer,
-stocking, UOM, and export metadata. It rejects blank replacements.
+J05 checks out affected Teamcenter parts, writes and verifies the approved attributes, saves them, and leaves them checked out. It never checks parts in automatically. Part Number, Part Name, and Revision are not changed by J05.
 
-J05 production saving is enabled with `save_policy` set to
-`SAVE_CHANGED_PARTS`. Apply mode explicitly checks out every affected
-Teamcenter master part, writes and rereads approved values, and saves the
-part. It aborts the batch if any checkout fails and never checks a part in
-automatically. A successful J05 report shows `SAVE_RESULT=SAVED`; pressing
-Save manually is not part of the workflow.
+## Journal 14 - Teamcenter Part Name Update
 
-J11 remains the guarded reversible runtime diagnostic for validating checkout
-and persistence on a disposable Teamcenter item.
+Use J14 only for **Item Name / Part Name** changes. It does not change Part Number, Revision, description, or geometry.
 
-See `docs/J04_J05_ATTRIBUTE_RECONCILIATION_PLAN.md` for CSV columns, checkout
-guards, recovery behavior, and the J11 acceptance procedure.
+Prepare a CSV with these columns:
+
+```csv
+PART_NUMBER,CURRENT_PART_NAME,NEW_PART_NAME,APPROVED,ENGINEER,APPROVAL_NOTE
+264MN000000A01,OLD NAME,NEW NAME,YES,AQIL,Name correction
+```
+
+Then set J14:
+
+```python
+USER_PART_NAME_CSV = r"C:\path\to\part_name_update.csv"
+USER_MODE = "DRY_RUN"
+```
+
+1. Run J14 in `DRY_RUN` and review the report.
+2. If clean, change `USER_MODE` to `"APPLY_APPROVED"` and run again.
+3. Confirm `UPDATED_VERIFIED` in the result CSV.
+
+`CURRENT_PART_NAME` is the stale-value safety check. J14 uses `UF_UGMGR.SetPartNameDesc()` and verifies the name and description after each update. A managed NX/Teamcenter session is required; the target part does not need to be open.
 
 ## Journal 07 - DataPack PDF + STEP Export
 
@@ -258,13 +262,14 @@ it opened.
 | J07 | `NX_BULK_EXPORT\<timestamp>\PDF`, `STEP`, `REPORTS`, and `LOGS` |
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
+| J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 
 ## Notes
 
 - Journals use the active NX Teamcenter connection and do not create a separate Teamcenter login.
-- J04 and Extended BOM read prototype attributes, so their values correspond to the 3D master object J05 updates.
-- J05 requires exact `DB_PART_NO + DB_PART_REV`; it has no legacy identity fallback.
-- J05 never relies on implicit Teamcenter autolock and never performs automatic check-in.
+- J04 reads prototype attributes, so its values correspond to the 3D master objects J05 updates.
+- J05 requires exact `DB_PART_NO + DB_PART_REV`; it never changes Part Name or Revision and never performs automatic check-in.
+- J14 changes Teamcenter Item Name only and verifies the result through UF_UGMGR read-back.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
 - J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
