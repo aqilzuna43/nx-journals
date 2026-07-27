@@ -1,334 +1,867 @@
 """J15 - Teamcenter X offline drawing workflow.
 
+NX X 2506 only.
+
 EXPORT keeps Teamcenter AutoTranslate names, exports model + drawing, marks local
 3D/reference .prt files read-only, and writes a SHA-256 manifest.
-IMPORT_DRY_RUN / IMPORT_APPLY default all objects to UseExisting and set only
-the exact drawing to Overwrite.
 
-Target: NX 2312 / NX X 2506 embedded Python, managed Teamcenter session.
+IMPORT_DRY_RUN / IMPORT_APPLY default every discovered object to UseExisting
+and set only the exact drawing to Overwrite.
 """
-import csv, datetime, hashlib, os, stat, traceback
+import csv
+import datetime
+import hashlib
+import os
+import stat
+import traceback
+
 import NXOpen
 import NXOpen.UF
+
 
 USER_MODE = "EXPORT"  # EXPORT | IMPORT_DRY_RUN | IMPORT_APPLY
 USER_SCOPE_CSV = r""  # blank => <I/O root>\NX_TC_OFFLINE_SCOPE.csv
 USER_MANIFEST_CSV = r""
 
-BUILD = "J15-TCX-OFFLINE-DRAWING-V2"
+BUILD = "J15-TCX-OFFLINE-DRAWING-NX2506-V3"
 OUT_DIR = "NX_TC_OFFLINE_DRAWINGS"
 DEFAULT_SCOPE = "NX_TC_OFFLINE_SCOPE.csv"
 MODES = ("EXPORT", "IMPORT_DRY_RUN", "IMPORT_APPLY")
+
 MANIFEST_FIELDS = [
-    "RUN_ID","PART_NUMBER","REVISION","DWG_INDEX","MODEL_IDENTIFIER",
-    "DRAWING_IDENTIFIER","PACKAGE_DIR","DRAWING_FILE","EXPORT_LOG",
-    "EXPORT_SHA256","EXPORTED_AT","REFERENCE_PRT_COUNT","APPROVED",
-    "ENGINEER","IMPORT_STATUS","NOTES",
+    "RUN_ID", "PART_NUMBER", "REVISION", "DWG_INDEX", "MODEL_IDENTIFIER",
+    "DRAWING_IDENTIFIER", "PACKAGE_DIR", "DRAWING_FILE", "EXPORT_LOG",
+    "EXPORT_SHA256", "EXPORTED_AT", "REFERENCE_PRT_COUNT", "APPROVED",
+    "ENGINEER", "IMPORT_STATUS", "NOTES",
 ]
 REPORT_FIELDS = [
-    "RUN_TIMESTAMP","MODE","PART_NUMBER","REVISION","DWG_INDEX",
-    "DRAWING_IDENTIFIER","DRAWING_FILE","EXPORTED_SHA256","CURRENT_SHA256",
-    "CHANGED","APPROVED","ENGINEER","DEFAULT_IMPORT_ACTION",
-    "DRAWING_IMPORT_ACTION","DRY_RUN","RESULT","MESSAGE","CLONE_LOG",
+    "RUN_TIMESTAMP", "MODE", "PART_NUMBER", "REVISION", "DWG_INDEX",
+    "DRAWING_IDENTIFIER", "DRAWING_FILE", "EXPORTED_SHA256", "CURRENT_SHA256",
+    "CHANGED", "APPROVED", "ENGINEER", "DEFAULT_IMPORT_ACTION",
+    "DRAWING_IMPORT_ACTION", "DRY_RUN", "RESULT", "MESSAGE", "CLONE_LOG",
 ]
 
-def text(v): return "" if v is None else str(v)
-def clean(v): return text(v).strip()
-def upper(v): return clean(v).upper()
-def env(n): return clean(os.environ.get(n))
-def stamp(): return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def text(value):
+    return "" if value is None else str(value)
+
+
+def clean(value):
+    return text(value).strip()
+
+
+def upper(value):
+    return clean(value).upper()
+
+
+def env(name):
+    return clean(os.environ.get(name))
+
+
+def stamp():
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
 
 def io_root():
-    p = env("NX_JOURNALS_IO_DIR")
-    if p: return os.path.abspath(os.path.expanduser(p))
+    configured = env("NX_JOURNALS_IO_DIR")
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     return desktop if os.path.isdir(desktop) else os.getcwd()
 
-def mode(): return upper(env("NX_TC_OFFLINE_MODE") or USER_MODE or "EXPORT")
+
+def mode():
+    return upper(env("NX_TC_OFFLINE_MODE") or USER_MODE or "EXPORT")
+
+
 def scope_path():
-    p = env("NX_TC_OFFLINE_SCOPE_FILE") or clean(USER_SCOPE_CSV)
-    return os.path.abspath(os.path.expanduser(p)) if p else os.path.join(io_root(), DEFAULT_SCOPE)
+    configured = env("NX_TC_OFFLINE_SCOPE_FILE") or clean(USER_SCOPE_CSV)
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    return os.path.join(io_root(), DEFAULT_SCOPE)
+
+
 def manifest_path():
-    p = env("NX_TC_OFFLINE_MANIFEST_FILE") or clean(USER_MANIFEST_CSV)
-    return os.path.abspath(os.path.expanduser(p)) if p else ""
+    configured = env("NX_TC_OFFLINE_MANIFEST_FILE") or clean(USER_MANIFEST_CSV)
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    return ""
 
-def err(e):
-    code = clean(getattr(e, "ErrorCode", ""))
-    return "{0}{1} - {2}".format(type(e).__name__, (":"+code) if code else "", text(e))
 
-def dispose(v):
-    if v is not None:
-        try: v.Dispose()
-        except Exception: pass
+def error_text(error):
+    code = clean(getattr(error, "ErrorCode", ""))
+    suffix = ":{0}".format(code) if code else ""
+    return "{0}{1} - {2}".format(type(error).__name__, suffix, text(error))
+
+
+def dispose(value):
+    if value is not None:
+        try:
+            value.Dispose()
+        except Exception:
+            pass
+
 
 class Log:
     def __init__(self, session):
-        self.lines=[]
+        self.lines = []
         try:
-            self.lw=session.ListingWindow; self.lw.Open()
-        except Exception: self.lw=None
-    def write(self, s=""):
-        s=text(s); self.lines.append(s)
-        if self.lw is not None:
-            try: self.lw.WriteFullline(s)
-            except Exception:
-                try: self.lw.WriteLine(s)
-                except Exception: pass
-        try: print(s)
-        except Exception: pass
+            self.window = session.ListingWindow
+            self.window.Open()
+        except Exception:
+            self.window = None
 
-def read_csv(path, required):
-    for encoding in ("utf-8-sig","utf-8","cp1252"):
+    def write(self, message=""):
+        message = text(message)
+        self.lines.append(message)
+        if self.window is not None:
+            try:
+                self.window.WriteFullline(message)
+            except Exception:
+                try:
+                    self.window.WriteLine(message)
+                except Exception:
+                    pass
         try:
-            with open(path,"r",encoding=encoding,newline="") as f:
-                r=csv.DictReader(f); headers=[clean(x) for x in (r.fieldnames or [])]
-                missing=[x for x in required if x not in headers]
-                if missing: raise RuntimeError("Missing CSV column(s): "+", ".join(missing))
-                rows=[]
-                for n,src in enumerate(r,2):
-                    row={clean(k):clean(v) for k,v in src.items() if k is not None}; row["_CSV_ROW"]=n; rows.append(row)
+            print(message)
+        except Exception:
+            pass
+
+
+def read_csv(path, required_columns):
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
+        try:
+            with open(path, "r", encoding=encoding, newline="") as handle:
+                reader = csv.DictReader(handle)
+                headers = [clean(name) for name in (reader.fieldnames or [])]
+                missing = [name for name in required_columns if name not in headers]
+                if missing:
+                    raise RuntimeError(
+                        "Missing CSV column(s): {0}".format(", ".join(missing))
+                    )
+                rows = []
+                for row_number, source in enumerate(reader, 2):
+                    row = {
+                        clean(key): clean(value)
+                        for key, value in source.items()
+                        if key is not None
+                    }
+                    row["_CSV_ROW"] = row_number
+                    rows.append(row)
                 return rows
-        except UnicodeDecodeError: pass
-    raise RuntimeError("Unable to decode CSV: "+path)
+        except UnicodeDecodeError:
+            pass
+    raise RuntimeError("Unable to decode CSV: {0}".format(path))
+
 
 def write_csv(path, fields, rows):
-    os.makedirs(os.path.dirname(path),exist_ok=True)
-    with open(path,"w",encoding="utf-8-sig",newline="") as f:
-        w=csv.DictWriter(f,fieldnames=fields); w.writeheader()
-        for row in rows: w.writerow({k:row.get(k,"") for k in fields})
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fields})
+
 
 def write_log(path, lines):
-    os.makedirs(os.path.dirname(path),exist_ok=True)
-    with open(path,"w",encoding="utf-8-sig") as f: f.write("\n".join(lines)+"\n")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8-sig") as handle:
+        handle.write("\n".join(lines) + "\n")
+
 
 def sha256(path):
-    h=hashlib.sha256()
-    with open(path,"rb") as f:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
         while True:
-            b=f.read(1024*1024)
-            if not b: break
-            h.update(b)
-    return h.hexdigest()
+            block = handle.read(1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+    return digest.hexdigest()
 
-def clone_type():
-    # NX 2506 Python exposes Clone; some generated/.NET docs call it UFClone.
-    t=getattr(NXOpen.UF,"Clone",None)
-    if t is not None: return t,"NXOpen.UF.Clone"
-    t=getattr(NXOpen.UF,"UFClone",None)
-    if t is not None: return t,"NXOpen.UF.UFClone"
-    raise RuntimeError("NXOpen.UF exposes neither Clone nor UFClone")
 
-def model_id(pn,rev): return "@DB/{0}/{1}".format(pn,rev)
-def dataset_name(pn,rev,idx): return "{0}-{1}-dwg{2}".format(pn,rev,idx)
-def drawing_id(pn,rev,idx): return "@DB/{0}/{1}/specification/{2}".format(pn,rev,dataset_name(pn,rev,idx))
-def expected_native(pn,rev,idx): return "{0}_{1}_s_{2}.prt".format(pn,rev,dataset_name(pn,rev,idx))
+def clone_enum():
+    """Return the NX X 2506 Python UF Clone enum container."""
+    return NXOpen.UF.Clone
 
-def valid_native(path,pn,rev,idx):
-    name=os.path.basename(path).lower()
-    return name==expected_native(pn,rev,idx).lower() or ("_s_" in name and name.endswith("-{0}-dwg{1}.prt".format(rev,idx).lower()))
 
-def find_drawing(folder,pn,rev,idx):
-    exact=os.path.join(folder,expected_native(pn,rev,idx))
-    if os.path.isfile(exact): return exact
-    matches=[os.path.join(folder,n) for n in os.listdir(folder) if os.path.isfile(os.path.join(folder,n)) and valid_native(os.path.join(folder,n),pn,rev,idx)]
-    if len(matches)==1: return matches[0]
-    if not matches: return ""
-    raise RuntimeError("Multiple native drawing files matched: "+", ".join(matches))
+def verify_clone_api():
+    clone = getattr(NXOpen.UF, "Clone", None)
+    if clone is None:
+        raise RuntimeError(
+            "NX X 2506 Python binding NXOpen.UF.Clone is unavailable in this session."
+        )
 
-def protect_refs(folder,drawing):
-    target=os.path.normcase(os.path.abspath(drawing)); count=0
+    required = (
+        ("OperationClass", "ExportOperation"),
+        ("OperationClass", "ImportOperation"),
+        ("FamilyTreatment", "TreatAsLost"),
+        ("NamingTechnique", "Autotranslate"),
+        ("Action", "UseExisting"),
+        ("Action", "Overwrite"),
+    )
+    for enum_name, member_name in required:
+        enum_type = getattr(clone, enum_name, None)
+        if enum_type is None or not hasattr(enum_type, member_name):
+            raise RuntimeError(
+                "NXOpen.UF.Clone.{0}.{1} is unavailable in this NX X 2506 "
+                "Python binding.".format(enum_name, member_name)
+            )
+
+
+def model_id(part_number, revision):
+    return "@DB/{0}/{1}".format(part_number, revision)
+
+
+def dataset_name(part_number, revision, drawing_index):
+    return "{0}-{1}-dwg{2}".format(part_number, revision, drawing_index)
+
+
+def drawing_id(part_number, revision, drawing_index):
+    return "@DB/{0}/{1}/specification/{2}".format(
+        part_number,
+        revision,
+        dataset_name(part_number, revision, drawing_index),
+    )
+
+
+def expected_native(part_number, revision, drawing_index):
+    return "{0}_{1}_s_{2}.prt".format(
+        part_number,
+        revision,
+        dataset_name(part_number, revision, drawing_index),
+    )
+
+
+def valid_native(path, part_number, revision, drawing_index):
+    name = os.path.basename(path).lower()
+    if name == expected_native(part_number, revision, drawing_index).lower():
+        return True
+    return "_s_" in name and name.endswith(
+        "-{0}-dwg{1}.prt".format(revision, drawing_index).lower()
+    )
+
+
+def find_drawing(folder, part_number, revision, drawing_index):
+    exact = os.path.join(
+        folder, expected_native(part_number, revision, drawing_index)
+    )
+    if os.path.isfile(exact):
+        return exact
+
+    matches = []
     for name in os.listdir(folder):
-        if not name.lower().endswith(".prt"): continue
-        path=os.path.join(folder,name)
-        if not os.path.isfile(path): continue
-        m=os.stat(path).st_mode
-        if os.path.normcase(os.path.abspath(path))==target: os.chmod(path,m|stat.S_IWRITE)
-        else: os.chmod(path,m&~stat.S_IWRITE); count+=1
+        path = os.path.join(folder, name)
+        if (
+            os.path.isfile(path)
+            and valid_native(path, part_number, revision, drawing_index)
+        ):
+            matches.append(path)
+
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        return ""
+    raise RuntimeError(
+        "Multiple native drawing files matched: {0}".format(", ".join(matches))
+    )
+
+
+def protect_references(folder, drawing):
+    target = os.path.normcase(os.path.abspath(drawing))
+    count = 0
+    for name in os.listdir(folder):
+        if not name.lower().endswith(".prt"):
+            continue
+        path = os.path.join(folder, name)
+        if not os.path.isfile(path):
+            continue
+        current_mode = os.stat(path).st_mode
+        if os.path.normcase(os.path.abspath(path)) == target:
+            os.chmod(path, current_mode | stat.S_IWRITE)
+        else:
+            os.chmod(path, current_mode & ~stat.S_IWRITE)
+            count += 1
     return count
 
-def terminate(c):
-    try: c.Terminate()
-    except Exception: pass
 
-def add_assembly(c,name):
-    try: result=c.AddAssembly(name)
-    except TypeError: result=c.AddAssembly(name,None)
-    if isinstance(result,(tuple,list)):
-        for v in result:
-            if hasattr(v,"Dispose"): return v
+def terminate(clone):
+    try:
+        clone.Terminate()
+    except Exception:
+        pass
+
+
+def add_assembly(clone, name):
+    try:
+        result = clone.AddAssembly(name)
+    except TypeError:
+        result = clone.AddAssembly(name, None)
+
+    if isinstance(result, (tuple, list)):
+        for value in result:
+            if hasattr(value, "Dispose"):
+                return value
     return None
 
-def naming_failures(c):
+
+def naming_failures(clone):
     try:
-        r=c.InitNamingFailures(); return r[-1] if isinstance(r,(tuple,list)) and r else r
+        result = clone.InitNamingFailures()
+        if isinstance(result, (tuple, list)) and result:
+            return result[-1]
+        return result
     except Exception:
-        try: return clone_type()[0].NamingFailures()
-        except Exception: return None
+        return None
 
-def perform(c,failures):
-    try: return c.PerformClone(failures)
-    except TypeError: return c.PerformClone(None)
 
-def iterate_parts(c):
-    out=[]
-    try: c.StartIteration()
-    except Exception: return out
-    while True:
-        try: r=c.Iterate()
-        except TypeError:
-            try: r=c.Iterate(None)
-            except Exception: break
-        except Exception: break
-        if isinstance(r,(tuple,list)):
-            name=""
-            for v in r:
-                if isinstance(v,str): name=v
-        else: name=clean(r)
-        if not name: break
-        out.append(name)
-    return out
-
-def setup_export(c,folder,logfile):
-    T,_=clone_type()
-    c.Initialise(T.OperationClass.ExportOperation)
-    c.SetFamilyTreatment(T.FamilyTreatment.TreatAsLost)
-    c.SetDefNaming(T.NamingTechnique.Autotranslate)
-    c.SetDefItemType(""); c.SetDefDirectory(folder)
-    try: c.SetAssocFileRootDir(folder)
-    except Exception: pass
-    c.SetDefAction(T.Action.Overwrite); c.SetDefAssocFileCopy(True); c.SetLogfile(logfile)
-    try: c.SetCloneRelatedDwgs(False)
-    except Exception: pass
-
-def export_package(ufs,folder,model,drawing,logfile,log):
-    c=ufs.Clone; load=None
+def perform_clone(clone, failures):
     try:
-        terminate(c); setup_export(c,folder,logfile)
-        log.write("  Add assembly: "+model); load=add_assembly(c,model)
-        log.write("  Add drawing:  "+drawing); c.AddPart(drawing)
-        nf=naming_failures(c); c.SetDryrun(False)
-        try: c.GenerateReport()
-        except Exception: pass
-        perform(c,nf)
-    finally: dispose(load); terminate(c)
+        return clone.PerformClone(failures)
+    except TypeError:
+        return clone.PerformClone(None)
+
+
+def iterate_parts(clone):
+    parts = []
+    try:
+        clone.StartIteration()
+    except Exception:
+        return parts
+
+    while True:
+        try:
+            result = clone.Iterate()
+        except TypeError:
+            try:
+                result = clone.Iterate(None)
+            except Exception:
+                break
+        except Exception:
+            break
+
+        if isinstance(result, (tuple, list)):
+            part_name = ""
+            for value in result:
+                if isinstance(value, str):
+                    part_name = value
+        else:
+            part_name = clean(result)
+
+        if not part_name:
+            break
+        parts.append(part_name)
+
+    return parts
+
+
+def setup_export(clone, folder, logfile):
+    clone_type = clone_enum()
+    clone.Initialise(clone_type.OperationClass.ExportOperation)
+    clone.SetFamilyTreatment(clone_type.FamilyTreatment.TreatAsLost)
+    clone.SetDefNaming(clone_type.NamingTechnique.Autotranslate)
+    clone.SetDefItemType("")
+    clone.SetDefDirectory(folder)
+    try:
+        clone.SetAssocFileRootDir(folder)
+    except Exception:
+        pass
+    clone.SetDefAction(clone_type.Action.Overwrite)
+    clone.SetDefAssocFileCopy(True)
+    clone.SetLogfile(logfile)
+    try:
+        clone.SetCloneRelatedDwgs(False)
+    except Exception:
+        pass
+
+
+def export_package(ufs, folder, model, drawing, logfile, log):
+    clone = ufs.Clone
+    load_status = None
+    try:
+        terminate(clone)
+        setup_export(clone, folder, logfile)
+        log.write("  Add assembly: {0}".format(model))
+        load_status = add_assembly(clone, model)
+        log.write("  Add drawing:  {0}".format(drawing))
+        clone.AddPart(drawing)
+        failures = naming_failures(clone)
+        clone.SetDryrun(False)
+        try:
+            clone.GenerateReport()
+        except Exception:
+            pass
+        perform_clone(clone, failures)
+    finally:
+        dispose(load_status)
+        terminate(clone)
+
 
 def parse_scope(row):
-    pn,rev=clean(row.get("PART_NUMBER")),clean(row.get("REVISION"))
-    if not pn or not rev: raise RuntimeError("PART_NUMBER and REVISION are required")
-    try: idx=int(clean(row.get("DWG_INDEX")))
-    except Exception: raise RuntimeError("DWG_INDEX must be an integer")
-    if idx<1: raise RuntimeError("DWG_INDEX must be >= 1")
-    return pn,rev,idx
+    part_number = clean(row.get("PART_NUMBER"))
+    revision = clean(row.get("REVISION"))
+    if not part_number or not revision:
+        raise RuntimeError("PART_NUMBER and REVISION are required")
+    try:
+        drawing_index = int(clean(row.get("DWG_INDEX")))
+    except Exception:
+        raise RuntimeError("DWG_INDEX must be an integer")
+    if drawing_index < 1:
+        raise RuntimeError("DWG_INDEX must be >= 1")
+    return part_number, revision, drawing_index
 
-def do_export(ufs,log):
-    path=scope_path(); log.write("Scope CSV: "+path)
-    if not os.path.isfile(path): raise RuntimeError("Scope CSV not found: "+path)
-    rows=read_csv(path,["PART_NUMBER","REVISION","DWG_INDEX"])
-    if not rows: raise RuntimeError("Scope CSV contains no data rows")
-    run=stamp(); root=os.path.join(io_root(),OUT_DIR,run); os.makedirs(root,exist_ok=True)
-    manifest=os.path.join(root,"TCX_OFFLINE_MANIFEST_{0}.csv".format(run)); result=[]; failed=0; succeeded=0
-    for src in rows:
-        rec={k:"" for k in MANIFEST_FIELDS}; rec.update({"RUN_ID":run,"IMPORT_STATUS":"NOT_IMPORTED"})
+
+def do_export(ufs, log):
+    path = scope_path()
+    log.write("Scope CSV: {0}".format(path))
+    if not os.path.isfile(path):
+        raise RuntimeError("Scope CSV not found: {0}".format(path))
+
+    rows = read_csv(path, ["PART_NUMBER", "REVISION", "DWG_INDEX"])
+    if not rows:
+        raise RuntimeError("Scope CSV contains no data rows")
+
+    run_id = stamp()
+    root = os.path.join(io_root(), OUT_DIR, run_id)
+    os.makedirs(root, exist_ok=True)
+    manifest = os.path.join(
+        root, "TCX_OFFLINE_MANIFEST_{0}.csv".format(run_id)
+    )
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for source in rows:
+        record = {field: "" for field in MANIFEST_FIELDS}
+        record.update({"RUN_ID": run_id, "IMPORT_STATUS": "NOT_IMPORTED"})
         try:
-            pn,rev,idx=parse_scope(src); model,drawing=model_id(pn,rev),drawing_id(pn,rev,idx)
-            folder=os.path.join(root,"{0}_{1}_DWG{2}".format(pn,rev,idx)); os.makedirs(folder,exist_ok=True)
-            elog=os.path.join(folder,"EXPORT_{0}_{1}_DWG{2}.clone".format(pn,rev,idx))
-            rec.update({"PART_NUMBER":pn,"REVISION":rev,"DWG_INDEX":str(idx),"MODEL_IDENTIFIER":model,"DRAWING_IDENTIFIER":drawing,"PACKAGE_DIR":folder,"EXPORT_LOG":elog,"EXPORTED_AT":datetime.datetime.now().isoformat(timespec="seconds")})
-            log.write("EXPORT {0}/{1}/dwg{2}".format(pn,rev,idx)); export_package(ufs,folder,model,drawing,elog,log)
-            native=find_drawing(folder,pn,rev,idx)
-            if not native: raise RuntimeError("Expected native drawing not found: "+expected_native(pn,rev,idx))
-            rec["DRAWING_FILE"]=native; rec["EXPORT_SHA256"]=sha256(native); rec["REFERENCE_PRT_COUNT"]=str(protect_refs(folder,native)); rec["NOTES"]="Export OK; all non-drawing .prt files set read-only"
-            succeeded+=1; log.write("  Drawing: "+os.path.basename(native))
-        except Exception as e:
-            failed+=1; rec["IMPORT_STATUS"]="EXPORT_FAILED"; rec["NOTES"]=err(e); log.write("  FAILED: "+err(e)); log.write(traceback.format_exc())
-        result.append(rec); write_csv(manifest,MANIFEST_FIELDS,result)
-    log.write("Manifest: "+manifest); log.write("Export summary: {0} succeeded, {1} failed".format(succeeded,failed))
-    return manifest,succeeded,failed
+            part_number, revision, drawing_index = parse_scope(source)
+            model = model_id(part_number, revision)
+            drawing = drawing_id(part_number, revision, drawing_index)
+            folder = os.path.join(
+                root,
+                "{0}_{1}_DWG{2}".format(
+                    part_number, revision, drawing_index
+                ),
+            )
+            os.makedirs(folder, exist_ok=True)
+            export_log = os.path.join(
+                folder,
+                "EXPORT_{0}_{1}_DWG{2}.clone".format(
+                    part_number, revision, drawing_index
+                ),
+            )
+
+            record.update(
+                {
+                    "PART_NUMBER": part_number,
+                    "REVISION": revision,
+                    "DWG_INDEX": str(drawing_index),
+                    "MODEL_IDENTIFIER": model,
+                    "DRAWING_IDENTIFIER": drawing,
+                    "PACKAGE_DIR": folder,
+                    "EXPORT_LOG": export_log,
+                    "EXPORTED_AT": datetime.datetime.now().isoformat(
+                        timespec="seconds"
+                    ),
+                }
+            )
+
+            log.write(
+                "EXPORT {0}/{1}/dwg{2}".format(
+                    part_number, revision, drawing_index
+                )
+            )
+            export_package(
+                ufs, folder, model, drawing, export_log, log
+            )
+
+            native_drawing = find_drawing(
+                folder, part_number, revision, drawing_index
+            )
+            if not native_drawing:
+                raise RuntimeError(
+                    "Expected native drawing not found: {0}".format(
+                        expected_native(
+                            part_number, revision, drawing_index
+                        )
+                    )
+                )
+
+            record["DRAWING_FILE"] = native_drawing
+            record["EXPORT_SHA256"] = sha256(native_drawing)
+            record["REFERENCE_PRT_COUNT"] = str(
+                protect_references(folder, native_drawing)
+            )
+            record["NOTES"] = (
+                "Export OK; all non-drawing .prt files set read-only"
+            )
+            succeeded += 1
+            log.write(
+                "  Drawing: {0}".format(os.path.basename(native_drawing))
+            )
+
+        except Exception as error:
+            failed += 1
+            record["IMPORT_STATUS"] = "EXPORT_FAILED"
+            record["NOTES"] = error_text(error)
+            log.write("  FAILED: {0}".format(error_text(error)))
+            log.write(traceback.format_exc())
+
+        results.append(record)
+        write_csv(manifest, MANIFEST_FIELDS, results)
+
+    log.write("Manifest: {0}".format(manifest))
+    log.write(
+        "Export summary: {0} succeeded, {1} failed".format(
+            succeeded, failed
+        )
+    )
+    return manifest, succeeded, failed
+
 
 def validate_target(row):
-    pn,rev=clean(row.get("PART_NUMBER")),clean(row.get("REVISION"))
-    try: idx=int(clean(row.get("DWG_INDEX")))
-    except Exception: raise RuntimeError("Invalid DWG_INDEX in manifest")
-    path,did=clean(row.get("DRAWING_FILE")),clean(row.get("DRAWING_IDENTIFIER")); expected=drawing_id(pn,rev,idx)
-    if did.upper()!=expected.upper() or "/SPECIFICATION/" not in did.upper(): raise RuntimeError("Manifest drawing identity is not the expected /specification/ target")
-    if not os.path.isfile(path): raise RuntimeError("DRAWING_FILE not found: "+path)
-    if not valid_native(path,pn,rev,idx): raise RuntimeError("Native drawing was renamed or does not match Teamcenter AutoTranslate naming")
-    return pn,rev,idx,path,did
-
-def same_part(candidate,target):
-    if not clean(candidate): return False
+    part_number = clean(row.get("PART_NUMBER"))
+    revision = clean(row.get("REVISION"))
     try:
-        if os.path.normcase(os.path.abspath(candidate))==os.path.normcase(os.path.abspath(target)): return True
-    except Exception: pass
-    return os.path.basename(candidate).lower()==os.path.basename(target).lower()
+        drawing_index = int(clean(row.get("DWG_INDEX")))
+    except Exception:
+        raise RuntimeError("Invalid DWG_INDEX in manifest")
 
-def import_one(ufs,drawing,folder,logfile,dry_run,log):
-    c=ufs.Clone; T,_=clone_type(); load=None
+    path = clean(row.get("DRAWING_FILE"))
+    identifier = clean(row.get("DRAWING_IDENTIFIER"))
+    expected_identifier = drawing_id(
+        part_number, revision, drawing_index
+    )
+
+    if (
+        identifier.upper() != expected_identifier.upper()
+        or "/SPECIFICATION/" not in identifier.upper()
+    ):
+        raise RuntimeError(
+            "Manifest drawing identity is not the expected /specification/ target"
+        )
+    if not os.path.isfile(path):
+        raise RuntimeError("DRAWING_FILE not found: {0}".format(path))
+    if not valid_native(path, part_number, revision, drawing_index):
+        raise RuntimeError(
+            "Native drawing was renamed or does not match Teamcenter "
+            "AutoTranslate naming"
+        )
+    return part_number, revision, drawing_index, path, identifier
+
+
+def same_part(candidate, target):
+    if not clean(candidate):
+        return False
     try:
-        terminate(c); c.Initialise(T.OperationClass.ImportOperation); c.SetFamilyTreatment(T.FamilyTreatment.TreatAsLost); c.SetDefNaming(T.NamingTechnique.Autotranslate); c.SetDefItemType(""); c.SetDefDirectory(folder)
-        try: c.SetAssocFileRootDir(folder)
-        except Exception: pass
-        c.SetDefAction(T.Action.UseExisting); c.SetDefAssocFileCopy(True); c.SetLogfile(logfile)
-        try: c.SetPropagateActions(False)
-        except Exception: pass
-        load=add_assembly(c,drawing); parts=iterate_parts(c); changed=False
-        for p in parts:
-            if same_part(p,drawing): c.SetAction(p,T.Action.Overwrite,""); changed=True
-            else:
-                try: c.SetAction(p,T.Action.UseExisting,"")
-                except Exception: pass
-        if not changed: c.SetAction(drawing,T.Action.Overwrite,"")
-        nf=naming_failures(c); c.SetDryrun(bool(dry_run))
-        try: c.GenerateReport()
-        except Exception: pass
-        perform(c,nf); log.write("  Default=UseExisting; drawing=Overwrite; dry_run={0}".format(dry_run))
-    finally: dispose(load); terminate(c)
+        if os.path.normcase(os.path.abspath(candidate)) == os.path.normcase(
+            os.path.abspath(target)
+        ):
+            return True
+    except Exception:
+        pass
+    return os.path.basename(candidate).lower() == os.path.basename(
+        target
+    ).lower()
 
-def report_row(row,m,ts):
-    return {"RUN_TIMESTAMP":ts,"MODE":m,"PART_NUMBER":row.get("PART_NUMBER",""),"REVISION":row.get("REVISION",""),"DWG_INDEX":row.get("DWG_INDEX",""),"DRAWING_IDENTIFIER":row.get("DRAWING_IDENTIFIER",""),"DRAWING_FILE":row.get("DRAWING_FILE",""),"EXPORTED_SHA256":row.get("EXPORT_SHA256",""),"CURRENT_SHA256":"","CHANGED":"","APPROVED":row.get("APPROVED",""),"ENGINEER":row.get("ENGINEER",""),"DEFAULT_IMPORT_ACTION":"UseExisting","DRAWING_IMPORT_ACTION":"Overwrite","DRY_RUN":"YES" if m=="IMPORT_DRY_RUN" else "NO","RESULT":"","MESSAGE":"","CLONE_LOG":""}
 
-def do_import(ufs,log,m):
-    path=manifest_path(); log.write("Manifest CSV: "+(path or "<not set>"))
-    if not path or not os.path.isfile(path): raise RuntimeError("Set USER_MANIFEST_CSV/NX_TC_OFFLINE_MANIFEST_FILE to a valid manifest")
-    rows=read_csv(path,["PART_NUMBER","REVISION","DWG_INDEX","DRAWING_IDENTIFIER","DRAWING_FILE","EXPORT_SHA256","APPROVED","ENGINEER"])
-    ts=stamp(); report=os.path.join(os.path.dirname(path),"TCX_OFFLINE_{0}_{1}.csv".format(m,ts)); results=[]; failed=0; succeeded=0
-    for row in rows:
-        r=report_row(row,m,ts); results.append(r)
+def import_one(ufs, drawing, folder, logfile, dry_run, log):
+    clone = ufs.Clone
+    clone_type = clone_enum()
+    load_status = None
+    try:
+        terminate(clone)
+        clone.Initialise(clone_type.OperationClass.ImportOperation)
+        clone.SetFamilyTreatment(clone_type.FamilyTreatment.TreatAsLost)
+        clone.SetDefNaming(clone_type.NamingTechnique.Autotranslate)
+        clone.SetDefItemType("")
+        clone.SetDefDirectory(folder)
         try:
-            pn,rev,idx,drawing,did=validate_target(row); baseline=clean(row.get("EXPORT_SHA256"))
-            if not baseline: raise RuntimeError("EXPORT_SHA256 is blank")
-            current=sha256(drawing); r["CURRENT_SHA256"]=current; changed=current.lower()!=baseline.lower(); r["CHANGED"]="YES" if changed else "NO"; log.write("IMPORT {0}/{1}/dwg{2} changed={3}".format(pn,rev,idx,changed))
-            if not changed: r["RESULT"]="SKIPPED_UNCHANGED"; r["MESSAGE"]="SHA-256 matches export snapshot"; write_csv(report,REPORT_FIELDS,results); continue
-            if m=="IMPORT_APPLY" and upper(row.get("APPROVED"))!="YES": failed+=1; r["RESULT"],r["MESSAGE"]="BLOCKED_NOT_APPROVED","IMPORT_APPLY requires APPROVED=YES"; write_csv(report,REPORT_FIELDS,results); continue
-            if m=="IMPORT_APPLY" and not clean(row.get("ENGINEER")): failed+=1; r["RESULT"],r["MESSAGE"]="BLOCKED_ENGINEER_REQUIRED","IMPORT_APPLY requires ENGINEER"; write_csv(report,REPORT_FIELDS,results); continue
-            ilog=os.path.join(os.path.dirname(drawing),"IMPORT_{0}_{1}_{2}_DWG{3}.clone".format(m,pn,rev,idx)); r["CLONE_LOG"]=ilog; import_one(ufs,drawing,os.path.dirname(drawing),ilog,m=="IMPORT_DRY_RUN",log)
-            r["RESULT"]="DRY_RUN_OK" if m=="IMPORT_DRY_RUN" else "IMPORT_APPLIED"; r["MESSAGE"]="UF Clone completed: default UseExisting, exact drawing Overwrite"; succeeded+=1
-        except Exception as e:
-            failed+=1; r["RESULT"],r["MESSAGE"]="FAILED",err(e); log.write("  FAILED: "+err(e)); log.write(traceback.format_exc()); write_csv(report,REPORT_FIELDS,results)
-            if m=="IMPORT_APPLY": break
-        write_csv(report,REPORT_FIELDS,results)
-    log.write("Import report: "+report); log.write("Import summary: {0} succeeded/validated, {1} failed/blocked".format(succeeded,failed))
-    return report,succeeded,failed
+            clone.SetAssocFileRootDir(folder)
+        except Exception:
+            pass
+
+        clone.SetDefAction(clone_type.Action.UseExisting)
+        clone.SetDefAssocFileCopy(True)
+        clone.SetLogfile(logfile)
+        try:
+            clone.SetPropagateActions(False)
+        except Exception:
+            pass
+
+        load_status = add_assembly(clone, drawing)
+        discovered_parts = iterate_parts(clone)
+        drawing_action_set = False
+
+        for part_name in discovered_parts:
+            if same_part(part_name, drawing):
+                clone.SetAction(
+                    part_name, clone_type.Action.Overwrite, ""
+                )
+                drawing_action_set = True
+            else:
+                try:
+                    clone.SetAction(
+                        part_name, clone_type.Action.UseExisting, ""
+                    )
+                except Exception:
+                    pass
+
+        if not drawing_action_set:
+            clone.SetAction(
+                drawing, clone_type.Action.Overwrite, ""
+            )
+
+        failures = naming_failures(clone)
+        clone.SetDryrun(bool(dry_run))
+        try:
+            clone.GenerateReport()
+        except Exception:
+            pass
+        perform_clone(clone, failures)
+        log.write(
+            "  Default=UseExisting; drawing=Overwrite; dry_run={0}".format(
+                dry_run
+            )
+        )
+
+    finally:
+        dispose(load_status)
+        terminate(clone)
+
+
+def report_row(row, current_mode, timestamp):
+    return {
+        "RUN_TIMESTAMP": timestamp,
+        "MODE": current_mode,
+        "PART_NUMBER": row.get("PART_NUMBER", ""),
+        "REVISION": row.get("REVISION", ""),
+        "DWG_INDEX": row.get("DWG_INDEX", ""),
+        "DRAWING_IDENTIFIER": row.get("DRAWING_IDENTIFIER", ""),
+        "DRAWING_FILE": row.get("DRAWING_FILE", ""),
+        "EXPORTED_SHA256": row.get("EXPORT_SHA256", ""),
+        "CURRENT_SHA256": "",
+        "CHANGED": "",
+        "APPROVED": row.get("APPROVED", ""),
+        "ENGINEER": row.get("ENGINEER", ""),
+        "DEFAULT_IMPORT_ACTION": "UseExisting",
+        "DRAWING_IMPORT_ACTION": "Overwrite",
+        "DRY_RUN": "YES" if current_mode == "IMPORT_DRY_RUN" else "NO",
+        "RESULT": "",
+        "MESSAGE": "",
+        "CLONE_LOG": "",
+    }
+
+
+def do_import(ufs, log, current_mode):
+    path = manifest_path()
+    log.write("Manifest CSV: {0}".format(path or "<not set>"))
+    if not path or not os.path.isfile(path):
+        raise RuntimeError(
+            "Set USER_MANIFEST_CSV/NX_TC_OFFLINE_MANIFEST_FILE "
+            "to a valid manifest"
+        )
+
+    rows = read_csv(
+        path,
+        [
+            "PART_NUMBER",
+            "REVISION",
+            "DWG_INDEX",
+            "DRAWING_IDENTIFIER",
+            "DRAWING_FILE",
+            "EXPORT_SHA256",
+            "APPROVED",
+            "ENGINEER",
+        ],
+    )
+
+    timestamp = stamp()
+    report = os.path.join(
+        os.path.dirname(path),
+        "TCX_OFFLINE_{0}_{1}.csv".format(current_mode, timestamp),
+    )
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for row in rows:
+        result = report_row(row, current_mode, timestamp)
+        results.append(result)
+        try:
+            (
+                part_number,
+                revision,
+                drawing_index,
+                drawing,
+                _identifier,
+            ) = validate_target(row)
+
+            baseline = clean(row.get("EXPORT_SHA256"))
+            if not baseline:
+                raise RuntimeError("EXPORT_SHA256 is blank")
+
+            current = sha256(drawing)
+            result["CURRENT_SHA256"] = current
+            changed = current.lower() != baseline.lower()
+            result["CHANGED"] = "YES" if changed else "NO"
+
+            log.write(
+                "IMPORT {0}/{1}/dwg{2} changed={3}".format(
+                    part_number, revision, drawing_index, changed
+                )
+            )
+
+            if not changed:
+                result["RESULT"] = "SKIPPED_UNCHANGED"
+                result["MESSAGE"] = "SHA-256 matches export snapshot"
+                write_csv(report, REPORT_FIELDS, results)
+                continue
+
+            if (
+                current_mode == "IMPORT_APPLY"
+                and upper(row.get("APPROVED")) != "YES"
+            ):
+                failed += 1
+                result["RESULT"] = "BLOCKED_NOT_APPROVED"
+                result["MESSAGE"] = "IMPORT_APPLY requires APPROVED=YES"
+                write_csv(report, REPORT_FIELDS, results)
+                continue
+
+            if (
+                current_mode == "IMPORT_APPLY"
+                and not clean(row.get("ENGINEER"))
+            ):
+                failed += 1
+                result["RESULT"] = "BLOCKED_ENGINEER_REQUIRED"
+                result["MESSAGE"] = "IMPORT_APPLY requires ENGINEER"
+                write_csv(report, REPORT_FIELDS, results)
+                continue
+
+            import_log = os.path.join(
+                os.path.dirname(drawing),
+                "IMPORT_{0}_{1}_{2}_DWG{3}.clone".format(
+                    current_mode,
+                    part_number,
+                    revision,
+                    drawing_index,
+                ),
+            )
+            result["CLONE_LOG"] = import_log
+
+            import_one(
+                ufs,
+                drawing,
+                os.path.dirname(drawing),
+                import_log,
+                current_mode == "IMPORT_DRY_RUN",
+                log,
+            )
+
+            result["RESULT"] = (
+                "DRY_RUN_OK"
+                if current_mode == "IMPORT_DRY_RUN"
+                else "IMPORT_APPLIED"
+            )
+            result["MESSAGE"] = (
+                "UF Clone completed: default UseExisting, "
+                "exact drawing Overwrite"
+            )
+            succeeded += 1
+
+        except Exception as error:
+            failed += 1
+            result["RESULT"] = "FAILED"
+            result["MESSAGE"] = error_text(error)
+            log.write("  FAILED: {0}".format(error_text(error)))
+            log.write(traceback.format_exc())
+            write_csv(report, REPORT_FIELDS, results)
+            if current_mode == "IMPORT_APPLY":
+                break
+
+        write_csv(report, REPORT_FIELDS, results)
+
+    log.write("Import report: {0}".format(report))
+    log.write(
+        "Import summary: {0} succeeded/validated, "
+        "{1} failed/blocked".format(succeeded, failed)
+    )
+    return report, succeeded, failed
+
 
 def main():
-    session=NXOpen.Session.GetSession(); ufs=NXOpen.UF.UFSession.GetUFSession(); log=Log(session); m=mode()
-    log.write("="*72); log.write("J15 TEAMCENTER X OFFLINE DRAWING WORKFLOW"); log.write("Build: {0} | Mode: {1} | I/O: {2}".format(BUILD,m,io_root())); log.write("="*72)
+    session = NXOpen.Session.GetSession()
+    ufs = NXOpen.UF.UFSession.GetUFSession()
+    log = Log(session)
+    current_mode = mode()
+
+    log.write("=" * 72)
+    log.write("J15 TEAMCENTER X OFFLINE DRAWING WORKFLOW")
+    log.write(
+        "Build: {0} | Mode: {1} | I/O: {2}".format(
+            BUILD, current_mode, io_root()
+        )
+    )
+    log.write("Runtime target: NX X 2506 only")
+    log.write("=" * 72)
+
     try:
-        if m not in MODES: raise RuntimeError("Invalid USER_MODE: "+m)
-        T,Tname=clone_type(); log.write("UF Clone enum binding: "+Tname)
-        _=T.OperationClass.ExportOperation; _=T.OperationClass.ImportOperation; _=T.NamingTechnique.Autotranslate; _=T.Action.UseExisting; _=T.Action.Overwrite
-        output,ok,failed=do_export(ufs,log) if m=="EXPORT" else do_import(ufs,log,m)
+        if current_mode not in MODES:
+            raise RuntimeError(
+                "Invalid USER_MODE: {0}".format(current_mode)
+            )
+
+        verify_clone_api()
+        log.write("UF Clone binding: NXOpen.UF.Clone")
+
+        if current_mode == "EXPORT":
+            output, succeeded, failed = do_export(ufs, log)
+        else:
+            output, succeeded, failed = do_import(
+                ufs, log, current_mode
+            )
+
         if failed:
-            log.write("FINAL STATUS: FAILED"); log.write("Primary output: "+output)
-            raise RuntimeError("J15 completed with {0} failed/blocked row(s). Review: {1}".format(failed,output))
-        log.write("FINAL STATUS: SUCCESS"); log.write("Primary output: "+output)
-    except Exception as e:
-        if "FINAL STATUS: FAILED" not in log.lines: log.write("FINAL STATUS: FAILED")
-        log.write(err(e)); log.write(traceback.format_exc()); raise
+            log.write("FINAL STATUS: FAILED")
+            log.write("Primary output: {0}".format(output))
+            raise RuntimeError(
+                "J15 completed with {0} failed/blocked row(s). "
+                "Review: {1}".format(failed, output)
+            )
+
+        log.write("FINAL STATUS: SUCCESS")
+        log.write("Primary output: {0}".format(output))
+
+    except Exception as error:
+        if "FINAL STATUS: FAILED" not in log.lines:
+            log.write("FINAL STATUS: FAILED")
+        log.write(error_text(error))
+        log.write(traceback.format_exc())
+        raise
+
     finally:
         try:
-            root=os.path.join(io_root(),OUT_DIR); os.makedirs(root,exist_ok=True); write_log(os.path.join(root,"J15_{0}_{1}.txt".format(m,stamp())),log.lines)
-        except Exception: pass
+            root = os.path.join(io_root(), OUT_DIR)
+            os.makedirs(root, exist_ok=True)
+            write_log(
+                os.path.join(
+                    root,
+                    "J15_{0}_{1}.txt".format(
+                        current_mode, stamp()
+                    ),
+                ),
+                log.lines,
+            )
+        except Exception:
+            pass
 
-if __name__=="__main__": main()
-def GetUnloadOption(dummy): return NXOpen.Session.LibraryUnloadOption.Immediately
+
+if __name__ == "__main__":
+    main()
+
+
+def GetUnloadOption(dummy):
+    return NXOpen.Session.LibraryUnloadOption.Immediately
