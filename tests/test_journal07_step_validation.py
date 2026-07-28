@@ -68,11 +68,123 @@ class StepValidationTests(unittest.TestCase):
 
     def test_export_uses_proven_display_scope_and_layer_mask(self):
         source = inspect.getsource(self.journal.export_step_from_part)
+        validator = inspect.getsource(
+            self.journal.evaluate_step_validation
+        )
         self.assertIn("ExportFromOption.DisplayPart", source)
         self.assertIn("Scope.EntirePart", source)
         self.assertIn("exporter.LayerMask = STEP_LAYER_MASK", source)
         self.assertNotIn("exporter.InputFile", source)
-        self.assertIn('"FAILED_ZERO_GEOMETRY"', source)
+        self.assertIn("ensure_step_source_loaded", source)
+        self.assertIn("parse_step_translator_log", source)
+        self.assertIn('"FAILED_ZERO_GEOMETRY"', validator)
+
+    def test_runtime_version_uses_capability_before_environment(self):
+        session = types.SimpleNamespace(
+            GetEnvironmentVariableValue=lambda name: (
+                "2506.5000" if name == "UGII_VERSION" else ""
+            )
+        )
+        self.assertEqual(
+            self.journal.runtime_nx_version(session),
+            "2506.5000",
+        )
+
+    def test_full_load_capability_includes_children_and_disposes_status(self):
+        class Status:
+            NumberUnloadedParts = 0
+
+            def __init__(self):
+                self.disposed = False
+
+            def Dispose(self):
+                self.disposed = True
+
+        status = Status()
+        ensure = mock.Mock(return_value=status)
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                EnsurePartsLoadedFully=ensure,
+            )
+        )
+        part = types.SimpleNamespace(IsFullyLoaded=True)
+        result = self.journal.ensure_step_source_loaded(session, part)
+        self.assertEqual(result["status"], "SUCCESS")
+        ensure.assert_called_once_with([part], True)
+        self.assertTrue(status.disposed)
+
+    def test_small_valid_step_is_not_rejected_by_file_size(self):
+        validation = self.journal.evaluate_step_validation(
+            "2506",
+            {"status": "SUCCESS"},
+            {
+                "direct_solid_body_count": 1,
+                "component_occurrence_count": 0,
+                "descendant_solid_body_occurrence_count": 0,
+                "component_limit_reached": False,
+            },
+            {
+                "body_geometry_signatures": 2,
+                "assembly_signatures": 0,
+            },
+            {
+                "path": "",
+                "solids_input": "",
+                "solids_processed": "",
+                "solids_as_sheets": "",
+                "solids_not_processed": "",
+            },
+            64,
+        )
+        self.assertEqual(validation["result"], "SUCCESS")
+        self.assertIn("STEP size=64 bytes", validation["message"])
+
+    def test_translator_partial_geometry_is_rejected(self):
+        validation = self.journal.evaluate_step_validation(
+            "2506",
+            {"status": "SUCCESS"},
+            {
+                "direct_solid_body_count": 2,
+                "component_occurrence_count": 0,
+                "descendant_solid_body_occurrence_count": 0,
+                "component_limit_reached": False,
+            },
+            {
+                "body_geometry_signatures": 4,
+                "assembly_signatures": 0,
+            },
+            {
+                "path": "sample.log",
+                "solids_input": "2",
+                "solids_processed": "1",
+                "solids_as_sheets": "0",
+                "solids_not_processed": "1",
+            },
+            285000,
+        )
+        self.assertEqual(
+            validation["result"],
+            "FAILED_TRANSLATOR_PARTIAL_GEOMETRY",
+        )
+
+    def test_translator_log_parser_reads_nx_counts(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        step_path = Path(folder.name) / "sample.stp"
+        step_path.write_text("ISO-10303-21;", encoding="utf-8")
+        log_path = Path(folder.name) / "sample.log"
+        log_path.write_text(
+            "File_Name sample.stp\n"
+            "Total number of solids input for this translation : 2\n"
+            "Number of solids processed without problems : 2\n"
+            "Number of solids with problems output as sheets : 0\n"
+            "Number of solids not processed : 0\n",
+            encoding="utf-8",
+        )
+        parsed = self.journal.parse_step_translator_log(step_path)
+        self.assertEqual(parsed["solids_input"], "2")
+        self.assertEqual(parsed["solids_processed"], "2")
+        self.assertEqual(parsed["solids_not_processed"], "0")
 
 
 class PdfGroupingTests(unittest.TestCase):
@@ -202,7 +314,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-POLYLINES-V4",
+            "J07-NX2506-STEP-VALIDATION-V5",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(

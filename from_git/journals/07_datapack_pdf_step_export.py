@@ -35,7 +35,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-V4"
+JOURNAL_BUILD_ID = "J07-NX2506-STEP-VALIDATION-V5"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -51,8 +51,15 @@ STEP_BODY_TOKENS = (
     "ADVANCED_FACE",
     "TESSELLATED_SHAPE_REPRESENTATION",
 )
+STEP_ASSEMBLY_TOKENS = (
+    "NEXT_ASSEMBLY_USAGE_OCCURRENCE",
+    "CONTEXT_DEPENDENT_SHAPE_REPRESENTATION",
+    "REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION",
+    "MAPPED_ITEM",
+)
 
 MAX_DRAWING_DATASET_INDEX = 9
+MAX_STEP_COMPONENT_OCCURRENCES = 20000
 CLOSE_PARTS_OPENED_BY_JOURNAL = True
 
 TRUE_VALUES = {"YES", "Y", "TRUE", "1", "X"}
@@ -347,6 +354,230 @@ def part_body_count(part):
         return len(list(part.Bodies))
     except Exception:
         return 0
+
+
+def step_collection_values(collection):
+    if collection is None:
+        return []
+    try:
+        return list(collection)
+    except Exception:
+        try:
+            return list(collection.ToArray())
+        except Exception:
+            return []
+
+
+def step_safe_property(value, name, fallback=None):
+    if value is None:
+        return fallback
+    try:
+        result = getattr(value, name)
+        if callable(result):
+            result = result()
+        return result
+    except Exception:
+        return fallback
+
+
+def runtime_nx_version(session):
+    names = (
+        "UGII_VERSION",
+        "UGII_FULL_VERSION",
+        "UGII_PRODUCT_VERSION",
+        "UGII_MAJOR_VERSION",
+    )
+    getter = step_safe_property(
+        session,
+        "GetEnvironmentVariableValue",
+        None,
+    )
+    if callable(getter):
+        for name in names:
+            try:
+                value = normalize_text(getter(name))
+            except Exception:
+                value = ""
+            if value:
+                return value
+
+    for name in names:
+        value = normalize_text(os.environ.get(name))
+        if value:
+            return value
+    return "UNKNOWN"
+
+
+def part_fully_loaded_state(part):
+    for name in ("IsFullyLoaded", "FullyLoaded"):
+        value = step_safe_property(part, name, None)
+        if value is not None:
+            try:
+                return bool(value)
+            except Exception:
+                pass
+    return ""
+
+
+def step_body_type_counts(part):
+    result = {
+        "body_count": 0,
+        "solid_body_count": 0,
+        "sheet_body_count": 0,
+        "unknown_body_type_count": 0,
+    }
+    bodies = step_collection_values(
+        step_safe_property(part, "Bodies", None)
+    )
+    result["body_count"] = len(bodies)
+    for body in bodies:
+        is_solid = step_safe_property(body, "IsSolidBody", None)
+        if is_solid is None:
+            result["unknown_body_type_count"] += 1
+        elif bool(is_solid):
+            result["solid_body_count"] += 1
+        else:
+            result["sheet_body_count"] += 1
+    return result
+
+
+def step_component_children(component):
+    try:
+        return list(component.GetChildren())
+    except Exception:
+        return []
+
+
+def step_source_geometry_snapshot(part):
+    direct = step_body_type_counts(part)
+    result = {
+        "fully_loaded": part_fully_loaded_state(part),
+        "direct_body_count": direct["body_count"],
+        "direct_solid_body_count": direct["solid_body_count"],
+        "direct_sheet_body_count": direct["sheet_body_count"],
+        "component_occurrence_count": 0,
+        "suppressed_occurrence_count": 0,
+        "unique_prototype_count": 0,
+        "descendant_body_occurrence_count": 0,
+        "descendant_solid_body_occurrence_count": 0,
+        "descendant_sheet_body_occurrence_count": 0,
+        "component_limit_reached": False,
+    }
+
+    assembly = step_safe_property(part, "ComponentAssembly", None)
+    root = step_safe_property(assembly, "RootComponent", None)
+    if root is None:
+        return result
+
+    stack = list(reversed(step_component_children(root)))
+    seen_occurrences = set()
+    seen_prototypes = set()
+    while stack:
+        if (
+            result["component_occurrence_count"]
+            >= MAX_STEP_COMPONENT_OCCURRENCES
+        ):
+            result["component_limit_reached"] = True
+            break
+
+        component = stack.pop()
+        key = object_identity(component)
+        if key in seen_occurrences:
+            continue
+        seen_occurrences.add(key)
+
+        if bool(step_safe_property(component, "IsSuppressed", False)):
+            result["suppressed_occurrence_count"] += 1
+            continue
+
+        result["component_occurrence_count"] += 1
+        prototype = step_safe_property(component, "Prototype", None)
+        if prototype is not None:
+            seen_prototypes.add(object_identity(prototype))
+            counts = step_body_type_counts(prototype)
+            result["descendant_body_occurrence_count"] += counts[
+                "body_count"
+            ]
+            result["descendant_solid_body_occurrence_count"] += counts[
+                "solid_body_count"
+            ]
+            result["descendant_sheet_body_occurrence_count"] += counts[
+                "sheet_body_count"
+            ]
+
+        children = step_component_children(component)
+        if children:
+            stack.extend(reversed(children))
+
+    result["unique_prototype_count"] = len(seen_prototypes)
+    return result
+
+
+def step_load_status_messages(status):
+    messages = []
+    if status is None:
+        return messages
+    try:
+        count = int(status.NumberUnloadedParts)
+    except Exception:
+        count = 0
+    for index in range(count):
+        try:
+            messages.append(
+                "{0}: {1}".format(
+                    normalize_text(status.GetPartName(index)),
+                    normalize_text(status.GetStatusDescription(index)),
+                )
+            )
+        except Exception:
+            pass
+    return messages
+
+
+def ensure_step_source_loaded(session, part):
+    result = {
+        "status": "NOT_AVAILABLE",
+        "method": "none",
+        "messages": [],
+    }
+    parts = step_safe_property(session, "Parts", None)
+    ensure = step_safe_property(parts, "EnsurePartsLoadedFully", None)
+    if callable(ensure):
+        status = None
+        result["method"] = "EnsurePartsLoadedFully(includeChildren=True)"
+        try:
+            status = ensure([part], True)
+            result["status"] = "SUCCESS"
+            result["messages"] = step_load_status_messages(status)
+            return result
+        except Exception as error:
+            result["status"] = "FAILED"
+            result["messages"].append(normalize_text(error))
+        finally:
+            dispose(status)
+
+    load_fully = step_safe_property(part, "LoadFully", None)
+    if callable(load_fully):
+        status = None
+        result["method"] = (
+            result["method"] + " -> part.LoadFully()"
+            if result["method"] != "none"
+            else "part.LoadFully()"
+        )
+        try:
+            status = load_fully()
+            result["status"] = "SUCCESS_FALLBACK"
+            result["messages"].extend(
+                step_load_status_messages(status)
+            )
+        except Exception as error:
+            result["status"] = "FAILED"
+            result["messages"].append(normalize_text(error))
+        finally:
+            dispose(status)
+    elif part_fully_loaded_state(part) is True:
+        result["status"] = "ALREADY_FULLY_LOADED"
+    return result
 
 
 def unwrap_open_result(value):
@@ -1405,8 +1636,12 @@ def resolve_master_candidate(session, number, revision, log_buffer):
     return None, attempts
 
 
-def step_body_signature_count(path):
-    signatures = 0
+def inspect_step_file(path):
+    result = {
+        "data_entity_lines": 0,
+        "body_geometry_signatures": 0,
+        "assembly_signatures": 0,
+    }
     in_data = False
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         for line in handle:
@@ -1419,9 +1654,234 @@ def step_body_signature_count(path):
                 in_data = False
             if not in_data:
                 continue
+            if stripped.startswith("#"):
+                result["data_entity_lines"] += 1
             for token in STEP_BODY_TOKENS:
-                signatures += upper.count(token)
-    return signatures
+                result["body_geometry_signatures"] += upper.count(token)
+            for token in STEP_ASSEMBLY_TOKENS:
+                result["assembly_signatures"] += upper.count(token)
+    return result
+
+
+def step_body_signature_count(path):
+    return inspect_step_file(path)["body_geometry_signatures"]
+
+
+def parse_step_translator_log(output_path):
+    result = {
+        "path": "",
+        "solids_input": "",
+        "solids_processed": "",
+        "solids_as_sheets": "",
+        "solids_not_processed": "",
+        "ug_body_count": "",
+    }
+    folder = os.path.dirname(output_path)
+    output_name = os.path.basename(output_path).upper()
+    output_stem = os.path.splitext(output_name)[0]
+    candidates = []
+    try:
+        names = os.listdir(folder)
+    except Exception:
+        return result
+
+    for name in names:
+        if not name.lower().endswith(".log"):
+            continue
+        path = os.path.join(folder, name)
+        try:
+            with open(
+                path,
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as handle:
+                content = handle.read()
+        except Exception:
+            continue
+        upper = content.upper()
+        if (
+            output_name not in upper
+            and output_stem not in name.upper()
+        ):
+            continue
+        try:
+            modified = os.path.getmtime(path)
+        except Exception:
+            modified = 0
+        candidates.append((modified, path, content))
+
+    candidates.sort(reverse=True)
+    patterns = {
+        "solids_input": (
+            r"Total\s+number\s+of\s+solids\s+input.*?:\s*(\d+)"
+        ),
+        "solids_processed": (
+            r"Number\s+of\s+solids\s+processed\s+without\s+"
+            r"problems.*?:\s*(\d+)"
+        ),
+        "solids_as_sheets": (
+            r"Number\s+of\s+solids.*?(?:output|processed)\s+as\s+"
+            r"sheets.*?:\s*(\d+)"
+        ),
+        "solids_not_processed": (
+            r"Number\s+of\s+solids\s+not\s+processed.*?:\s*(\d+)"
+        ),
+    }
+    for _modified, path, content in candidates:
+        matched = False
+        for key, pattern in patterns.items():
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                result[key] = match.group(1)
+                matched = True
+        body_matches = re.findall(
+            r"SUMMARY-\s*Body\s*\.*\s*:\s*(\d+)",
+            content,
+            re.IGNORECASE,
+        )
+        if body_matches:
+            result["ug_body_count"] = str(
+                sum(int(value) for value in body_matches)
+            )
+            matched = True
+        if matched:
+            result["path"] = path
+            return result
+    return result
+
+
+def step_metric_int(value):
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def evaluate_step_validation(
+    nx_version,
+    load_result,
+    source,
+    inspection,
+    translator,
+    file_size,
+):
+    warnings = []
+    failure = ""
+    body_signatures = int(
+        inspection.get("body_geometry_signatures", 0) or 0
+    )
+    assembly_signatures = int(
+        inspection.get("assembly_signatures", 0) or 0
+    )
+    solids_input = step_metric_int(translator.get("solids_input"))
+    solids_processed = step_metric_int(
+        translator.get("solids_processed")
+    )
+    solids_as_sheets = step_metric_int(
+        translator.get("solids_as_sheets")
+    )
+    solids_not_processed = step_metric_int(
+        translator.get("solids_not_processed")
+    )
+
+    if body_signatures <= 0:
+        failure = "FAILED_ZERO_GEOMETRY"
+    elif translator.get("path") and solids_input == 0:
+        failure = "FAILED_TRANSLATOR_ZERO_GEOMETRY"
+    elif (
+        solids_not_processed is not None
+        and solids_not_processed > 0
+    ):
+        failure = "FAILED_TRANSLATOR_PARTIAL_GEOMETRY"
+    elif (
+        solids_input is not None
+        and solids_processed is not None
+        and (
+            solids_processed + (solids_as_sheets or 0)
+            < solids_input
+        )
+    ):
+        failure = "FAILED_TRANSLATOR_PARTIAL_GEOMETRY"
+
+    load_status = load_result.get("status", "UNKNOWN")
+    if load_status == "FAILED":
+        warnings.append("full-load request failed")
+    if source.get("component_limit_reached"):
+        warnings.append("component diagnostic limit reached")
+    if not translator.get("path"):
+        warnings.append("matching NX STEP translator log not found")
+
+    expected_solids = int(
+        source.get("direct_solid_body_count", 0) or 0
+    ) + int(
+        source.get("descendant_solid_body_occurrence_count", 0)
+        or 0
+    )
+    if (
+        solids_input is not None
+        and expected_solids > solids_input
+    ):
+        warnings.append(
+            "source solid count exceeds translator input "
+            "({0}>{1})".format(expected_solids, solids_input)
+        )
+    if (
+        int(source.get("component_occurrence_count", 0) or 0) > 0
+        and assembly_signatures <= 0
+    ):
+        warnings.append(
+            "source is an assembly but STEP has no assembly signatures"
+        )
+    if solids_as_sheets:
+        warnings.append(
+            "{0} solid(s) were output as sheets".format(
+                solids_as_sheets
+            )
+        )
+
+    validation = (
+        "FAILED"
+        if failure
+        else "VERIFIED_WITH_WARNINGS"
+        if warnings
+        else "VERIFIED"
+    )
+    result = failure or "SUCCESS"
+    translator_text = (
+        "input={0}, processed={1}, as_sheets={2}, not_processed={3}".format(
+            translator.get("solids_input", "N/A") or "N/A",
+            translator.get("solids_processed", "N/A") or "N/A",
+            translator.get("solids_as_sheets", "N/A") or "N/A",
+            translator.get("solids_not_processed", "N/A") or "N/A",
+        )
+    )
+    message = (
+        "STEP validation: {0}; NX={1}; load={2}; "
+        "source direct solids={3}, components={4}, "
+        "descendant solids={5}; STEP size={6} bytes, "
+        "body signatures={7}, assembly signatures={8}; "
+        "translator {9}"
+    ).format(
+        validation,
+        nx_version,
+        load_status,
+        source.get("direct_solid_body_count", 0),
+        source.get("component_occurrence_count", 0),
+        source.get("descendant_solid_body_occurrence_count", 0),
+        file_size,
+        body_signatures,
+        assembly_signatures,
+        translator_text,
+    )
+    if warnings:
+        message += "; warnings: " + ", ".join(warnings)
+    return {
+        "result": result,
+        "validation": validation,
+        "message": message,
+        "warnings": warnings,
+    }
 
 
 def export_step_from_part(
@@ -1430,9 +1890,37 @@ def export_step_from_part(
     output_folder,
     number,
     revision,
+    log_buffer=None,
 ):
     set_display_part(session, part)
     session.Parts.SetWork(part)
+
+    nx_version = runtime_nx_version(session)
+    load_result = ensure_step_source_loaded(session, part)
+    source = step_source_geometry_snapshot(part)
+    log_line(
+        session,
+        (
+            "    STEP source: NX={0}; load={1} via {2}; "
+            "fully_loaded={3}; direct solids={4}; components={5}; "
+            "descendant solids={6}"
+        ).format(
+            nx_version,
+            load_result.get("status", "UNKNOWN"),
+            load_result.get("method", "none"),
+            source.get("fully_loaded", ""),
+            source.get("direct_solid_body_count", 0),
+            source.get("component_occurrence_count", 0),
+            source.get("descendant_solid_body_occurrence_count", 0),
+        ),
+        log_buffer,
+    )
+    for message in load_result.get("messages", []):
+        log_line(
+            session,
+            "      Load detail: {0}".format(message),
+            log_buffer,
+        )
 
     output_path = os.path.join(
         output_folder,
@@ -1489,24 +1977,26 @@ def export_step_from_part(
     except Exception:
         file_size = ""
 
-    if VERIFY_OUTPUT_FILES:
-        signatures = step_body_signature_count(output_path)
-        if signatures <= 0:
-            return {
-                "result": "FAILED_ZERO_GEOMETRY",
-                "path": output_path,
-                "size": file_size,
-                "message": (
-                    "STEP output contains no body geometry signatures; "
-                    "the header-only file was retained for diagnosis"
-                ),
-            }
-
+    inspection = inspect_step_file(output_path)
+    translator = parse_step_translator_log(output_path)
+    validation = evaluate_step_validation(
+        nx_version,
+        load_result,
+        source,
+        inspection,
+        translator,
+        file_size,
+    )
+    log_line(session, "    " + validation["message"], log_buffer)
     return {
-        "result": "SUCCESS",
+        "result": validation["result"],
         "path": output_path,
         "size": file_size,
-        "message": "",
+        "message": validation["message"],
+        "validation": validation["validation"],
+        "source": source,
+        "inspection": inspection,
+        "translator": translator,
     }
 
 
@@ -1545,6 +2035,7 @@ def export_step_for_instruction(
             output_folder,
             number,
             revision,
+            log_buffer,
         )
         if exported.get("result") == "SUCCESS":
             log_line(
@@ -1772,6 +2263,11 @@ def main():
             log_buffer,
         )
         log_line(session, "Journal build: " + JOURNAL_BUILD_ID, log_buffer)
+        log_line(
+            session,
+            "NX runtime: " + runtime_nx_version(session),
+            log_buffer,
+        )
         log_line(
             session,
             "Journal source: " + runtime_source_path(),
