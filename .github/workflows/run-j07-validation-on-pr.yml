@@ -43,19 +43,23 @@ jobs:
           exec(compile(script, str(workflow) + ':embedded', 'exec'))
           PY
 
-      - name: Validate patch
+      - name: Capture validation result
         shell: bash
         run: |
-          python -m py_compile from_git/journals/07_datapack_pdf_step_export.py
-          python -m unittest discover -s tests -p 'test_journal07_step_validation.py'
+          set +e
+          {
+            python -m py_compile from_git/journals/07_datapack_pdf_step_export.py
+            python -m unittest discover -s tests -p 'test_journal07_step_validation.py'
+          } > J07_VALIDATION_RESULT.txt 2>&1
+          status=$?
+          echo "EXIT_STATUS=$status" >> J07_VALIDATION_RESULT.txt
+          cat J07_VALIDATION_RESULT.txt
 
-      - name: Commit tested changes
+      - name: Commit patched files and evidence
         shell: bash
         run: |
-          rm .github/workflows/apply-j07-validation.yml
-          rm .github/workflows/run-j07-validation-on-pr.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add from_git/journals/07_datapack_pdf_step_export.py tests/test_journal07_step_validation.py .github/workflows
-          git commit -m "Harden J07 STEP validation for NX2506"
+          git add from_git/journals/07_datapack_pdf_step_export.py tests/test_journal07_step_validation.py J07_VALIDATION_RESULT.txt .github/workflows
+          git commit -m "Capture J07 STEP validation result"
           git push origin HEAD:${{ github.head_ref }}
