@@ -1,836 +1,124 @@
-<?xml version="1.0" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <MatML_Doc>
+  <!-- NX 2506-compatible MatML. Density is kg/m^3; modulus and strength values are N/mm^2 (MPa). -->
   <Material>
-    <BulkDetails>
-      <Name>Q355</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">355</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">490</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>Q355</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">3.550000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.900000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>CW004A</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">8.9e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">120000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.34</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">200</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">250</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>CW004A</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">8.900000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.200000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.400000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.000000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>CW004A H065</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">8.9e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">120000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.34</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">200</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">250</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>CW004A H065</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">8.900000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.200000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.400000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.000000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>COPPER T2</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">8.9e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">115000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.34</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">210</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">250</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>COPPER T2</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">8.900000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.150000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.400000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.100000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>AISI 304</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.93e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">193000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.29</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">206.8</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">517</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>AISI 304</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.930000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.930000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.900000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.068000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">5.170000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>SUS304</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.93e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">193000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.29</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">206.8</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">517</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>SUS304</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.930000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.930000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.900000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.068000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">5.170000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>AISI 316</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">8.0e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">193000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.27</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">172.4</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">580</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>AISI 316</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">8.000000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.930000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.700000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">1.724000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">5.800000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ALUMINUM 6082-T6</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">2.7e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">70000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.33</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">255</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">300</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ALUMINUM 6082-T6</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">2.700000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">7.000000e+04</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.300000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.550000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">3.000000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>S17400</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.74e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">197000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.27</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">1200</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">1500</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>S17400</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.740000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.970000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.700000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">1.200000e+03</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">1.500000e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>AISI 4130</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">205000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.285</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">460</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">731</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>AISI 4130</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.050000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.850000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">4.600000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">7.310000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>S99G</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">355</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">490</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>S99G</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">3.550000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.900000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>SPA-H</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">355</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">490</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>SPA-H</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">3.550000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.900000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>Q235B</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">235</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">370</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>Q235B</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.350000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">3.700000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>POLYAMIDE IMIDE</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.41e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">4500</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.40</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">150</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>POLYAMIDE IMIDE</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.410000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">4.500000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">4.000000e-01</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">1.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ALUMINUM 6061</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">2.7e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">69000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.33</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">275</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">310</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ALUMINUM 6061</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">2.700000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">6.900000e+04</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.300000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.750000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">3.100000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>Q355B</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">355</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">490</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>Q355B</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">3.550000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.900000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>Q460</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">210000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">460</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">550</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>Q460</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.100000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">4.600000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">5.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ALUMINUM 5052</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">2.68e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">70000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.33</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">195</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">230</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ALUMINUM 5052</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">2.680000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">7.000000e+04</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.300000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">1.950000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.300000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ASTM A36</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.85e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">200000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.30</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">250.0</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">400.0</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ASTM A36</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.850000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.000000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.500000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.000000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>TECAPEEK</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source="Ensinger Datasheet"/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.31e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">4000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.40</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">107</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">107</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>TECAPEEK</Name><Class><Name>Plastics</Name></Class><Source source="Ensinger Datasheet"/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.310000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">4.000000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">4.000000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">1.070000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">1.070000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>EPT-SEALER EE-1010</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.0e-7</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>EPT-SEALER EE-1010</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.000000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ER40 EPDM/CR</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.1808e-6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ER40 EPDM/CR</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.180800e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>EPDM 60</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.1808e-6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>EPDM 60</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.180800e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>FLUROSILICONE</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.45e-6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>FLUROSILICONE</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.450000e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>PVC</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.3e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">2410</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.38</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">40.7</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>PVC</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.300000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.410000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.800000e-01</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">4.070000e+01</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>PA66</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.15e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">2500</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.39</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">80</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">80</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>PA66</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.150000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.500000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.900000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">8.000000e+01</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">8.000000e+01</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>POLYURETHANE</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.2e-6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>POLYURETHANE</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.200000e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>DP460NS (3M)</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.1e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">2415</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.35</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">28</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>DP460NS (3M)</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.100000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">2.415000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.500000e-01</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.800000e+01</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>SC603 (FIP)</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.2465e-6</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>SC603 (FIP)</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.246500e+03</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">6.000000e+00</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>PAI</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.41e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">4500</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.40</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">150</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>PAI</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.410000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">4.500000e+03</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">4.000000e-01</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">1.500000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>PTFE</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">2.15e-6</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">25</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>PTFE</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">2.150000e+03</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.500000e+01</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>PPS-GF30</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.57e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">9610</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">102</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>PPS-GF30</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.570000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">9.610000e+03</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">1.020000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>EPDM 70</Name>
-      <Class>
-        <Name>Plastics</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">1.1808e-6</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>EPDM 70</Name><Class><Name>Plastics</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">1.180800e+03</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>ALUMINUM 5086</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">2.66e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">70000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.33</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">193</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-        <Data format="float">290</Data>
-      </PropertyData>
-    </BulkDetails>
+    <BulkDetails><Name>ALUMINUM 5086</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">2.660000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">7.000000e+04</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">3.300000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">1.930000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">2.900000e+02</Data></PropertyData></BulkDetails>
   </Material>
   <Material>
-    <BulkDetails>
-      <Name>STAINLESS STEEL</Name>
-      <Class>
-        <Name>Metals</Name>
-      </Class>
-      <Source source=""/>
-      <PropertyData property="Material Type">
-        <Data format="string">IsotropicMaterial</Data>
-      </PropertyData>
-      <PropertyData property="MassDensity_0">
-        <Data format="exponential">7.93e-6</Data>
-      </PropertyData>
-      <PropertyData property="YoungsModulus_0">
-        <Data format="float">193000</Data>
-      </PropertyData>
-      <PropertyData property="PoissonsRatio_0">
-        <Data format="float">0.29</Data>
-      </PropertyData>
-      <PropertyData property="YieldStrength_0">
-        <Data format="float">250.0</Data>
-      </PropertyData>
-      <PropertyData property="UltimateTensileStrength_0">
-... (rest of the response hidden)
+    <BulkDetails><Name>STAINLESS STEEL</Name><Class><Name>Metals</Name></Class><Source source=""/><PropertyData property="Material Type"><Data format="string">IsotropicMaterial</Data></PropertyData><PropertyData property="MaterialType_0"><Data format="integer">0</Data><Qualifier>Isotropic</Qualifier></PropertyData><PropertyData property="AltName_1"><Data format="string"></Data></PropertyData><PropertyData property="Version_2"><Data format="string">3.000000</Data></PropertyData><PropertyData property="Description_3"><Data format="string"></Data></PropertyData><PropertyData property="DensityControl_4"><Data format="integer">0</Data><Qualifier>Constant or Temperature or Frequency</Qualifier></PropertyData><PropertyData property="MassDensity_0"><Data format="exponential">7.930000e+03</Data></PropertyData><PropertyData property="YoungsModulusControl_5"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="YoungsModulus_1"><Data format="exponential">1.930000e+05</Data></PropertyData><PropertyData property="PoissonsRatioType_6"><Data format="integer">0</Data><Qualifier>Major Poisson's Ratio</Qualifier></PropertyData><PropertyData property="PoissonsRatioControl_7"><Data format="integer">0</Data><Qualifier>Temperature</Qualifier></PropertyData><PropertyData property="PoissonsRatio_2"><Data format="exponential">2.900000e-01</Data></PropertyData><PropertyData property="YieldStrength_0"><Data format="exponential">2.500000e+02</Data></PropertyData><PropertyData property="UltimateTensileStrength_0"><Data format="exponential">5.500000e+02</Data></PropertyData></BulkDetails>
+  </Material>
+  <Metadata>
+    <PropertyDetails id="MaterialType_0"><Name>MaterialType</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="AltName_1"><Name>AltName</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="Version_2"><Name>Version</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="Description_3"><Name>Description</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="DensityControl_4"><Name>DensityControl</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="MassDensity_0"><Name>MassDensity</Name><Units description="kilograms per meter cubed" name="kg/m^3"><Unit><Name>kg/m^3</Name></Unit></Units></PropertyDetails>
+    <PropertyDetails id="YoungsModulusControl_5"><Name>YoungsModulusControl</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="YoungsModulus_1"><Name>YoungsModulus</Name><Units description="Newtons per millimeter squared" name="N/mm^2(MPa)"><Unit><Name>N/mm^2(MPa)</Name></Unit></Units></PropertyDetails>
+    <PropertyDetails id="PoissonsRatioType_6"><Name>PoissonsRatioType</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="PoissonsRatioControl_7"><Name>PoissonsRatioControl</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="PoissonsRatio_2"><Name>PoissonsRatio</Name><Unitless/></PropertyDetails>
+    <PropertyDetails id="YieldStrength_0"><Name>YieldStrength</Name><Units description="Newtons per millimeter squared" name="N/mm^2(MPa)"><Unit><Name>N/mm^2(MPa)</Name></Unit></Units></PropertyDetails>
+    <PropertyDetails id="UltimateTensileStrength_0"><Name>UltimateTensileStrength</Name><Units description="Newtons per millimeter squared" name="N/mm^2(MPa)"><Unit><Name>N/mm^2(MPa)</Name></Unit></Units></PropertyDetails>
+  </Metadata>
+</MatML_Doc>
