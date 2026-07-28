@@ -1,0 +1,836 @@
+<?xml version="1.0" ?>
+<MatML_Doc>
+  <Material>
+    <BulkDetails>
+      <Name>Q355</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">355</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">490</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>CW004A</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">8.9e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">120000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.34</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">200</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">250</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>CW004A H065</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">8.9e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">120000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.34</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">200</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">250</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>COPPER T2</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">8.9e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">115000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.34</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">210</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">250</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>AISI 304</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.93e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">193000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.29</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">206.8</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">517</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>SUS304</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.93e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">193000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.29</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">206.8</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">517</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>AISI 316</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">8.0e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">193000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.27</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">172.4</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">580</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ALUMINUM 6082-T6</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">2.7e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">70000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.33</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">255</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">300</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>S17400</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.74e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">197000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.27</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">1200</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">1500</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>AISI 4130</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">205000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.285</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">460</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">731</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>S99G</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">355</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">490</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>SPA-H</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">355</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">490</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>Q235B</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">235</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">370</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>POLYAMIDE IMIDE</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.41e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">4500</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.40</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">150</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ALUMINUM 6061</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">2.7e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">69000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.33</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">275</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">310</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>Q355B</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">355</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">490</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>Q460</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">210000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">460</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">550</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ALUMINUM 5052</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">2.68e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">70000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.33</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">195</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">230</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ASTM A36</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.85e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">200000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.30</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">250.0</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">400.0</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>TECAPEEK</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source="Ensinger Datasheet"/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.31e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">4000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.40</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">107</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">107</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>EPT-SEALER EE-1010</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.0e-7</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ER40 EPDM/CR</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.1808e-6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>EPDM 60</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.1808e-6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>FLUROSILICONE</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.45e-6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>PVC</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.3e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">2410</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.38</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">40.7</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>PA66</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.15e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">2500</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.39</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">80</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">80</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>POLYURETHANE</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.2e-6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>DP460NS (3M)</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.1e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">2415</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.35</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">28</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>SC603 (FIP)</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.2465e-6</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>PAI</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.41e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">4500</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.40</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">150</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>PTFE</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">2.15e-6</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">25</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>PPS-GF30</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.57e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">9610</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">102</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>EPDM 70</Name>
+      <Class>
+        <Name>Plastics</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">1.1808e-6</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>ALUMINUM 5086</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">2.66e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">70000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.33</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">193</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+        <Data format="float">290</Data>
+      </PropertyData>
+    </BulkDetails>
+  </Material>
+  <Material>
+    <BulkDetails>
+      <Name>STAINLESS STEEL</Name>
+      <Class>
+        <Name>Metals</Name>
+      </Class>
+      <Source source=""/>
+      <PropertyData property="Material Type">
+        <Data format="string">IsotropicMaterial</Data>
+      </PropertyData>
+      <PropertyData property="MassDensity_0">
+        <Data format="exponential">7.93e-6</Data>
+      </PropertyData>
+      <PropertyData property="YoungsModulus_0">
+        <Data format="float">193000</Data>
+      </PropertyData>
+      <PropertyData property="PoissonsRatio_0">
+        <Data format="float">0.29</Data>
+      </PropertyData>
+      <PropertyData property="YieldStrength_0">
+        <Data format="float">250.0</Data>
+      </PropertyData>
+      <PropertyData property="UltimateTensileStrength_0">
+... (rest of the response hidden)
