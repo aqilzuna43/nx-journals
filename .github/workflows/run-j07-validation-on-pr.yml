@@ -1,11 +1,10 @@
-name: Run J07 validation patch on PR
+name: Finalize J07 validation harness
 
 on:
   pull_request:
     branches:
       - master
     types:
-      - opened
       - synchronize
       - reopened
 
@@ -13,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-and-test:
+  fix-test-and-clean:
     if: github.head_ref == 'agent/j07-nx2506-step-validation'
     runs-on: ubuntu-latest
     steps:
@@ -22,46 +21,85 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Execute embedded patch
+      - name: Fix capability method access
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          workflow = Path('.github/workflows/apply-j07-validation.yml')
-          text = workflow.read_text(encoding='utf-8')
-          start_marker = "          python - <<'PY'\n"
-          end_marker = "          PY\n\n      - name: Validate patch"
-          start = text.index(start_marker) + len(start_marker)
-          end = text.index(end_marker, start)
-          script_lines = []
-          for line in text[start:end].splitlines():
-              if line.startswith('          '):
-                  line = line[10:]
-              script_lines.append(line)
-          script = '\n'.join(script_lines) + '\n'
-          exec(compile(script, str(workflow) + ':embedded', 'exec'))
+          path = Path('from_git/journals/07_datapack_pdf_step_export.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''    getter = step_safe_property(
+                  session,
+                  "GetEnvironmentVariableValue",
+                  None,
+              )
+              if callable(getter):
+              ''',
+                  '''    try:
+                  getter = getattr(session, "GetEnvironmentVariableValue")
+              except Exception:
+                  getter = None
+              if callable(getter):
+              ''',
+                  'runtime version getter',
+              ),
+              (
+                  '''    ensure = step_safe_property(parts, "EnsurePartsLoadedFully", None)
+              if callable(ensure):
+              ''',
+                  '''    try:
+                  ensure = getattr(parts, "EnsurePartsLoadedFully")
+              except Exception:
+                  ensure = None
+              if callable(ensure):
+              ''',
+                  'full-load capability getter',
+              ),
+              (
+                  '''    load_fully = step_safe_property(part, "LoadFully", None)
+              if callable(load_fully):
+              ''',
+                  '''    try:
+                  load_fully = getattr(part, "LoadFully")
+              except Exception:
+                  load_fully = None
+              if callable(load_fully):
+              ''',
+                  'LoadFully fallback getter',
+              ),
+          ]
+
+          for old, new, label in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(
+                      f'{label}: expected one match, found {count}'
+                  )
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Capture validation result
+      - name: Validate Journal 7
         shell: bash
         run: |
-          set +e
-          {
-            python -m py_compile from_git/journals/07_datapack_pdf_step_export.py
-            python -m unittest discover -s tests -p 'test_journal07_step_validation.py'
-          } > J07_VALIDATION_RESULT.txt 2>&1
-          status=$?
-          echo "EXIT_STATUS=$status" >> J07_VALIDATION_RESULT.txt
-          cat J07_VALIDATION_RESULT.txt
+          python -m py_compile from_git/journals/07_datapack_pdf_step_export.py
+          python -m unittest discover -s tests -p 'test_journal07_step_validation.py'
 
-      - name: Commit patched files and evidence
+      - name: Commit final tested changes
         shell: bash
         run: |
+          rm -f J07_VALIDATION_RESULT.txt
+          rm -f .github/workflows/apply-j07-validation.yml
+          rm -f .github/workflows/run-j07-validation-on-pr.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add from_git/journals/07_datapack_pdf_step_export.py tests/test_journal07_step_validation.py
-          git add -f J07_VALIDATION_RESULT.txt
+          git add -u .github/workflows J07_VALIDATION_RESULT.txt
           git status --short
-          git commit -m "Capture J07 STEP validation result"
+          git commit -m "Harden J07 STEP validation for NX2506"
           git push origin HEAD:${{ github.head_ref }}
