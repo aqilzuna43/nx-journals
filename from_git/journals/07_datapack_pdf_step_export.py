@@ -387,11 +387,10 @@ def runtime_nx_version(session):
         "UGII_PRODUCT_VERSION",
         "UGII_MAJOR_VERSION",
     )
-    getter = step_safe_property(
-        session,
-        "GetEnvironmentVariableValue",
-        None,
-    )
+    try:
+        getter = getattr(session, "GetEnvironmentVariableValue")
+    except Exception:
+        getter = None
     if callable(getter):
         for name in names:
             try:
@@ -541,7 +540,10 @@ def ensure_step_source_loaded(session, part):
         "messages": [],
     }
     parts = step_safe_property(session, "Parts", None)
-    ensure = step_safe_property(parts, "EnsurePartsLoadedFully", None)
+    try:
+        ensure = getattr(parts, "EnsurePartsLoadedFully")
+    except Exception:
+        ensure = None
     if callable(ensure):
         status = None
         result["method"] = "EnsurePartsLoadedFully(includeChildren=True)"
@@ -556,7 +558,10 @@ def ensure_step_source_loaded(session, part):
         finally:
             dispose(status)
 
-    load_fully = step_safe_property(part, "LoadFully", None)
+    try:
+        load_fully = getattr(part, "LoadFully")
+    except Exception:
+        load_fully = None
     if callable(load_fully):
         status = None
         result["method"] = (
