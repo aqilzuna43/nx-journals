@@ -60,6 +60,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add from_git/journals/07_datapack_pdf_step_export.py tests/test_journal07_step_validation.py J07_VALIDATION_RESULT.txt .github/workflows
+          git add from_git/journals/07_datapack_pdf_step_export.py tests/test_journal07_step_validation.py
+          git add -f J07_VALIDATION_RESULT.txt
+          git status --short
           git commit -m "Capture J07 STEP validation result"
           git push origin HEAD:${{ github.head_ref }}
