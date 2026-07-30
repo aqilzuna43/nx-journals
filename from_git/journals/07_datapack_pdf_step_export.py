@@ -9,6 +9,8 @@ For PDF:
 - Otherwise try Teamcenter non-master drawing specifications dwg1..dwg9.
 - Make each drawing the active display part before exporting every sheet.
 - Apply DRAFT_<revision>.<WAE_VERSION> to every page using the PDF builder.
+- Add one temporary bottom-right EXPORTED timestamp note to every sheet.
+- Undo every temporary timestamp note immediately after PDF export.
 - Convert PDF text to polylines so NX catalog symbols remain visible.
 
 For STEP:
@@ -24,6 +26,7 @@ import csv
 import datetime
 import os
 import re
+import time
 import traceback
 
 import NXOpen
@@ -35,12 +38,22 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-V4"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
 PDF_DRAFT_PREFIX = "DRAFT"
 WAE_VERSION_ATTRIBUTE = "WAE_VERSION"
+PDF_TIMESTAMP_TEXT_HEIGHT_MM = 2.5
+PDF_TIMESTAMP_RIGHT_MARGIN_MM = 8.0
+PDF_TIMESTAMP_BOTTOM_MARGIN_MM = 5.0
+PDF_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M"
+PDF_TIMESTAMP_TIMEZONE_LABEL = "MYT"
+PDF_TIMESTAMP_OVERHEAD_TARGET_PERCENT = 10.0
+MYT_TIMEZONE = datetime.timezone(
+    datetime.timedelta(hours=8),
+    name=PDF_TIMESTAMP_TIMEZONE_LABEL,
+)
 STEP_BODY_TOKENS = (
     "MANIFOLD_SOLID_BREP",
     "BREP_WITH_VOIDS",
@@ -104,6 +117,10 @@ _DRAWING_SUFFIX_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Generic helpers
 # ---------------------------------------------------------------------------
+
+class TimestampCleanupError(RuntimeError):
+    """The temporary PDF timestamp could not be proven removed."""
+
 
 def normalize_text(value):
     return "" if value is None else str(value).strip()
@@ -199,6 +216,17 @@ def dispose(value):
         value.Dispose()
     except Exception:
         pass
+
+
+def elapsed_seconds(started):
+    return max(0.0, time.perf_counter() - started)
+
+
+def build_export_timestamp_text(run_datetime):
+    return "EXPORTED: {0} {1}".format(
+        run_datetime.strftime(PDF_TIMESTAMP_FORMAT),
+        PDF_TIMESTAMP_TIMEZONE_LABEL,
+    )
 
 
 def safe_part_name(part, fallback="part"):
@@ -1065,44 +1093,307 @@ def resolve_pdf_watermark(session, number, revision, candidates):
     return watermark, "revision-only fallback", warning
 
 
+def sheet_uses_inches(sheet):
+    units = getattr(sheet, "Units", None)
+
+    try:
+        if units == NXOpen.Drawings.DrawingSheet.Unit.Inches:
+            return True
+        if units == NXOpen.Drawings.DrawingSheet.Unit.Millimeters:
+            return False
+    except Exception:
+        pass
+
+    text = normalize_text(getattr(units, "name", units)).upper()
+    if "INCH" in text or "ENGLISH" in text:
+        return True
+    if "MILLIM" in text or "METRIC" in text:
+        return False
+
+    raise RuntimeError(
+        "Unsupported or unavailable drawing-sheet units: {0}".format(
+            units
+        )
+    )
+
+
+def millimeters_to_sheet_units(value_mm, sheet):
+    return float(value_mm) / 25.4 if sheet_uses_inches(sheet) else float(value_mm)
+
+
+def current_drawing_sheet(drawing_part):
+    try:
+        return drawing_part.DrawingSheets.CurrentDrawingSheet
+    except Exception:
+        return None
+
+
+def part_modified_state(part):
+    try:
+        return bool(part.IsModified)
+    except Exception:
+        return None
+
+
+def set_note_text(note_builder, text):
+    text_block = note_builder.Text.TextBlock
+    try:
+        text_block.SetText([text])
+    except TypeError:
+        text_block.SetText(text)
+
+
+def create_pdf_timestamp_note(drawing_part, sheet, timestamp_text):
+    sheet.Open()
+
+    note_builder = drawing_part.Annotations.CreateDraftingNoteBuilder(None)
+    try:
+        text_height = millimeters_to_sheet_units(
+            PDF_TIMESTAMP_TEXT_HEIGHT_MM,
+            sheet,
+        )
+        right_margin = millimeters_to_sheet_units(
+            PDF_TIMESTAMP_RIGHT_MARGIN_MM,
+            sheet,
+        )
+        bottom_margin = millimeters_to_sheet_units(
+            PDF_TIMESTAMP_BOTTOM_MARGIN_MM,
+            sheet,
+        )
+        sheet_length = float(sheet.Length)
+        sheet_height = float(sheet.Height)
+
+        if sheet_length <= right_margin or sheet_height <= bottom_margin:
+            raise RuntimeError(
+                "Sheet is too small for the configured PDF timestamp "
+                "margins: length={0}, height={1}".format(
+                    sheet_length,
+                    sheet_height,
+                )
+            )
+
+        note_builder.Origin.Anchor = (
+            NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+        )
+        note_builder.Origin.OriginPoint = NXOpen.Point3d(
+            sheet_length - right_margin,
+            bottom_margin,
+            0.0,
+        )
+        note_builder.Style.LetteringStyle.GeneralTextSize = text_height
+        try:
+            note_builder.Style.LetteringStyle.GeneralTextLineWidth = (
+                NXOpen.Annotations.LineWidth.Normal
+            )
+            note_builder.Style.LetteringStyle.HorizontalTextJustification = (
+                NXOpen.Annotations.TextJustification.Right
+            )
+        except Exception:
+            # Some NX releases do not expose this drafting preference through
+            # Python. The inherited normal drafting width remains acceptable.
+            pass
+        set_note_text(note_builder, timestamp_text)
+        return note_builder.Commit()
+    finally:
+        note_builder.Destroy()
+
+
+def create_timestamp_notes(
+    session,
+    drawing_part,
+    sheets,
+    timestamp_text,
+    undo_mark,
+):
+    notes = []
+    for sheet in sheets:
+        notes.append(
+            create_pdf_timestamp_note(
+                drawing_part,
+                sheet,
+                timestamp_text,
+            )
+        )
+
+    update_manager = getattr(session, "UpdateManager", None)
+    do_update = getattr(update_manager, "DoUpdate", None)
+    if callable(do_update):
+        error_count = int(do_update(undo_mark) or 0)
+        if error_count:
+            raise RuntimeError(
+                "NX reported {0} error(s) while updating temporary "
+                "PDF timestamp notes.".format(error_count)
+            )
+    return notes
+
+
+def restore_original_sheet(original_sheet):
+    if original_sheet is not None:
+        original_sheet.Open()
+
+
+def undo_timestamp_notes(
+    session,
+    undo_mark,
+    undo_mark_name,
+    drawing_part,
+    initially_modified,
+    original_sheet,
+):
+    errors = []
+
+    try:
+        session.UndoToMark(undo_mark, undo_mark_name)
+    except Exception as error:
+        errors.append("undo failed: {0}".format(error))
+
+    try:
+        restore_original_sheet(original_sheet)
+    except Exception as error:
+        errors.append("active-sheet restore failed: {0}".format(error))
+
+    try:
+        session.DeleteUndoMark(undo_mark, undo_mark_name)
+    except Exception as error:
+        errors.append("undo-mark deletion failed: {0}".format(error))
+
+    final_modified = part_modified_state(drawing_part)
+    if (
+        initially_modified is not None
+        and final_modified is not None
+        and final_modified != initially_modified
+    ):
+        errors.append(
+            "drawing modified state changed from {0} to {1}".format(
+                initially_modified,
+                final_modified,
+            )
+        )
+
+    if errors:
+        raise TimestampCleanupError(
+            "Temporary PDF timestamp cleanup could not be proven; "
+            "discard unsaved drawing changes before continuing: {0}".format(
+                " | ".join(errors)
+            )
+        )
+
+
 def export_drawing_pdf(
+    session,
     drawing_part,
     sheets,
     output_path,
     watermark,
+    export_timestamp_text,
 ):
     if not sheets:
         raise RuntimeError("Drawing contains no sheets to export.")
     if not normalize_text(watermark):
         raise RuntimeError("A PDF draft watermark is required.")
+    if not normalize_text(export_timestamp_text):
+        raise RuntimeError("A PDF export timestamp is required.")
 
-    sheets[0].Open()
-    builder = drawing_part.PlotManager.CreatePrintPdfbuilder()
+    metrics = {
+        "timestamp_prepare_seconds": 0.0,
+        "pdf_commit_seconds": 0.0,
+        "timestamp_cleanup_seconds": 0.0,
+        "pdf_total_seconds": 0.0,
+    }
+    total_started = time.perf_counter()
+    original_sheet = current_drawing_sheet(drawing_part)
+    initially_modified = part_modified_state(drawing_part)
+    undo_mark_name = "J07 temporary PDF export timestamp"
+    undo_mark = session.SetUndoMark(
+        NXOpen.Session.MarkVisibility.Invisible,
+        undo_mark_name,
+    )
+    export_error = None
+
     try:
-        builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
-        builder.Filename = output_path
-        builder.Append = False
+        prepare_started = time.perf_counter()
+        create_timestamp_notes(
+            session,
+            drawing_part,
+            sheets,
+            export_timestamp_text,
+            undo_mark,
+        )
+        metrics["timestamp_prepare_seconds"] = elapsed_seconds(
+            prepare_started
+        )
+
+        sheets[0].Open()
+        builder = drawing_part.PlotManager.CreatePrintPdfbuilder()
         try:
-            builder.OutputText = (
-                NXOpen.PrintPDFBuilder.OutputTextOption.Polylines
-            )
-        except Exception as error:
-            raise RuntimeError(
-                "NX PrintPDFBuilder could not apply required polyline "
-                "text output: {0}".format(error)
-            )
-        try:
-            builder.AddWatermark = True
-            builder.Watermark = watermark
-        except Exception as error:
-            raise RuntimeError(
-                "NX PrintPDFBuilder could not apply required watermark "
-                "{0}: {1}".format(watermark, error)
-            )
-        builder.SourceBuilder.SetSheets(sheets)
-        builder.Commit()
+            builder.Action = NXOpen.PrintPDFBuilder.ActionOption.Native
+            builder.Filename = output_path
+            builder.Append = False
+            try:
+                builder.OutputText = (
+                    NXOpen.PrintPDFBuilder.OutputTextOption.Polylines
+                )
+            except Exception as error:
+                raise RuntimeError(
+                    "NX PrintPDFBuilder could not apply required polyline "
+                    "text output: {0}".format(error)
+                )
+            try:
+                builder.AddWatermark = True
+                builder.Watermark = watermark
+            except Exception as error:
+                raise RuntimeError(
+                    "NX PrintPDFBuilder could not apply required watermark "
+                    "{0}: {1}".format(watermark, error)
+                )
+            builder.SourceBuilder.SetSheets(sheets)
+            commit_started = time.perf_counter()
+            builder.Commit()
+            metrics["pdf_commit_seconds"] = elapsed_seconds(commit_started)
+        finally:
+            builder.Destroy()
+    except Exception as error:
+        export_error = error
     finally:
-        builder.Destroy()
+        cleanup_started = time.perf_counter()
+        try:
+            undo_timestamp_notes(
+                session,
+                undo_mark,
+                undo_mark_name,
+                drawing_part,
+                initially_modified,
+                original_sheet,
+            )
+        except TimestampCleanupError as cleanup_error:
+            if export_error is not None:
+                raise TimestampCleanupError(
+                    "{0} Original PDF export error: {1}".format(
+                        cleanup_error,
+                        export_error,
+                    )
+                )
+            raise
+        finally:
+            metrics["timestamp_cleanup_seconds"] = elapsed_seconds(
+                cleanup_started
+            )
+            metrics["pdf_total_seconds"] = elapsed_seconds(total_started)
+
+    if export_error is not None:
+        raise export_error
+
+    commit_seconds = metrics["pdf_commit_seconds"]
+    timestamp_seconds = (
+        metrics["timestamp_prepare_seconds"]
+        + metrics["timestamp_cleanup_seconds"]
+    )
+    metrics["timestamp_overhead_percent"] = (
+        (timestamp_seconds / commit_seconds) * 100.0
+        if commit_seconds > 0.0
+        else None
+    )
+    return metrics
 
 
 def export_pdfs_for_instruction(
@@ -1110,14 +1401,24 @@ def export_pdfs_for_instruction(
     output_folder,
     number,
     revision,
+    export_timestamp_text,
     original_display,
     original_work,
     log_buffer,
 ):
+    resolve_started = time.perf_counter()
     candidates, attempts = resolve_drawing_candidates(
         session,
         number,
         revision,
+        log_buffer,
+    )
+    resolve_seconds = elapsed_seconds(resolve_started)
+    log_line(
+        session,
+        "  PDF drawing resolution/load: {0:.3f} s".format(
+            resolve_seconds
+        ),
         log_buffer,
     )
 
@@ -1130,6 +1431,7 @@ def export_pdfs_for_instruction(
                 "See the text log for attempted @DB names."
             ),
             "failures": [],
+            "halt_pdf_batch": False,
         }
 
     successful_paths = []
@@ -1232,12 +1534,51 @@ def export_pdfs_for_instruction(
                         )
                     )
 
-                export_drawing_pdf(
+                pdf_metrics = export_drawing_pdf(
+                    session,
                     drawing_part,
                     sheets,
                     output_path,
                     watermark,
+                    export_timestamp_text,
                 )
+                overhead = pdf_metrics.get("timestamp_overhead_percent")
+                overhead_text = (
+                    "{0:.1f}%".format(overhead)
+                    if overhead is not None
+                    else "n/a"
+                )
+                log_line(
+                    session,
+                    (
+                        "    PDF timing: timestamp prepare={0:.3f} s; "
+                        "commit={1:.3f} s; cleanup={2:.3f} s; "
+                        "total={3:.3f} s; timestamp overhead={4}"
+                    ).format(
+                        pdf_metrics["timestamp_prepare_seconds"],
+                        pdf_metrics["pdf_commit_seconds"],
+                        pdf_metrics["timestamp_cleanup_seconds"],
+                        pdf_metrics["pdf_total_seconds"],
+                        overhead_text,
+                    ),
+                    log_buffer,
+                )
+                if (
+                    overhead is not None
+                    and overhead > PDF_TIMESTAMP_OVERHEAD_TARGET_PERCENT
+                ):
+                    log_line(
+                        session,
+                        (
+                            "    PERFORMANCE WARNING: timestamp overhead "
+                            "{0:.1f}% exceeds the NX acceptance target "
+                            "of {1:.1f}% for this drawing."
+                        ).format(
+                            overhead,
+                            PDF_TIMESTAMP_OVERHEAD_TARGET_PERCENT,
+                        ),
+                        log_buffer,
+                    )
 
                 if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
                     failures.append(
@@ -1259,6 +1600,18 @@ def export_pdfs_for_instruction(
                         ),
                         log_buffer,
                     )
+            except TimestampCleanupError as error:
+                failures.append(
+                    {
+                        "kind": "TIMESTAMP_CLEANUP",
+                        "message": "{0}: {1}".format(
+                            token,
+                            error,
+                        ),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
+                break
             except Exception as error:
                 failures.append(
                     {
@@ -1286,7 +1639,14 @@ def export_pdfs_for_instruction(
                     log_buffer,
                 )
 
-    if successful_paths and not failures:
+    halt_pdf_batch = any(
+        failure["kind"] == "TIMESTAMP_CLEANUP"
+        for failure in failures
+    )
+
+    if halt_pdf_batch:
+        result = "FAILED_TIMESTAMP_CLEANUP"
+    elif successful_paths and not failures:
         result = "SUCCESS"
     elif successful_paths:
         result = "PARTIAL_SUCCESS"
@@ -1316,6 +1676,7 @@ def export_pdfs_for_instruction(
         "failures": failures,
         "attempts": attempts,
         "watermark": watermark,
+        "halt_pdf_batch": halt_pdf_batch,
     }
 
 
@@ -1631,6 +1992,8 @@ def process_instruction(
     instruction,
     folders,
     timestamp,
+    export_timestamp_text,
+    pdf_batch_state,
     original_display,
     original_work,
     log_buffer,
@@ -1642,13 +2005,24 @@ def process_instruction(
     number = instruction["part_number"]
     revision = instruction["revision"]
 
-    if instruction["pdf_requested"]:
+    if instruction["pdf_requested"] and pdf_batch_state["halted"]:
+        result["PDF_RESULT"] = "FAILED_TIMESTAMP_CLEANUP"
+        append_unique(
+            messages,
+            (
+                "PDF export skipped because temporary timestamp cleanup "
+                "failed earlier in this run. Discard unsaved drawing "
+                "changes before retrying. Cause: {0}"
+            ).format(pdf_batch_state["reason"]),
+        )
+    elif instruction["pdf_requested"]:
         try:
             pdf_export = export_pdfs_for_instruction(
                 session,
                 folders["pdf"],
                 number,
                 revision,
+                export_timestamp_text,
                 original_display,
                 original_work,
                 log_buffer,
@@ -1657,6 +2031,12 @@ def process_instruction(
             result["PDF_FILE_COUNT"] = len(pdf_export["paths"])
             result["PDF_FILES"] = ";".join(pdf_export["paths"])
             append_unique(messages, pdf_export.get("message", ""))
+            if pdf_export.get("halt_pdf_batch"):
+                pdf_batch_state["halted"] = True
+                pdf_batch_state["reason"] = (
+                    pdf_export.get("message")
+                    or "temporary timestamp cleanup failed"
+                )
 
             for failure in pdf_export.get("failures", []):
                 if failure.get("traceback"):
@@ -1748,6 +2128,10 @@ def main():
     results = []
     report_path = ""
     report_written = False
+    pdf_batch_state = {
+        "halted": False,
+        "reason": "",
+    }
 
     original_display = None
     original_work = None
@@ -1801,8 +2185,15 @@ def main():
             )
 
         parsed = read_export_scope(input_csv)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_datetime = datetime.datetime.now(MYT_TIMEZONE)
+        timestamp = run_datetime.strftime("%Y%m%d_%H%M%S")
+        export_timestamp_text = build_export_timestamp_text(run_datetime)
         folders = create_run_folders(io_root, timestamp)
+        log_line(
+            session,
+            "PDF export timestamp: " + export_timestamp_text,
+            log_buffer,
+        )
 
         report_path = os.path.join(
             folders["reports"],
@@ -1860,6 +2251,8 @@ def main():
                 instruction,
                 folders,
                 timestamp,
+                export_timestamp_text,
+                pdf_batch_state,
                 original_display,
                 original_work,
                 log_buffer,

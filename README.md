@@ -48,6 +48,11 @@ shared helpers from `from_git\utils`.
 | 12 | `from_git/journals/12_diagnose_pdf_watermark_symbols.py` | Compares PDF watermark, text, and NX catalog-symbol rendering settings |
 | 13 | `from_git/journals/13_test_teamcenter_part_name.py` | Disposable Teamcenter Item Name rename test |
 | 14 | `from_git/journals/14_bulk_part_name_updater.py` | Approved bulk Teamcenter Item Name update |
+| 15 | `from_git/journals/15_tc_offline_drawing_workflow.py` | Exports native drawing packages for controlled offline editing |
+| 16 | `from_git/journals/16_tc_offline_drawing_import.py` | Checkout-gated drawing import with exact-target re-export verification |
+| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Separate master-drawing import workflow |
+| 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
+| 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 
 ## Key Runtime Notes
 
@@ -159,13 +164,14 @@ from_git\journals\07_datapack_pdf_step_export.py
 
 The journal uses only prototype revisions already available through the loaded
 assembly. It may open a drawing specification for that exact revision, but it
-does not search for another revision, save or modify NX parts, create datasets,
-or upload generated files.
+does not search for another revision, save NX parts, create datasets, or upload
+generated files. Temporary PDF timestamp notes are removed through an NX undo
+mark before J07 continues.
 
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-PDF-POLYLINES-V4
+Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
@@ -192,6 +198,18 @@ Every Journal 07 PDF page receives an NX-native draft watermark:
 ```text
 DRAFT_<DB_PART_REV>.<WAE_VERSION>
 ```
+
+Each page also receives one small bottom-right export timestamp:
+
+```text
+EXPORTED: YYYY-MM-DD HH:MM MYT
+```
+
+J07 creates the footer as a temporary native drafting note on every sheet,
+exports the existing combined multipage PDF, and undoes the notes immediately
+afterwards. It logs drawing-resolution, timestamp preparation, PDF commit, and
+cleanup timings. A timestamp-cleanup failure stops later PDF work but does not
+prevent independently requested STEP exports.
 
 Journal 07 reads `WAE_VERSION` from the already-loaded model first and then
 from the drawing. If it is unavailable, the PDF is still exported with a
@@ -263,6 +281,7 @@ it opened.
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
+| J18 | `NX_SURFACE_AREA\J18_SURFACE_AREA_<part>_<timestamp>.csv` |
 
 ## Notes
 
@@ -273,3 +292,4 @@ it opened.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
 - J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
+- J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.

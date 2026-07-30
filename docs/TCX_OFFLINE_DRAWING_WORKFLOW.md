@@ -223,6 +223,36 @@ APPROVED=YES
 ENGINEER=<nonblank>
 ```
 
+### Standalone verified import
+
+J16 is the standalone import path. Its committed defaults are deliberately
+read-only:
+
+```python
+USER_IMPORT_CSV = r""
+USER_MODE = "DRY_RUN"
+```
+
+Before any clone dry run, J16 opens the exact `/specification/` identifier,
+queries `PDMPart.GetCheckedoutStatusAndUser()`, and exports the exact UGPART
+dataset for a baseline hash. A checkout by any user blocks that row and records
+the owner. Rows whose checkout state cannot be proven are also blocked.
+
+In `APPLY_APPROVED`, J16 rechecks checkout state and re-exports the target
+immediately before the V1 UF Clone writer runs. An exception-free clone return
+is not success. J16 reports `IMPORT_VERIFIED` only when a post-import export of
+the exact specification has the same SHA-256 as the approved local drawing.
+
+Run J19 before the first controlled apply:
+
+```text
+from_git/journals/19_test_teamcenter_drawing_import_contract.py
+```
+
+J19 is read-only against Teamcenter. It records the exact opened identifier,
+checkout owner, `FileManagement.ExportFiles` result, exported SHA-256, and a UF
+Clone dry-run log in `J19_CONTRACT_<timestamp>`.
+
 ## 8. First acceptance test
 
 Use only one drawing until the workflow is proven on the actual Teamcenter X tenant.
@@ -244,8 +274,9 @@ Verify:
 [ ] 3D/reference .prt files are read-only
 [ ] Drawing opens locally with references resolved
 [ ] Drawing can be saved locally
+[ ] J19 reports PROBE_COMPLETE and the expected checkout owner/state
 [ ] IMPORT_DRY_RUN returns DRY_RUN_OK
-[ ] IMPORT_APPLY updates the existing Teamcenter drawing only
+[ ] J16 APPLY_APPROVED returns IMPORT_VERIFIED
 [ ] Managed 3D master remains unchanged
 [ ] No unexpected Item/Revision/UGMASTER/drawing dataset is created
 [ ] Drawing associativity remains correct after reopening from Teamcenter

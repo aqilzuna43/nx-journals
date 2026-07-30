@@ -29,6 +29,13 @@ Available production journals:
 10_test_step_export.py         STEP export and body-validation diagnostic
 11_test_teamcenter_attribute_checkout.py Guarded checkout/save acceptance
 12_diagnose_pdf_watermark_symbols.py PDF watermark/catalog-symbol matrix
+13_test_teamcenter_part_name.py Disposable Teamcenter Item Name rename test
+14_bulk_part_name_updater.py   Approved bulk Teamcenter Item Name update
+15_tc_offline_drawing_workflow.py Native offline drawing export workflow
+16_tc_offline_drawing_import.py Verified existing-specification drawing import
+17_tc_master_drawing_import.py Separate master-drawing import workflow
+18_work_part_surface_area.py Active-work-part solid surface-area CSV
+19_test_teamcenter_drawing_import_contract.py Read-only J16 runtime contract probe
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -75,7 +82,17 @@ Every J07 PDF page receives the native NX watermark
 model first and then the drawing. Missing `WAE_VERSION` produces a
 revision-only watermark such as `DRAFT_A` plus a report warning; filenames do
 not change. PDF text is converted to polylines so NX catalog symbols remain
-visible; the resulting PDF text is not searchable or selectable.
+visible; the resulting PDF text is not searchable or selectable. Every page
+also receives the same run-level `EXPORTED: YYYY-MM-DD HH:MM MYT` footer.
+J07 creates the footer as a temporary drafting note, exports one combined PDF,
+then undoes the notes. Timing for drawing resolution, note preparation, PDF
+commit, and cleanup is written to the log.
+
+J18 measures every face of each direct traditional solid body in the active
+work part, including hidden bodies. It ignores sheet and convergent bodies and
+writes per-body rows plus a fail-closed total in square metres under
+`NX_SURFACE_AREA`. J18 does not traverse assemblies, save NX data, or calculate
+paint weight.
 
 J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
 duplicate part/revision requests, reports invalid input, missing parts, and
@@ -93,7 +110,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-PDF-POLYLINES-V4
+Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
