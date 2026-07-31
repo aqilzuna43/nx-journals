@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -264,10 +265,11 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("MANAGED_PREFLIGHT_OK", clear_report["RESULT"])
         export.assert_called_once()
 
-    def test_csv_baseline_mismatch_blocks_stale_target(self):
+    def test_approved_tc_baseline_mismatch_blocks_stale_target(self):
         report = {
             "RESULT": "LOCAL_PREFLIGHT_OK",
-            "BASELINE_SHA256": "expected",
+            "MODE": "APPLY_ONE_APPROVED",
+            "APPROVED_TC_BASELINE_SHA256": "a" * 64,
         }
         proposal = {
             "report": report,
@@ -284,12 +286,108 @@ class VerifiedImportTests(unittest.TestCase):
         ), mock.patch.object(
             self.journal,
             "retrieve_exact_associated_drawing",
-            return_value=("baseline.prt", "different"),
+            return_value=("baseline.prt", "b" * 64),
         ):
             self.journal.run_managed_preflight(
                 object(), object(), [proposal], "evidence", FakeLog()
             )
         self.assertEqual("BLOCKED_STALE_TARGET", report["RESULT"])
+
+    def test_apply_one_requires_approved_local_hash(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder, "GENERIC100")
+            row = self.make_row(drawing, "GENERIC100")
+            reports, proposals = self.journal.local_preflight(
+                [row],
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "APPLY_ONE_APPROVED",
+            )
+        self.assertEqual(
+            "ERROR_APPROVAL_HANDSHAKE_REQUIRED", reports[0]["RESULT"]
+        )
+        self.assertEqual([], proposals)
+
+    def test_apply_one_blocks_local_file_changed_after_dry_run(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder, "GENERIC100")
+            row = self.make_row(drawing, "GENERIC100")
+            row["APPROVED_LOCAL_SHA256"] = "a" * 64
+            row["APPROVED_TC_BASELINE_SHA256"] = "b" * 64
+            reports, proposals = self.journal.local_preflight(
+                [row],
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "APPLY_ONE_APPROVED",
+            )
+        self.assertEqual(
+            "BLOCKED_LOCAL_CHANGED_AFTER_APPROVAL", reports[0]["RESULT"]
+        )
+        self.assertEqual([], proposals)
+
+    def test_dry_run_populates_both_approval_hashes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder, "GENERIC100")
+            source_sha = self.journal.sha256(drawing)
+            row = self.make_row(drawing, "GENERIC100")
+            reports, proposals = self.journal.local_preflight(
+                [row],
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "DRY_RUN",
+            )
+            managed_sha = "b" * 64
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(row["DRAWING_IDENTIFIER"]),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                return_value=("baseline.prt", managed_sha),
+            ):
+                self.journal.run_managed_preflight(
+                    object(), object(), proposals, folder, FakeLog()
+                )
+
+        self.assertEqual(
+            source_sha,
+            reports[0]["APPROVED_LOCAL_SHA256"],
+        )
+        self.assertEqual(
+            managed_sha, reports[0]["APPROVED_TC_BASELINE_SHA256"]
+        )
+        self.assertEqual("NO", reports[0]["APPROVED"])
+        self.assertEqual("", reports[0]["ENGINEER"])
+        self.assertEqual("MANAGED_PREFLIGHT_OK", reports[0]["RESULT"])
+
+    def test_apply_one_requires_approved_tc_baseline_hash(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder, "GENERIC100")
+            row = self.make_row(drawing, "GENERIC100")
+            row["APPROVED_LOCAL_SHA256"] = self.journal.sha256(drawing)
+            reports, proposals = self.journal.local_preflight(
+                [row],
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "APPLY_ONE_APPROVED",
+            )
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(row["DRAWING_IDENTIFIER"]),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                return_value=("baseline.prt", "b" * 64),
+            ):
+                self.journal.run_managed_preflight(
+                    object(), object(), proposals, folder, FakeLog()
+                )
+
+        self.assertEqual(
+            "ERROR_APPROVAL_HANDSHAKE_REQUIRED", reports[0]["RESULT"]
+        )
 
     def test_verified_apply_requires_matching_post_payload_hash(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -570,7 +668,7 @@ class VerifiedImportTests(unittest.TestCase):
         )
 
     def test_unchanged_post_payload_is_failed_unverified(self):
-        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        report = self.journal.base_report({}, "stamp", "APPLY_ONE_APPROVED")
         proposal = {
             "report": report,
             "identifier": "exact",
@@ -591,7 +689,9 @@ class VerifiedImportTests(unittest.TestCase):
         )
 
     def test_uploaded_trial_hashes_classify_as_manual_acceptance_required(self):
-        report = self.journal.base_report({}, "20260731_210943", "TRIAL_APPLY")
+        report = self.journal.base_report(
+            {}, "20260731_210943", "APPLY_ONE_APPROVED"
+        )
         proposal = {
             "report": report,
             "identifier": self.journal.drawing_id("264MN021218A01", "A", 1),
@@ -614,7 +714,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("CHECKED_IN", report["POST_IMPORT_CHECKOUT_STATE"])
 
     def test_changed_post_payload_still_checked_out_requires_manual_checkin(self):
-        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        report = self.journal.base_report({}, "stamp", "APPLY_ONE_APPROVED")
         proposal = {
             "report": report,
             "identifier": "exact",
@@ -634,7 +734,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertTrue(self.journal.has_review_required([report]))
 
     def test_changed_post_payload_with_unknown_checkout_fails_closed(self):
-        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        report = self.journal.base_report({}, "stamp", "APPLY_ONE_APPROVED")
         proposal = {
             "report": report,
             "identifier": "exact",
@@ -809,72 +909,67 @@ class VerifiedImportTests(unittest.TestCase):
                 )
             fm.DownloadAssociatedFiles.assert_not_called()
 
-    def test_trial_mode_only_proposes_confirmed_target(self):
+    def test_apply_one_only_proposes_the_approved_generic_target(self):
         with tempfile.TemporaryDirectory() as folder:
-            target = self.make_drawing(
-                folder,
-                self.journal.TRIAL_PART_NUMBER,
-                self.journal.TRIAL_REVISION,
-                self.journal.TRIAL_DRAWING_INDEX,
-            )
+            target = self.make_drawing(folder, "GENERIC100")
             other = self.make_drawing(folder, "OTHER")
             rows = [
-                self.make_row(
-                    target,
-                    self.journal.TRIAL_PART_NUMBER,
-                    self.journal.TRIAL_REVISION,
-                    self.journal.TRIAL_DRAWING_INDEX,
-                ),
+                self.make_row(target, "GENERIC100"),
                 self.make_row(other, "OTHER"),
             ]
+            rows[0]["APPROVED_LOCAL_SHA256"] = self.journal.sha256(target)
+            rows[0]["APPROVED_TC_BASELINE_SHA256"] = "a" * 64
+            rows[1]["APPROVED"] = "NO"
             reports, proposals = self.journal.local_preflight(
                 rows,
                 os.path.join(folder, "input.csv"),
                 "stamp",
-                "TRIAL_APPLY",
+                "APPLY_ONE_APPROVED",
             )
         self.assertEqual(1, len(proposals))
-        self.assertEqual(self.journal.TRIAL_PART_NUMBER, proposals[0]["part_number"])
-        self.assertEqual("TRIAL_SCOPE_SKIPPED", reports[1]["RESULT"])
+        self.assertEqual("GENERIC100", proposals[0]["part_number"])
+        self.assertEqual("NOT_APPROVED", reports[1]["RESULT"])
 
-    def test_trial_requires_one_target_and_fresh_session(self):
-        self.journal.require_one_trial_row(
+    def test_apply_one_requires_one_approval_and_fresh_session(self):
+        approved = {
+            "PART_NUMBER": "GENERIC100",
+            "REVISION": "A",
+            "DWG_INDEX": "1",
+            "APPROVED": "YES",
+        }
+        self.journal.require_one_approved_row(
             [
-                {
-                    "PART_NUMBER": self.journal.TRIAL_PART_NUMBER,
-                    "REVISION": self.journal.TRIAL_REVISION,
-                    "DWG_INDEX": str(self.journal.TRIAL_DRAWING_INDEX),
-                }
+                approved,
+                {"APPROVED": "NO"},
             ]
         )
-        with self.assertRaisesRegex(RuntimeError, "exactly one CSV row"):
-            self.journal.require_one_trial_row([])
+        with self.assertRaisesRegex(RuntimeError, "exactly one APPROVED=YES"):
+            self.journal.require_one_approved_row([])
+        with self.assertRaisesRegex(RuntimeError, "found 2"):
+            self.journal.require_one_approved_row([approved, dict(approved)])
+        with self.assertRaisesRegex(RuntimeError, "invalid row"):
+            self.journal.require_one_approved_row(
+                [approved, {"APPROVED": "MAYBE"}]
+            )
         loaded = types.SimpleNamespace(JournalIdentifier="@DB/LOADED/A")
         with self.assertRaisesRegex(RuntimeError, "fresh NX managed session"):
-            self.journal.require_fresh_trial_session(
+            self.journal.require_fresh_apply_session(
                 types.SimpleNamespace(Parts=[loaded])
             )
 
-    def test_trial_exact_target_reaches_one_verified_write(self):
+    def test_apply_one_generic_target_reaches_one_verified_write(self):
         with tempfile.TemporaryDirectory() as folder:
-            drawing = self.make_drawing(
-                folder,
-                self.journal.TRIAL_PART_NUMBER,
-                self.journal.TRIAL_REVISION,
-                self.journal.TRIAL_DRAWING_INDEX,
-            )
-            row = self.make_row(
-                drawing,
-                self.journal.TRIAL_PART_NUMBER,
-                self.journal.TRIAL_REVISION,
-                self.journal.TRIAL_DRAWING_INDEX,
-            )
+            drawing = self.make_drawing(folder, "GENERIC100")
+            row = self.make_row(drawing, "GENERIC100")
             identifier = row["DRAWING_IDENTIFIER"]
             source_sha = self.journal.sha256(drawing)
+            approved_tc_sha = "a" * 64
+            row["APPROVED_LOCAL_SHA256"] = source_sha
+            row["APPROVED_TC_BASELINE_SHA256"] = approved_tc_sha
             session = types.SimpleNamespace(Parts=[])
 
             def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
-                digest = source_sha if phase == "POSTIMPORT" else "tc-before"
+                digest = source_sha if phase == "POSTIMPORT" else approved_tc_sha
                 return (phase + ".prt", digest)
 
             with mock.patch.object(
@@ -895,7 +990,7 @@ class VerifiedImportTests(unittest.TestCase):
                     [row],
                     os.path.join(folder, "input.csv"),
                     "stamp",
-                    "TRIAL_APPLY",
+                    "APPLY_ONE_APPROVED",
                     FakeLog(),
                     os.path.join(folder, "evidence"),
                 )
@@ -916,8 +1011,42 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertNotIn(".CheckIn(", source)
         self.assertIn("POST_IMPORT_CHECKOUT_STATE", source)
         self.assertIn("IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED", source)
+        self.assertIn("APPLY_ONE_APPROVED", source)
+        self.assertNotIn("TRIAL_APPLY", source)
+        self.assertNotIn("TRIAL_PART_NUMBER", source)
         self.assertEqual("DRY_RUN", self.journal.USER_MODE)
         self.assertFalse(self.journal.BATCH_APPLY_ENABLED)
+
+    def test_evidence_zip_includes_reports_logs_and_managed_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            evidence = os.path.join(folder, "J16_EVIDENCE_stamp")
+            os.makedirs(os.path.join(evidence, "TARGET"))
+            managed = os.path.join(evidence, "TARGET", "managed.prt")
+            report = os.path.join(folder, "J16_APPLY_ONE_APPROVED_stamp.csv")
+            run_log = os.path.join(folder, "J16_RUN_APPLY_ONE_APPROVED_stamp.log")
+            clone_log = os.path.join(folder, "J16_APPLY.clone")
+            source = os.path.join(folder, "offline_source.prt")
+            for path, payload in (
+                (managed, b"managed"),
+                (report, b"report"),
+                (run_log, b"log"),
+                (clone_log, b"clone"),
+                (source, b"source-must-not-be-packaged"),
+            ):
+                with open(path, "wb") as handle:
+                    handle.write(payload)
+            zip_path = evidence + ".zip"
+            self.journal.zip_artifacts(
+                zip_path, evidence, [report, run_log, clone_log]
+            )
+            with zipfile.ZipFile(zip_path) as archive:
+                names = set(archive.namelist())
+
+        self.assertIn("J16_EVIDENCE_stamp/TARGET/managed.prt", names)
+        self.assertIn(os.path.basename(report), names)
+        self.assertIn(os.path.basename(run_log), names)
+        self.assertIn(os.path.basename(clone_log), names)
+        self.assertNotIn(os.path.basename(source), names)
 
     def test_j19_source_has_no_teamcenter_mutation_calls(self):
         source = J19_PATH.read_text(encoding="utf-8")

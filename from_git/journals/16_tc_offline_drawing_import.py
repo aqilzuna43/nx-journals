@@ -14,9 +14,9 @@ Core safety rule:
 - Only the exact local drawing is set to Overwrite.
 - Item ID, revision, and 3D/reference parts are never intentionally replaced.
 
-Run DRY_RUN first. TRIAL_APPLY is hard-limited to 264MN021218A01/A/dwg1,
-one approved write, in a fresh NX session. Batch APPLY_APPROVED is disabled in
-this release until the controlled trial is accepted.
+Run DRY_RUN first, approve its local and Teamcenter baseline hashes, then use
+APPLY_ONE_APPROVED for exactly one drawing in a fresh NX session. Unrestricted
+batch APPLY_APPROVED remains disabled.
 """
 
 import csv
@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import traceback
+import zipfile
 from collections import Counter
 
 import NXOpen
@@ -35,20 +36,17 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r"C:\Users\my62022696\Downloads\CIB-30.07.26 RU\NX_TC_DRAWING_IMPORT.csv"  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
-USER_MODE = "TRIAL_APPLY"  # DRY_RUN | TRIAL_APPLY
+USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
+USER_MODE = "DRY_RUN"  # DRY_RUN | APPLY_ONE_APPROVED
 # Optional environment overrides:
 #   NX_TC_DRAWING_IMPORT_FILE=<full CSV path>
-#   NX_J16_MODE=DRY_RUN or TRIAL_APPLY
+#   NX_J16_MODE=DRY_RUN or APPLY_ONE_APPROVED
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V8-MANUAL-ACCEPTANCE"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V9-CONTROLLED-PRODUCTION"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
-VALID_MODES = ("DRY_RUN", "TRIAL_APPLY", "APPLY_APPROVED")
+VALID_MODES = ("DRY_RUN", "APPLY_ONE_APPROVED", "APPLY_APPROVED")
 BATCH_APPLY_ENABLED = False
-TRIAL_PART_NUMBER = "264MN021218A01"
-TRIAL_REVISION = "A"
-TRIAL_DRAWING_INDEX = 1
 DEFAULT_DATASET_TYPE = "UGPART"
 DEFAULT_EXPORT_TOOL = "UGII V10-ALL"
 RELATION_CANDIDATES = (
@@ -76,6 +74,8 @@ REPORT_COLUMNS = [
     "DRAWING_IDENTIFIER",
     "DRAWING_FILE",
     "BASELINE_SHA256",
+    "APPROVED_LOCAL_SHA256",
+    "APPROVED_TC_BASELINE_SHA256",
     "PREFLIGHT_SHA256",
     "CHANGED_FROM_BASELINE",
     "APPROVED",
@@ -114,6 +114,8 @@ REPORT_COLUMNS = [
     "WRITE_ATTEMPTED",
     "RESULT",
     "MESSAGE",
+    "CLONE_PREFLIGHT_LOG",
+    "CLONE_APPLY_LOG",
     "CLONE_LOG",
 ]
 
@@ -151,15 +153,7 @@ def configured_mode():
 
 
 def is_apply_mode(mode):
-    return mode in ("TRIAL_APPLY", "APPLY_APPROVED")
-
-
-def trial_target_key():
-    return (upper(TRIAL_PART_NUMBER), upper(TRIAL_REVISION), TRIAL_DRAWING_INDEX)
-
-
-def is_trial_target(part_number, revision, drawing_index):
-    return (upper(part_number), upper(revision), drawing_index) == trial_target_key()
+    return mode in ("APPLY_ONE_APPROVED", "APPLY_APPROVED")
 
 
 def configured_input_path():
@@ -266,6 +260,35 @@ def write_log(path, lines):
         handle.write("\n".join(lines) + "\n")
 
 
+def zip_artifacts(zip_path, evidence_root, artifact_paths):
+    """Create one portable evidence ZIP without including the source drawing."""
+    os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+    temporary = zip_path + ".tmp"
+    added = set()
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        if os.path.isdir(evidence_root):
+            parent = os.path.dirname(evidence_root)
+            for folder, directories, files in os.walk(evidence_root):
+                directories.sort(key=lambda value: value.lower())
+                files.sort(key=lambda value: value.lower())
+                for name in files:
+                    path = os.path.abspath(os.path.join(folder, name))
+                    arcname = os.path.relpath(path, parent)
+                    archive.write(path, arcname)
+                    added.add(os.path.normcase(path))
+        for value in artifact_paths:
+            path = os.path.abspath(clean(value)) if clean(value) else ""
+            if (
+                path
+                and os.path.isfile(path)
+                and os.path.normcase(path) not in added
+            ):
+                archive.write(path, os.path.basename(path))
+                added.add(os.path.normcase(path))
+    os.replace(temporary, zip_path)
+    return zip_path
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -275,6 +298,10 @@ def sha256(path):
                 break
             digest.update(block)
     return digest.hexdigest()
+
+
+def valid_sha256(value):
+    return bool(re.match(r"^[0-9a-fA-F]{64}$", clean(value)))
 
 
 # ---------------------------------------------------------------------------
@@ -363,10 +390,20 @@ def base_report(row, timestamp, mode):
         "DRAWING_IDENTIFIER": "",
         "DRAWING_FILE": row.get("DRAWING_FILE", ""),
         "BASELINE_SHA256": row.get("EXPORT_SHA256", ""),
+        "APPROVED_LOCAL_SHA256": (
+            row.get("APPROVED_LOCAL_SHA256", "")
+            or row.get("PREFLIGHT_SHA256", "")
+        ),
+        "APPROVED_TC_BASELINE_SHA256": (
+            row.get("APPROVED_TC_BASELINE_SHA256", "")
+            or row.get("TC_BASELINE_SHA256", "")
+        ),
         "PREFLIGHT_SHA256": "",
         "CHANGED_FROM_BASELINE": "",
-        "APPROVED": row.get("APPROVED", ""),
-        "ENGINEER": row.get("ENGINEER", ""),
+        # A DRY_RUN report is an approval candidate, never prior authorization.
+        # The operator must explicitly set one row to YES and name the engineer.
+        "APPROVED": "NO" if mode == "DRY_RUN" else row.get("APPROVED", ""),
+        "ENGINEER": "" if mode == "DRY_RUN" else row.get("ENGINEER", ""),
         "DEFAULT_IMPORT_ACTION": "UseExisting",
         "DRAWING_IMPORT_ACTION": "Overwrite",
         "OPENED_IDENTIFIER": "",
@@ -401,6 +438,8 @@ def base_report(row, timestamp, mode):
         "WRITE_ATTEMPTED": "NO",
         "RESULT": "",
         "MESSAGE": "",
+        "CLONE_PREFLIGHT_LOG": "",
+        "CLONE_APPLY_LOG": "",
         "CLONE_LOG": "",
     }
 
@@ -430,15 +469,6 @@ def local_preflight(rows, csv_path, timestamp, mode):
             set_error(report, "ERROR_INPUT", error_text(exc), exc)
             continue
 
-        if mode == "TRIAL_APPLY" and not is_trial_target(
-            part_number, revision, drawing_index
-        ):
-            report["RESULT"] = "TRIAL_SCOPE_SKIPPED"
-            report["MESSAGE"] = (
-                "TRIAL_APPLY is locked to {0}/{1}/dwg{2}; this row cannot write."
-            ).format(TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX)
-            continue
-
         approval = approval_state(row)
         if approval == "INVALID":
             set_error(
@@ -451,15 +481,8 @@ def local_preflight(rows, csv_path, timestamp, mode):
         # In an apply mode, unapproved rows are not candidates and cannot
         # block approved rows because of stale/missing local files.
         if is_apply_mode(mode) and approval != "YES":
-            if mode == "TRIAL_APPLY":
-                set_error(
-                    report,
-                    "BLOCKED_TRIAL_NOT_APPROVED",
-                    "The locked trial row must have APPROVED=YES before any write.",
-                )
-            else:
-                report["RESULT"] = "NOT_APPROVED"
-                report["MESSAGE"] = "No write authorized for this row."
+            report["RESULT"] = "NOT_APPROVED"
+            report["MESSAGE"] = "No write authorized for this row."
             continue
 
         target_key = (upper(part_number), upper(revision), drawing_index)
@@ -523,6 +546,30 @@ def local_preflight(rows, csv_path, timestamp, mode):
             continue
 
         report["PREFLIGHT_SHA256"] = current_sha
+        if mode == "DRY_RUN":
+            report["APPROVED_LOCAL_SHA256"] = current_sha
+        elif mode == "APPLY_ONE_APPROVED":
+            approved_local_sha = clean(report.get("APPROVED_LOCAL_SHA256"))
+            if not valid_sha256(approved_local_sha):
+                set_error(
+                    report,
+                    "ERROR_APPROVAL_HANDSHAKE_REQUIRED",
+                    (
+                        "APPLY_ONE_APPROVED requires APPROVED_LOCAL_SHA256 from "
+                        "a successful J16 DRY_RUN report."
+                    ),
+                )
+                continue
+            if current_sha.lower() != approved_local_sha.lower():
+                set_error(
+                    report,
+                    "BLOCKED_LOCAL_CHANGED_AFTER_APPROVAL",
+                    (
+                        "DRAWING_FILE SHA-256 no longer matches the approved "
+                        "J16 DRY_RUN local hash."
+                    ),
+                )
+                continue
         baseline = clean(row.get("EXPORT_SHA256"))
         if baseline:
             changed = current_sha.lower() != baseline.lower()
@@ -1379,6 +1426,8 @@ def run_managed_preflight(
             )
             report["TC_BASELINE_SHA256"] = baseline_sha
             proposal["tc_baseline_sha"] = baseline_sha
+            if report.get("MODE") == "DRY_RUN":
+                report["APPROVED_TC_BASELINE_SHA256"] = baseline_sha
             log.write(
                 "  BASELINE {0}: channel=associated-files; sha256={1}".format(
                     proposal["identifier"],
@@ -1402,25 +1451,41 @@ def run_managed_preflight(
             )
             continue
 
-        supplied_baseline = clean(report.get("BASELINE_SHA256"))
-        if (
-            supplied_baseline
-            and supplied_baseline.lower() != baseline_sha.lower()
-        ):
-            set_error(
-                report,
-                "BLOCKED_STALE_TARGET",
-                (
-                    "Current Teamcenter drawing SHA-256 does not match the "
-                    "CSV EXPORT_SHA256 baseline."
-                ),
+        if report.get("MODE") == "APPLY_ONE_APPROVED":
+            approved_tc_sha = clean(
+                report.get("APPROVED_TC_BASELINE_SHA256")
             )
-            log.write(
-                "  BLOCKED {0}: {1}".format(
-                    proposal["identifier"], report["MESSAGE"]
+            if not valid_sha256(approved_tc_sha):
+                set_error(
+                    report,
+                    "ERROR_APPROVAL_HANDSHAKE_REQUIRED",
+                    (
+                        "APPLY_ONE_APPROVED requires "
+                        "APPROVED_TC_BASELINE_SHA256 from a successful J16 "
+                        "DRY_RUN report."
+                    ),
                 )
-            )
-            continue
+                log.write(
+                    "  BLOCKED {0}: {1}".format(
+                        proposal["identifier"], report["MESSAGE"]
+                    )
+                )
+                continue
+            if approved_tc_sha.lower() != baseline_sha.lower():
+                set_error(
+                    report,
+                    "BLOCKED_STALE_TARGET",
+                    (
+                        "The exact Teamcenter drawing changed after the approved "
+                        "J16 DRY_RUN. No write was attempted."
+                    ),
+                )
+                log.write(
+                    "  BLOCKED {0}: {1}".format(
+                        proposal["identifier"], report["MESSAGE"]
+                    )
+                )
+                continue
 
         if proposal["preflight_sha"].lower() == baseline_sha.lower():
             report["RESULT"] = "SKIPPED_ALREADY_CURRENT"
@@ -1444,6 +1509,7 @@ def run_dry_run(api, proposals, log, mode):
             continue
         logfile = clone_log_path(proposal, mode, "PREFLIGHT")
         report["CLONE_LOG"] = logfile
+        report["CLONE_PREFLIGHT_LOG"] = logfile
         try:
             import_one(api, proposal["drawing"], logfile, True, log)
             report["CLONE_PREFLIGHT"] = "PASS"
@@ -1565,38 +1631,35 @@ def classify_post_import(
     return True
 
 
-def require_fresh_trial_session(session):
+def require_fresh_apply_session(session):
     try:
         loaded = list(session.Parts)
     except Exception as exc:
         raise RuntimeError(
-            "TRIAL_APPLY could not prove that the NX session has no loaded parts: {0}"
+            "APPLY_ONE_APPROVED could not prove that the NX session has no loaded parts: {0}"
             .format(error_text(exc))
         )
     if loaded:
         identifiers = [journal_identifier(part) or "<unidentified>" for part in loaded]
         raise RuntimeError(
-            "TRIAL_APPLY requires a fresh NX managed session with no loaded parts; "
+            "APPLY_ONE_APPROVED requires a fresh NX managed session with no loaded parts; "
             "found {0}: {1}".format(len(loaded), " | ".join(identifiers))
         )
 
 
-def require_one_trial_row(rows):
-    matches = 0
-    for row in rows:
-        try:
-            if is_trial_target(*parse_target(row)):
-                matches += 1
-        except Exception:
-            continue
-    if matches != 1:
+def require_one_approved_row(rows):
+    invalid = [row for row in rows if approval_state(row) == "INVALID"]
+    if invalid:
         raise RuntimeError(
-            "TRIAL_APPLY requires exactly one CSV row for {0}/{1}/dwg{2}; "
-            "found {3}.".format(
-                TRIAL_PART_NUMBER,
-                TRIAL_REVISION,
-                TRIAL_DRAWING_INDEX,
-                matches,
+            "APPLY_ONE_APPROVED requires every APPROVED value to be YES, NO, "
+            "or blank; found {0} invalid row(s).".format(len(invalid))
+        )
+    approved = [row for row in rows if approval_state(row) == "YES"]
+    if len(approved) != 1:
+        raise RuntimeError(
+            "APPLY_ONE_APPROVED requires exactly one APPROVED=YES CSV row; "
+            "found {0}.".format(
+                len(approved),
             )
         )
 
@@ -1612,9 +1675,9 @@ def execute(
     log,
     work_root,
 ):
-    if mode == "TRIAL_APPLY":
-        require_one_trial_row(rows)
-        require_fresh_trial_session(session)
+    if mode == "APPLY_ONE_APPROVED":
+        require_one_approved_row(rows)
+        require_fresh_apply_session(session)
     reports, proposals = local_preflight(rows, csv_path, timestamp, mode)
     run_managed_preflight(
         session,
@@ -1634,23 +1697,12 @@ def execute(
         if report.get("RESULT") != "CLONE_PREFLIGHT_OK":
             continue
 
-        if mode == "TRIAL_APPLY":
-            if not is_trial_target(
-                proposal["part_number"],
-                proposal["revision"],
-                proposal["drawing_index"],
-            ):
-                set_error(
-                    report,
-                    "BLOCKED_TRIAL_SCOPE",
-                    "Internal trial-scope guard blocked a non-target write.",
-                )
-                continue
+        if mode == "APPLY_ONE_APPROVED":
             if writes_attempted >= 1:
                 set_error(
                     report,
-                    "BLOCKED_TRIAL_WRITE_LIMIT",
-                    "TRIAL_APPLY permits at most one Teamcenter write per run.",
+                    "BLOCKED_PRODUCTION_WRITE_LIMIT",
+                    "APPLY_ONE_APPROVED permits at most one Teamcenter write per run.",
                 )
                 continue
 
@@ -1743,6 +1795,7 @@ def execute(
 
         logfile = clone_log_path(proposal, mode, "APPLY")
         report["CLONE_LOG"] = logfile
+        report["CLONE_APPLY_LOG"] = logfile
         report["WRITE_ATTEMPTED"] = "YES"
         writes_attempted += 1
         try:
@@ -1864,6 +1917,7 @@ def main():
         os.path.dirname(input_path) if input_path else io_root(),
         "J16_EVIDENCE_{0}".format(timestamp),
     )
+    evidence_zip = work_root + ".zip"
 
     log.write("=" * 72)
     log.write("J16 TEAMCENTER X STANDALONE DRAWING IMPORT")
@@ -1875,29 +1929,42 @@ def main():
         "Persistence rule: post payload must differ from prewrite; managed byte "
         "transformations require manual content acceptance"
     )
-    if current_mode == "TRIAL_APPLY":
+    if current_mode == "APPLY_ONE_APPROVED":
         log.write(
-            "TRIAL LOCK: {0}/{1}/dwg{2}; fresh session; maximum one write".format(
-                TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX
-            )
+            "PRODUCTION CONTROL: generic target; fresh session; exactly one "
+            "approved row; maximum one write"
+        )
+        log.write(
+            "Approval handshake: local and Teamcenter hashes must come from "
+            "the accepted J16 DRY_RUN report"
+        )
+    else:
+        log.write(
+            "DRY_RUN output supplies APPROVED_LOCAL_SHA256 and "
+            "APPROVED_TC_BASELINE_SHA256 for controlled apply"
+        )
+        log.write(
+            "Approval step: edit the DRY_RUN report, set exactly one row to "
+            "APPROVED=YES, and enter ENGINEER"
         )
     log.write("Input: {0}".format(input_path))
     log.write("Evidence: {0}".format(work_root))
+    log.write("Evidence ZIP: {0}".format(evidence_zip))
     log.write("=" * 72)
 
     report_path = ""
+    reports = []
+    log_path = ""
     file_management = None
     try:
         if current_mode not in VALID_MODES:
             raise RuntimeError(
-                "USER_MODE/NX_J16_MODE must be DRY_RUN or TRIAL_APPLY."
+                "USER_MODE/NX_J16_MODE must be DRY_RUN or APPLY_ONE_APPROVED."
             )
         if current_mode == "APPLY_APPROVED" and not BATCH_APPLY_ENABLED:
             raise RuntimeError(
-                "APPLY_APPROVED batch mode is disabled in this one-shot release. "
-                "Use DRY_RUN or TRIAL_APPLY for {0}/{1}/dwg{2}.".format(
-                    TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX
-                )
+                "APPLY_APPROVED batch mode is disabled. Use DRY_RUN followed "
+                "by APPLY_ONE_APPROVED for one approved drawing."
             )
         if not os.path.isfile(input_path):
             raise RuntimeError("Import CSV not found: {0}".format(input_path))
@@ -1965,8 +2032,30 @@ def main():
                 log_dir, "J16_RUN_{0}_{1}.log".format(current_mode, timestamp)
             )
             write_log(log_path, log.lines)
-        except Exception:
-            pass
+            clone_logs = []
+            for report in reports:
+                clone_logs.extend(
+                    [
+                        report.get("CLONE_PREFLIGHT_LOG", ""),
+                        report.get("CLONE_APPLY_LOG", ""),
+                    ]
+                )
+            zip_artifacts(
+                evidence_zip,
+                work_root,
+                [report_path, log_path] + clone_logs,
+            )
+        except Exception as exc:
+            log.write(
+                "WARNING: automatic evidence ZIP failed: {0}".format(
+                    error_text(exc)
+                )
+            )
+            try:
+                if log_path:
+                    write_log(log_path, log.lines)
+            except Exception:
+                pass
 
     return report_path
 
