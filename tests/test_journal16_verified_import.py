@@ -130,11 +130,11 @@ class VerifiedImportTests(unittest.TestCase):
     def fresh_session(self):
         return types.SimpleNamespace(Parts=[])
 
-    def test_manual_settings_are_fail_safe(self):
+    def test_manual_settings_default_to_approved_one_run(self):
         self.assertEqual("", self.journal.USER_IMPORT_CSV)
-        self.assertEqual("DRY_RUN", self.journal.USER_MODE)
+        self.assertEqual("APPLY_APPROVED", self.journal.USER_MODE)
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual("DRY_RUN", self.journal.configured_mode())
+            self.assertEqual("APPLY_APPROVED", self.journal.configured_mode())
 
     def test_controlled_bulk_write_limit_configuration(self):
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -321,9 +321,10 @@ class VerifiedImportTests(unittest.TestCase):
             )
         self.assertEqual("BLOCKED_STALE_TARGET", report["RESULT"])
 
-    def test_apply_one_requires_approved_local_hash(self):
+    def test_one_run_captures_blank_local_approval_hash(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder, "GENERIC100")
+            source_sha = self.journal.sha256(drawing)
             row = self.make_row(drawing, "GENERIC100")
             row.pop("APPROVED_LOCAL_SHA256")
             reports, proposals = self.journal.local_preflight(
@@ -332,10 +333,9 @@ class VerifiedImportTests(unittest.TestCase):
                 "stamp",
                 "APPLY_ONE_APPROVED",
             )
-        self.assertEqual(
-            "ERROR_APPROVAL_HANDSHAKE_REQUIRED", reports[0]["RESULT"]
-        )
-        self.assertEqual([], proposals)
+        self.assertEqual("LOCAL_PREFLIGHT_OK", reports[0]["RESULT"])
+        self.assertEqual(source_sha, reports[0]["APPROVED_LOCAL_SHA256"])
+        self.assertEqual(1, len(proposals))
 
     def test_apply_one_blocks_local_file_changed_after_dry_run(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -390,7 +390,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("", reports[0]["ENGINEER"])
         self.assertEqual("MANAGED_PREFLIGHT_OK", reports[0]["RESULT"])
 
-    def test_apply_one_requires_approved_tc_baseline_hash(self):
+    def test_one_run_captures_blank_tc_approval_hash(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder, "GENERIC100")
             row = self.make_row(drawing, "GENERIC100")
@@ -415,9 +415,8 @@ class VerifiedImportTests(unittest.TestCase):
                     object(), object(), proposals, folder, FakeLog()
                 )
 
-        self.assertEqual(
-            "ERROR_APPROVAL_HANDSHAKE_REQUIRED", reports[0]["RESULT"]
-        )
+        self.assertEqual("MANAGED_PREFLIGHT_OK", reports[0]["RESULT"])
+        self.assertEqual("b" * 64, reports[0]["APPROVED_TC_BASELINE_SHA256"])
 
     def test_verified_apply_requires_matching_post_payload_hash(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -528,7 +527,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("YES", reports[1]["WRITE_ATTEMPTED"])
         self.assertEqual(4, import_one.call_count)
 
-    def test_local_file_race_blocks_apply_before_write(self):
+    def test_local_file_race_quarantines_before_write(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             row = self.make_row(drawing)
@@ -563,12 +562,13 @@ class VerifiedImportTests(unittest.TestCase):
                     os.path.join(folder, "evidence"),
                 )
         self.assertEqual(
-            "ERROR_FILE_CHANGED_AFTER_PREFLIGHT", reports[0]["RESULT"]
+            "QUARANTINED_PREFLIGHT", reports[0]["RESULT"]
         )
+        self.assertIn("ERROR_FILE_CHANGED_AFTER_PREFLIGHT", reports[0]["QUARANTINE_REASON"])
         self.assertEqual("NO", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(1, import_one.call_count)
 
-    def test_checkout_recheck_blocks_before_apply(self):
+    def test_checkout_recheck_quarantines_before_apply(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             row = self.make_row(drawing)
@@ -598,12 +598,12 @@ class VerifiedImportTests(unittest.TestCase):
                     FakeLog(),
                     os.path.join(folder, "evidence"),
                 )
-        self.assertEqual("BLOCKED_CHECKED_OUT", reports[0]["RESULT"])
+        self.assertEqual("QUARANTINED_CHECKED_OUT", reports[0]["RESULT"])
         self.assertEqual("current.user", reports[0]["CHECKOUT_RECHECK_OWNER"])
         self.assertEqual("NO", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(1, import_one.call_count)
 
-    def test_exact_retrieval_failure_never_reaches_clone(self):
+    def test_exact_retrieval_failure_is_quarantined_before_clone(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             row = self.make_row(drawing)
@@ -631,12 +631,12 @@ class VerifiedImportTests(unittest.TestCase):
                     os.path.join(folder, "evidence"),
                 )
         self.assertEqual(
-            "FAILED_TARGET_BASELINE_RETRIEVAL", reports[0]["RESULT"]
+            "QUARANTINED_PREFLIGHT", reports[0]["RESULT"]
         )
         self.assertIn("PDI code 17", reports[0]["MESSAGE"])
         import_one.assert_not_called()
 
-    def test_approved_preflight_blocker_aborts_batch_before_all_writes(self):
+    def test_approved_preflight_blocker_is_quarantined_while_clear_row_imports(self):
         with tempfile.TemporaryDirectory() as folder:
             blocked = self.make_drawing(folder, "BLOCKED")
             clear = self.make_drawing(folder, "CLEAR")
@@ -647,13 +647,20 @@ class VerifiedImportTests(unittest.TestCase):
             identifiers = [row["DRAWING_IDENTIFIER"] for row in rows]
 
             def exported(_session, _fm, proposal, _root, phase, *_fields):
-                return (phase + ".prt", self.MANAGED_SHA)
+                digest = (
+                    self.journal.sha256(proposal["drawing"])
+                    if phase == "POSTIMPORT"
+                    else self.MANAGED_SHA
+                )
+                return (phase + ".prt", digest)
 
             with mock.patch.object(
                 self.journal,
                 "inspect_target_checkout",
                 side_effect=[
                     self.checked_out("other.user", identifiers[0]),
+                    self.checked_in(identifiers[1]),
+                    self.checked_in(identifiers[1]),
                     self.checked_in(identifiers[1]),
                 ],
             ), mock.patch.object(
@@ -674,12 +681,131 @@ class VerifiedImportTests(unittest.TestCase):
                     FakeLog(),
                     os.path.join(folder, "evidence"),
                 )
-        self.assertEqual("BLOCKED_CHECKED_OUT", reports[0]["RESULT"])
+        self.assertEqual("QUARANTINED_CHECKED_OUT", reports[0]["RESULT"])
+        self.assertEqual("IMPORT_VERIFIED", reports[1]["RESULT"])
+        self.assertEqual("YES", reports[1]["WRITE_ATTEMPTED"])
+        self.assertEqual(2, import_one.call_count)
         self.assertEqual(
-            "BATCH_ABORTED_PREWRITE_VALIDATION", reports[1]["RESULT"]
+            "COMPLETED_WITH_QUARANTINE",
+            self.journal.final_run_status(reports, "APPLY_APPROVED"),
         )
-        self.assertEqual("NO", reports[1]["WRITE_ATTEMPTED"])
-        self.assertEqual(1, import_one.call_count)
+
+    def test_foreign_payload_row_is_quarantined_while_valid_row_imports(self):
+        with tempfile.TemporaryDirectory() as folder:
+            bad = self.make_drawing(folder, "264MN032670A01")
+            good = self.make_drawing(folder, "264MN026142A01")
+            rows = [
+                self.make_row(bad, "264MN032670A01"),
+                self.make_row(good, "264MN026142A01"),
+            ]
+
+            def retrieved(_session, _fm, proposal, _root, phase, *_fields):
+                if proposal["part_number"] == "264MN032670A01":
+                    report = proposal["report"]
+                    report["EXPECTED_MANAGED_NATIVE"] = "264MN032670A01_A_dwg1.prt"
+                    report["OBSERVED_NATIVE_FILES"] = "264MN026184A01_A_dwg1.prt"
+                    report["ANOMALY_EVIDENCE_FILE"] = "foreign.prt"
+                    report["ANOMALY_SHA256"] = "f" * 64
+                    raise RuntimeError("foreign native payload")
+                digest = (
+                    self.journal.sha256(proposal["drawing"])
+                    if phase == "POSTIMPORT"
+                    else self.MANAGED_SHA
+                )
+                return (phase + ".prt", digest)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                side_effect=lambda _session, identifier, _log: self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    rows,
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual(
+            "QUARANTINED_TARGET_PAYLOAD_IDENTITY", reports[0]["RESULT"]
+        )
+        self.assertEqual("NO", reports[0]["WRITE_ATTEMPTED"])
+        self.assertEqual("IMPORT_VERIFIED", reports[1]["RESULT"])
+        self.assertEqual("YES", reports[1]["WRITE_ATTEMPTED"])
+        self.assertEqual(2, import_one.call_count)
+
+    def test_process_state_failure_aborts_managed_preflight(self):
+        report = {
+            "RESULT": "LOCAL_PREFLIGHT_OK",
+            "MODE": "APPLY_APPROVED",
+        }
+        proposal = {
+            "report": report,
+            "identifier": "exact",
+            "part_number": "TEST100",
+            "revision": "A",
+            "drawing_index": 1,
+            "preflight_sha": "b" * 64,
+        }
+        with mock.patch.object(
+            self.journal,
+            "inspect_target_checkout",
+            return_value=self.checked_in("exact"),
+        ), mock.patch.object(
+            self.journal,
+            "retrieve_exact_associated_drawing",
+            side_effect=self.journal.ProcessStateError("cwd restore failed"),
+        ):
+            with self.assertRaisesRegex(
+                self.journal.ProcessStateError, "cwd restore failed"
+            ):
+                self.journal.run_managed_preflight(
+                    object(), object(), [proposal], "evidence", FakeLog()
+                )
+
+    def test_execute_reports_process_wide_failure_without_losing_rows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=self.journal.ProcessStateError("cwd restore failed"),
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("FAILED_PROCESS_STATE", reports[0]["RESULT"])
+        self.assertEqual("ABORTED", reports[0]["DISPOSITION"])
+        self.assertEqual("FAILED", self.journal.final_run_status(reports, "APPLY_APPROVED"))
+        import_one.assert_not_called()
 
     def test_supplied_identifier_mismatch_is_rejected_locally(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -995,7 +1121,228 @@ class VerifiedImportTests(unittest.TestCase):
                     "BASELINE_EXPORT_PDI_CODE",
                     "BASELINE_EXPORT_FILE",
                 )
-            fm.DownloadAssociatedFiles.assert_not_called()
+            fm.DownloadAssociatedFiles.assert_called_once()
+
+    def test_foreign_associated_native_is_captured_as_read_only_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            foreign = "264MN026184A01_A_dwg1.prt"
+            session, fm, proposal, files, _ = self.make_retrieval_context(
+                folder,
+                ["dwg_SHEET-1.qaf", "qafmetadata.qaf", foreign],
+            )
+            original_cwd = os.getcwd()
+            with self.assertRaisesRegex(RuntimeError, "found 0"):
+                self.journal.retrieve_exact_associated_drawing(
+                    session,
+                    fm,
+                    proposal,
+                    folder,
+                    "BASELINE",
+                    "BASELINE_EXPORT_PDI_CODE",
+                    "BASELINE_EXPORT_FILE",
+                )
+
+            report = proposal["report"]
+            self.assertEqual(original_cwd, os.getcwd())
+            self.assertEqual("TEST100_A_dwg1.prt", report["EXPECTED_MANAGED_NATIVE"])
+            self.assertEqual(foreign, report["OBSERVED_NATIVE_FILES"])
+            self.assertTrue(os.path.isfile(report["ANOMALY_EVIDENCE_FILE"]))
+            self.assertTrue(self.journal.valid_sha256(report["ANOMALY_SHA256"]))
+            self.assertTrue(all(value.released for value in files))
+
+            report["RESULT"] = "FAILED_TARGET_BASELINE_RETRIEVAL"
+            report["MESSAGE"] = "foreign native payload"
+            report["APPROVED"] = "YES"
+            self.journal.quarantine_report(report)
+            self.assertEqual(
+                "QUARANTINED_TARGET_PAYLOAD_IDENTITY", report["RESULT"]
+            )
+
+    def test_verified_receipt_skips_exact_rerun(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            row.pop("APPROVED_LOCAL_SHA256")
+            row["APPROVED_TC_BASELINE_SHA256"] = "d" * 64
+            source_sha = self.journal.sha256(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+            receipts = {
+                self.journal.receipt_key(identifier, source_sha): {
+                    "TARGET_IDENTIFIER": identifier,
+                    "SOURCE_SHA256": source_sha,
+                    "VERIFIED_POST_TC_SHA256": self.MANAGED_SHA,
+                }
+            }
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                return_value=("baseline.prt", self.MANAGED_SHA),
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                    os.path.join(folder, self.journal.DEFAULT_RECEIPTS),
+                    receipts,
+                )
+
+        self.assertEqual("SKIPPED_ALREADY_IMPORTED", reports[0]["RESULT"])
+        self.assertEqual("MATCHED_VERIFIED_POST", reports[0]["RECEIPT_STATUS"])
+        import_one.assert_not_called()
+
+    def test_stale_receipt_falls_back_to_full_preflight(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            source_sha = self.journal.sha256(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+            reports, proposals = self.journal.local_preflight(
+                [row],
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "APPLY_APPROVED",
+            )
+            receipts = {
+                self.journal.receipt_key(identifier, source_sha): {
+                    "VERIFIED_POST_TC_SHA256": "c" * 64,
+                }
+            }
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                return_value=("baseline.prt", self.MANAGED_SHA),
+            ):
+                self.journal.run_managed_preflight(
+                    object(), object(), proposals, folder, FakeLog(), receipts
+                )
+
+        self.assertEqual("MANAGED_PREFLIGHT_OK", reports[0]["RESULT"])
+        self.assertEqual("STALE_CURRENT_TC_DIFFERS", reports[0]["RECEIPT_STATUS"])
+
+    def test_one_run_verified_import_records_atomic_receipt(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            row.pop("APPROVED_LOCAL_SHA256")
+            row.pop("APPROVED_TC_BASELINE_SHA256")
+            identifier = row["DRAWING_IDENTIFIER"]
+            source_sha = self.journal.sha256(drawing)
+            receipt_path = os.path.join(folder, self.journal.DEFAULT_RECEIPTS)
+
+            def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
+                digest = source_sha if phase == "POSTIMPORT" else self.MANAGED_SHA
+                return (phase + ".prt", digest)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(self.journal, "import_one"):
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                    receipt_path,
+                    {},
+                )
+
+            receipts, warning = self.journal.load_receipts(receipt_path)
+            self.assertEqual("", warning)
+            receipt = receipts[self.journal.receipt_key(identifier, source_sha)]
+            self.assertEqual(source_sha, receipt["VERIFIED_POST_TC_SHA256"])
+            self.assertEqual("RECORDED", reports[0]["RECEIPT_STATUS"])
+
+    def test_receipt_write_failure_does_not_invalidate_verified_import(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+            source_sha = self.journal.sha256(drawing)
+
+            def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
+                digest = source_sha if phase == "POSTIMPORT" else self.MANAGED_SHA
+                return (phase + ".prt", digest)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ), mock.patch.object(
+                self.journal,
+                "write_receipts_atomic",
+                side_effect=OSError("disk full"),
+            ):
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                    os.path.join(folder, self.journal.DEFAULT_RECEIPTS),
+                    {},
+                )
+
+        self.assertEqual("IMPORT_VERIFIED", reports[0]["RESULT"])
+        self.assertIn("WRITE_FAILED", reports[0]["RECEIPT_STATUS"])
+        self.assertEqual(
+            "SUCCESS", self.journal.final_run_status(reports, "APPLY_APPROVED")
+        )
+
+    def test_malformed_receipt_is_nonfatal_and_ignored(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, self.journal.DEFAULT_RECEIPTS)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("bad,columns\n1,2\n")
+            receipts, warning = self.journal.load_receipts(path)
+        self.assertEqual({}, receipts)
+        self.assertIn("ignored", warning)
+
+    def test_only_quarantined_approved_rows_fail_the_run(self):
+        report = {
+            "APPROVED": "YES",
+            "RESULT": "QUARANTINED_PREFLIGHT",
+            "DISPOSITION": "QUARANTINED",
+        }
+        self.assertEqual(
+            "FAILED",
+            self.journal.final_run_status([report], "APPLY_APPROVED"),
+        )
 
     def test_apply_one_only_proposes_the_approved_generic_target(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -1120,12 +1467,18 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertNotIn("resolve_relation_and_export", source)
         self.assertNotIn(".Checkin(", source)
         self.assertNotIn(".CheckIn(", source)
+        self.assertNotIn(".Checkout(", source)
+        self.assertNotIn(".CheckOut(", source)
+        self.assertNotIn(".Save(", source)
+        self.assertNotIn(".SaveAs(", source)
+        self.assertNotIn(".Delete(", source)
+        self.assertNotIn(".Revise(", source)
         self.assertIn("POST_IMPORT_CHECKOUT_STATE", source)
         self.assertIn("IMPORT_VERIFIED_MANAGED_TRANSFORM", source)
         self.assertIn("APPLY_ONE_APPROVED", source)
         self.assertNotIn("TRIAL_APPLY", source)
         self.assertNotIn("TRIAL_PART_NUMBER", source)
-        self.assertEqual("DRY_RUN", self.journal.USER_MODE)
+        self.assertEqual("APPLY_APPROVED", self.journal.USER_MODE)
         self.assertEqual("", self.journal.USER_IMPORT_CSV)
         self.assertTrue(self.journal.BATCH_APPLY_ENABLED)
         self.assertIn("DEFAULT_MAX_APPROVED_WRITES", source)
