@@ -548,11 +548,14 @@ class VerifiedImportTests(unittest.TestCase):
             ".Save(",
             "ImportFiles(",
             "SetDryrun(False",
+            "J16.import_one(",
+            "NXOpen.UF",
         )
         for token in forbidden:
             self.assertNotIn(token, source)
         self.assertIn("teamcenter_write_attempted", source)
-        self.assertIn("J16.import_one(", source)
+        self.assertIn("DownloadAssociatedFiles", source)
+        self.assertIn("ExportNamedReferences", source)
 
 
 if __name__ == "__main__":
