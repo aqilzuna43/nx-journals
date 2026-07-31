@@ -30,6 +30,7 @@ import time
 import traceback
 
 import NXOpen
+import NXOpen.Annotations
 
 
 # ---------------------------------------------------------------------------
