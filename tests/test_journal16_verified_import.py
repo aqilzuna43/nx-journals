@@ -291,7 +291,7 @@ class VerifiedImportTests(unittest.TestCase):
             )
         self.assertEqual("BLOCKED_STALE_TARGET", report["RESULT"])
 
-    def test_verified_apply_requires_matching_post_export_hash(self):
+    def test_verified_apply_requires_matching_post_payload_hash(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             source_sha = self.journal.sha256(drawing)
@@ -327,10 +327,12 @@ class VerifiedImportTests(unittest.TestCase):
 
         self.assertEqual("IMPORT_VERIFIED", reports[0]["RESULT"])
         self.assertEqual("VERIFIED_SHA256", reports[0]["POST_IMPORT_VERIFICATION"])
+        self.assertEqual("CHECKED_IN", reports[0]["POST_IMPORT_CHECKOUT_STATE"])
+        self.assertEqual(identifier, reports[0]["POST_IMPORT_OPENED_IDENTIFIER"])
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(2, import_one.call_count)
 
-    def test_post_export_mismatch_stops_later_writes(self):
+    def test_transformed_managed_payload_requires_review_and_stops_later_writes(self):
         with tempfile.TemporaryDirectory() as folder:
             first = self.make_drawing(folder, "FIRST")
             second = self.make_drawing(folder, "SECOND")
@@ -352,6 +354,7 @@ class VerifiedImportTests(unittest.TestCase):
                     self.checked_in(identifiers[0]),
                     self.checked_in(identifiers[1]),
                     self.checked_in(identifiers[0]),
+                    self.checked_in(identifiers[0]),
                 ],
             ), mock.patch.object(
                 self.journal,
@@ -372,10 +375,22 @@ class VerifiedImportTests(unittest.TestCase):
                     os.path.join(folder, "evidence"),
                 )
 
-        self.assertEqual("FAILED_IMPORT_UNVERIFIED", reports[0]["RESULT"])
         self.assertEqual(
-            "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE", reports[1]["RESULT"]
+            "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
+            reports[0]["RESULT"],
         )
+        self.assertEqual(
+            "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE", reports[1]["RESULT"]
+        )
+        self.assertEqual(
+            "MANUAL_CONTENT_VERIFICATION_REQUIRED",
+            reports[0]["POST_IMPORT_VERIFICATION"],
+        )
+        self.assertEqual(
+            "CHECKED_IN", reports[0]["POST_IMPORT_CHECKOUT_STATE"]
+        )
+        self.assertTrue(self.journal.has_review_required(reports))
+        self.assertFalse(self.journal.has_failure(reports, "APPLY_APPROVED"))
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual("NO", reports[1]["WRITE_ATTEMPTED"])
         self.assertEqual(3, import_one.call_count)
@@ -510,6 +525,7 @@ class VerifiedImportTests(unittest.TestCase):
                     self.checked_out("other.user", identifiers[0]),
                     self.checked_in(identifiers[1]),
                     self.checked_in(identifiers[1]),
+                    self.checked_in(identifiers[1]),
                 ],
             ), mock.patch.object(
                 self.journal,
@@ -552,6 +568,136 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertTrue(
             self.journal.has_failure([report], "APPLY_APPROVED")
         )
+
+    def test_unchanged_post_payload_is_failed_unverified(self):
+        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        proposal = {
+            "report": report,
+            "identifier": "exact",
+            "preflight_sha": "source",
+        }
+        review = self.journal.classify_post_import(
+            proposal,
+            "before",
+            "before",
+            self.checked_in("exact"),
+            FakeLog(),
+        )
+        self.assertFalse(review)
+        self.assertEqual("FAILED_IMPORT_UNVERIFIED", report["RESULT"])
+        self.assertEqual(
+            "FAILED_UNCHANGED_FROM_PREWRITE",
+            report["POST_IMPORT_VERIFICATION"],
+        )
+
+    def test_uploaded_trial_hashes_classify_as_manual_acceptance_required(self):
+        report = self.journal.base_report({}, "20260731_210943", "TRIAL_APPLY")
+        proposal = {
+            "report": report,
+            "identifier": self.journal.drawing_id("264MN021218A01", "A", 1),
+            "preflight_sha": (
+                "43145a5d62429b0f020175da5ff8d8d5f1fac696161e6b23f9d09badb7045ebb"
+            ),
+        }
+        review = self.journal.classify_post_import(
+            proposal,
+            "c80fcfda652ede4e25ef6995de64dbf7a587902ebd619cb8b40abf50a4739cf7",
+            "ceca56a880a80e1b28d6f1eee6f5f25f56264f82653e8456083bf4b6218c654a",
+            self.checked_in(proposal["identifier"]),
+            FakeLog(),
+        )
+        self.assertTrue(review)
+        self.assertEqual(
+            "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
+            report["RESULT"],
+        )
+        self.assertEqual("CHECKED_IN", report["POST_IMPORT_CHECKOUT_STATE"])
+
+    def test_changed_post_payload_still_checked_out_requires_manual_checkin(self):
+        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        proposal = {
+            "report": report,
+            "identifier": "exact",
+            "preflight_sha": "source",
+        }
+        review = self.journal.classify_post_import(
+            proposal,
+            "before",
+            "managed-transform",
+            self.checked_out("current.user", "exact"),
+            FakeLog(),
+        )
+        self.assertTrue(review)
+        self.assertEqual("MANUAL_CHECKIN_REQUIRED", report["RESULT"])
+        self.assertEqual("current.user", report["POST_IMPORT_CHECKOUT_OWNER"])
+        self.assertIn("J16 will not call check-in", report["MESSAGE"])
+        self.assertTrue(self.journal.has_review_required([report]))
+
+    def test_changed_post_payload_with_unknown_checkout_fails_closed(self):
+        report = self.journal.base_report({}, "stamp", "TRIAL_APPLY")
+        proposal = {
+            "report": report,
+            "identifier": "exact",
+            "preflight_sha": "source",
+        }
+        checkout = {
+            "state": "UNKNOWN",
+            "owner": "",
+            "raw": "unrecognized",
+            "opened_identifier": "exact",
+        }
+        review = self.journal.classify_post_import(
+            proposal,
+            "before",
+            "managed-transform",
+            checkout,
+            FakeLog(),
+        )
+        self.assertFalse(review)
+        self.assertEqual("FAILED_IMPORT_UNVERIFIED", report["RESULT"])
+        self.assertEqual(
+            "FAILED_POST_CHECKOUT_UNKNOWN",
+            report["POST_IMPORT_VERIFICATION"],
+        )
+
+    def test_post_import_retrieval_failure_remains_unverified(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+
+            def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
+                if phase == "POSTIMPORT":
+                    raise RuntimeError("post download failed")
+                return (phase + ".prt", "tc-before")
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    object(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("FAILED_IMPORT_UNVERIFIED", reports[0]["RESULT"])
+        self.assertIn("post download failed", reports[0]["MESSAGE"])
+        self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
+        self.assertEqual(2, import_one.call_count)
 
     def make_retrieval_context(self, folder, names):
         identifier = self.journal.drawing_id("TEST100", "A", 1)
@@ -766,6 +912,10 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertIn("DownloadAssociatedFiles", source)
         self.assertNotIn("file_management.ExportFiles", source)
         self.assertNotIn("resolve_relation_and_export", source)
+        self.assertNotIn(".Checkin(", source)
+        self.assertNotIn(".CheckIn(", source)
+        self.assertIn("POST_IMPORT_CHECKOUT_STATE", source)
+        self.assertIn("IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED", source)
         self.assertEqual("DRY_RUN", self.journal.USER_MODE)
         self.assertFalse(self.journal.BATCH_APPLY_ENABLED)
 

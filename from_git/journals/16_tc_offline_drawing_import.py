@@ -42,7 +42,7 @@ USER_MODE = "DRY_RUN"  # DRY_RUN | TRIAL_APPLY
 #   NX_J16_MODE=DRY_RUN or TRIAL_APPLY
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V7-TRIAL"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V8-MANUAL-ACCEPTANCE"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
 VALID_MODES = ("DRY_RUN", "TRIAL_APPLY", "APPLY_APPROVED")
 BATCH_APPLY_ENABLED = False
@@ -106,6 +106,10 @@ REPORT_COLUMNS = [
     "POST_IMPORT_EXPORT_PDI_CODE",
     "POST_IMPORT_EXPORT_FILE",
     "POST_IMPORT_TC_SHA256",
+    "POST_IMPORT_OPENED_IDENTIFIER",
+    "POST_IMPORT_CHECKOUT_STATE",
+    "POST_IMPORT_CHECKOUT_OWNER",
+    "POST_IMPORT_CHECKOUT_RAW",
     "POST_IMPORT_VERIFICATION",
     "WRITE_ATTEMPTED",
     "RESULT",
@@ -389,6 +393,10 @@ def base_report(row, timestamp, mode):
         "POST_IMPORT_EXPORT_PDI_CODE": "",
         "POST_IMPORT_EXPORT_FILE": "",
         "POST_IMPORT_TC_SHA256": "",
+        "POST_IMPORT_OPENED_IDENTIFIER": "",
+        "POST_IMPORT_CHECKOUT_STATE": "NOT_RUN",
+        "POST_IMPORT_CHECKOUT_OWNER": "",
+        "POST_IMPORT_CHECKOUT_RAW": "",
         "POST_IMPORT_VERIFICATION": "NOT_RUN",
         "WRITE_ATTEMPTED": "NO",
         "RESULT": "",
@@ -1291,6 +1299,15 @@ def record_checkout(report, checkout, recheck=False):
         report["CHECKOUT_RAW"] = checkout.get("raw", "")
 
 
+def record_post_import_checkout(report, checkout):
+    report["POST_IMPORT_OPENED_IDENTIFIER"] = checkout.get(
+        "opened_identifier", ""
+    )
+    report["POST_IMPORT_CHECKOUT_STATE"] = checkout.get("state", "UNKNOWN")
+    report["POST_IMPORT_CHECKOUT_OWNER"] = checkout.get("owner", "")
+    report["POST_IMPORT_CHECKOUT_RAW"] = checkout.get("raw", "")
+
+
 def block_for_checkout(report, checkout, phase):
     state = checkout.get("state", "UNKNOWN")
     owner = checkout.get("owner", "")
@@ -1448,15 +1465,104 @@ def run_dry_run(api, proposals, log, mode):
     return proposals
 
 
-def mark_remaining_after_unverified_write(proposals, start):
+def mark_remaining_after_stopped_write(proposals, start, review_required):
     for proposal in proposals[start:]:
         report = proposal["report"]
         if report.get("RESULT") == "CLONE_PREFLIGHT_OK":
-            report["RESULT"] = "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE"
-            report["MESSAGE"] = (
-                "A previous write was attempted but could not be verified. "
-                "No write was attempted for this row."
-            )
+            if review_required:
+                report["RESULT"] = "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE"
+                report["MESSAGE"] = (
+                    "A previous write requires manual acceptance. No write "
+                    "was attempted for this row."
+                )
+            else:
+                report["RESULT"] = "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE"
+                report["MESSAGE"] = (
+                    "A previous write was attempted but could not be verified. "
+                    "No write was attempted for this row."
+                )
+
+
+def classify_post_import(
+    proposal,
+    prewrite_sha,
+    post_sha,
+    checkout,
+    log,
+):
+    """Classify persistence separately from managed-mode byte transformation."""
+    report = proposal["report"]
+    source_sha = proposal["preflight_sha"]
+    record_post_import_checkout(report, checkout)
+    state = checkout.get("state", "UNKNOWN")
+    owner = checkout.get("owner", "")
+
+    log.write(
+        "  POSTIMPORT CHECKOUT {0}: state={1}; owner={2}; opened={3}".format(
+            proposal["identifier"],
+            state,
+            owner or "<blank>",
+            checkout.get("opened_identifier", "") or "<blank>",
+        )
+    )
+
+    if post_sha.lower() == prewrite_sha.lower():
+        report["POST_IMPORT_VERIFICATION"] = "FAILED_UNCHANGED_FROM_PREWRITE"
+        set_error(
+            report,
+            "FAILED_IMPORT_UNVERIFIED",
+            (
+                "UF Clone returned without an exception, but the exact managed "
+                "drawing payload is unchanged from immediately before the write."
+            ),
+        )
+        return False
+
+    exact_source = post_sha.lower() == source_sha.lower()
+    if state not in ("CHECKED_IN", "CHECKED_OUT"):
+        report["POST_IMPORT_VERIFICATION"] = "FAILED_POST_CHECKOUT_UNKNOWN"
+        set_error(
+            report,
+            "FAILED_IMPORT_UNVERIFIED",
+            (
+                "The exact managed payload changed after UF Clone, but its "
+                "post-import checkout state could not be proven. Raw status: {0}"
+            ).format(checkout.get("raw", "") or "<none>"),
+        )
+        return False
+
+    if state == "CHECKED_OUT":
+        report["POST_IMPORT_VERIFICATION"] = (
+            "VERIFIED_SHA256_CHECKIN_REQUIRED"
+            if exact_source
+            else "MANUAL_CONTENT_AND_CHECKIN_REQUIRED"
+        )
+        report["RESULT"] = "MANUAL_CHECKIN_REQUIRED"
+        report["MESSAGE"] = (
+            "The exact managed drawing payload changed after UF Clone but is "
+            "still checked out by {0}. If this is your checkout, verify the "
+            "drawing and then check it in manually. If another user owns it or "
+            "the owner is unclear, stop and escalate. J16 will not call check-in."
+        ).format(owner or "<owner unavailable>")
+        return True
+
+    if exact_source:
+        report["POST_IMPORT_VERIFICATION"] = "VERIFIED_SHA256"
+        report["RESULT"] = "IMPORT_VERIFIED"
+        report["MESSAGE"] = (
+            "Exact Teamcenter drawing replacement and CHECKED_IN state were "
+            "verified by post-import associated-file SHA-256."
+        )
+        return False
+
+    report["POST_IMPORT_VERIFICATION"] = "MANUAL_CONTENT_VERIFICATION_REQUIRED"
+    report["RESULT"] = "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED"
+    report["MESSAGE"] = (
+        "The exact CHECKED_IN managed drawing payload changed after UF Clone, "
+        "but Teamcenter rewrote its bytes. Manually reopen and verify drawing "
+        "content, unchanged 3D master, and no duplicate managed objects."
+    )
+    return True
 
 
 def require_fresh_trial_session(session):
@@ -1652,36 +1758,47 @@ def execute(
                 "POST_IMPORT_EXPORT_FILE",
             )
             report["POST_IMPORT_TC_SHA256"] = post_sha
-            if post_sha.lower() != proposal["preflight_sha"].lower():
-                report["POST_IMPORT_VERIFICATION"] = "FAILED"
-                set_error(
-                    report,
-                    "FAILED_IMPORT_UNVERIFIED",
-                    (
-                        "UF Clone returned without an exception, but the exact "
-                        "Teamcenter drawing re-download does not match the "
-                        "approved local SHA-256."
-                    ),
-                )
+            post_checkout = inspect_target_checkout(
+                session, proposal["identifier"], log
+            )
+            review_required = classify_post_import(
+                proposal,
+                prewrite_sha,
+                post_sha,
+                post_checkout,
+                log,
+            )
+            if report["RESULT"] == "FAILED_IMPORT_UNVERIFIED":
                 log.write(
-                    "  UNVERIFIED {0}: source_sha256={1}; "
-                    "post_sha256={2}".format(
+                    "  UNVERIFIED {0}: source_sha256={1}; prewrite_sha256={2}; "
+                    "post_sha256={3}".format(
                         proposal["identifier"],
                         proposal["preflight_sha"],
+                        prewrite_sha,
                         post_sha,
                     )
                 )
-                mark_remaining_after_unverified_write(proposals, index + 1)
+                mark_remaining_after_stopped_write(
+                    proposals, index + 1, False
+                )
                 break
-
-            report["POST_IMPORT_VERIFICATION"] = "VERIFIED_SHA256"
-            report["RESULT"] = "IMPORT_VERIFIED"
-            report["MESSAGE"] = (
-                "Exact Teamcenter drawing replacement was verified by "
-                "post-import associated-file SHA-256."
-            )
+            if review_required:
+                log.write(
+                    "  REVIEW REQUIRED {0}: source_sha256={1}; "
+                    "prewrite_sha256={2}; post_sha256={3}; result={4}".format(
+                        proposal["identifier"],
+                        proposal["preflight_sha"],
+                        prewrite_sha,
+                        post_sha,
+                        report["RESULT"],
+                    )
+                )
+                mark_remaining_after_stopped_write(
+                    proposals, index + 1, True
+                )
+                break
             log.write(
-                "  VERIFIED {0}: sha256={1}".format(
+                "  VERIFIED {0}: sha256={1}; checkout=CHECKED_IN".format(
                     proposal["identifier"], post_sha
                 )
             )
@@ -1698,7 +1815,7 @@ def execute(
             )
             log.write("  FAILED or unverified apply: {0}".format(error_text(exc)))
             log.write(traceback.format_exc())
-            mark_remaining_after_unverified_write(proposals, index + 1)
+            mark_remaining_after_stopped_write(proposals, index + 1, False)
             break
 
     return reports
@@ -1727,6 +1844,15 @@ def has_failure(reports, mode):
     return False
 
 
+def has_review_required(reports):
+    review_results = (
+        "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
+        "MANUAL_CHECKIN_REQUIRED",
+        "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE",
+    )
+    return any(report.get("RESULT", "") in review_results for report in reports)
+
+
 def main():
     session = NXOpen.Session.GetSession()
     ufs = NXOpen.UF.UFSession.GetUFSession()
@@ -1745,7 +1871,10 @@ def main():
     log.write("Runtime target: NX X 2506 only")
     log.write("Checkout rule: every existing checkout blocks that row")
     log.write("Verification: GetAssociatedFiles + DownloadAssociatedFiles")
-    log.write("Success rule: exact downloaded native SHA-256 must match source")
+    log.write(
+        "Persistence rule: post payload must differ from prewrite; managed byte "
+        "transformations require manual content acceptance"
+    )
     if current_mode == "TRIAL_APPLY":
         log.write(
             "TRIAL LOCK: {0}/{1}/dwg{2}; fresh session; maximum one write".format(
@@ -1809,7 +1938,14 @@ def main():
                 "Review: {0}".format(report_path)
             )
 
-        log.write("FINAL STATUS: SUCCESS")
+        if has_review_required(reports):
+            log.write("FINAL STATUS: REVIEW_REQUIRED")
+            log.write(
+                "Do not rerun the import. Manually verify drawing content, "
+                "checkout state, unchanged 3D master, and managed object count."
+            )
+        else:
+            log.write("FINAL STATUS: SUCCESS")
 
     except Exception as exc:
         if "FINAL STATUS: FAILED" not in log.lines:
