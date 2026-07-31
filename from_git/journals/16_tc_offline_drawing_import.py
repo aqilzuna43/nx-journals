@@ -36,8 +36,8 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
-USER_MODE = "DRY_RUN"  # DRY_RUN | APPLY_ONE_APPROVED
+USER_IMPORT_CSV = r"C:\Users\my62022696\Downloads\CIB-30.07.26 RU\J16_DRY_RUN_20260731_221503.csv" # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
+USER_MODE = "APPLY_ONE_APPROVED"  # DRY_RUN | APPLY_ONE_APPROVED
 # Optional environment overrides:
 #   NX_TC_DRAWING_IMPORT_FILE=<full CSV path>
 #   NX_J16_MODE=DRY_RUN or APPLY_ONE_APPROVED
