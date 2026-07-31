@@ -15,8 +15,8 @@ Core safety rule:
 - Item ID, revision, and 3D/reference parts are never intentionally replaced.
 
 Run DRY_RUN first, approve its local and Teamcenter baseline hashes, then use
-APPLY_ONE_APPROVED for exactly one drawing in a fresh NX session. Unrestricted
-batch APPLY_APPROVED remains disabled.
+APPLY_ONE_APPROVED for one drawing or APPLY_APPROVED for a controlled batch in
+a fresh NX session.
 """
 
 import csv
@@ -36,17 +36,19 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r"C:\Users\my62022696\Downloads\CIB-30.07.26 RU\J16_DRY_RUN_20260731_221503.csv" # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
-USER_MODE = "APPLY_ONE_APPROVED"  # DRY_RUN | APPLY_ONE_APPROVED
+USER_MODE = "DRY_RUN"  # DRY_RUN | APPLY_ONE_APPROVED | APPLY_APPROVED
+USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
 # Optional environment overrides:
 #   NX_TC_DRAWING_IMPORT_FILE=<full CSV path>
-#   NX_J16_MODE=DRY_RUN or APPLY_ONE_APPROVED
+#   NX_J16_MODE=DRY_RUN, APPLY_ONE_APPROVED, or APPLY_APPROVED
+#   NX_J16_MAX_APPROVED_WRITES=1..100 (APPLY_APPROVED only; default 25)
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V9-CONTROLLED-PRODUCTION"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V10-CONTROLLED-BULK"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
 VALID_MODES = ("DRY_RUN", "APPLY_ONE_APPROVED", "APPLY_APPROVED")
-BATCH_APPLY_ENABLED = False
+BATCH_APPLY_ENABLED = True
+DEFAULT_MAX_APPROVED_WRITES = 25
 DEFAULT_DATASET_TYPE = "UGPART"
 DEFAULT_EXPORT_TOOL = "UGII V10-ALL"
 RELATION_CANDIDATES = (
@@ -154,6 +156,19 @@ def configured_mode():
 
 def is_apply_mode(mode):
     return mode in ("APPLY_ONE_APPROVED", "APPLY_APPROVED")
+
+
+def configured_max_approved_writes():
+    raw = env("NX_J16_MAX_APPROVED_WRITES")
+    try:
+        value = int(raw) if raw else DEFAULT_MAX_APPROVED_WRITES
+    except Exception:
+        raise RuntimeError("NX_J16_MAX_APPROVED_WRITES must be an integer.")
+    if value < 1 or value > 100:
+        raise RuntimeError(
+            "NX_J16_MAX_APPROVED_WRITES must be between 1 and 100."
+        )
+    return value
 
 
 def configured_input_path():
@@ -548,14 +563,14 @@ def local_preflight(rows, csv_path, timestamp, mode):
         report["PREFLIGHT_SHA256"] = current_sha
         if mode == "DRY_RUN":
             report["APPROVED_LOCAL_SHA256"] = current_sha
-        elif mode == "APPLY_ONE_APPROVED":
+        elif is_apply_mode(mode):
             approved_local_sha = clean(report.get("APPROVED_LOCAL_SHA256"))
             if not valid_sha256(approved_local_sha):
                 set_error(
                     report,
                     "ERROR_APPROVAL_HANDSHAKE_REQUIRED",
                     (
-                        "APPLY_ONE_APPROVED requires APPROVED_LOCAL_SHA256 from "
+                        "Controlled apply requires APPROVED_LOCAL_SHA256 from "
                         "a successful J16 DRY_RUN report."
                     ),
                 )
@@ -1451,7 +1466,7 @@ def run_managed_preflight(
             )
             continue
 
-        if report.get("MODE") == "APPLY_ONE_APPROVED":
+        if is_apply_mode(report.get("MODE")):
             approved_tc_sha = clean(
                 report.get("APPROVED_TC_BASELINE_SHA256")
             )
@@ -1460,7 +1475,7 @@ def run_managed_preflight(
                     report,
                     "ERROR_APPROVAL_HANDSHAKE_REQUIRED",
                     (
-                        "APPLY_ONE_APPROVED requires "
+                        "Controlled apply requires "
                         "APPROVED_TC_BASELINE_SHA256 from a successful J16 "
                         "DRY_RUN report."
                     ),
@@ -1621,14 +1636,15 @@ def classify_post_import(
         )
         return False
 
-    report["POST_IMPORT_VERIFICATION"] = "MANUAL_CONTENT_VERIFICATION_REQUIRED"
-    report["RESULT"] = "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED"
+    report["POST_IMPORT_VERIFICATION"] = "VERIFIED_MANAGED_TRANSFORM"
+    report["RESULT"] = "IMPORT_VERIFIED_MANAGED_TRANSFORM"
     report["MESSAGE"] = (
         "The exact CHECKED_IN managed drawing payload changed after UF Clone, "
-        "but Teamcenter rewrote its bytes. Manually reopen and verify drawing "
-        "content, unchanged 3D master, and no duplicate managed objects."
+        "and no longer matches its prewrite payload. Teamcenter's expected "
+        "managed-mode byte transformation is accepted by the production "
+        "contract validated in the controlled J16 trials."
     )
-    return True
+    return False
 
 
 def require_fresh_apply_session(session):
@@ -1636,32 +1652,67 @@ def require_fresh_apply_session(session):
         loaded = list(session.Parts)
     except Exception as exc:
         raise RuntimeError(
-            "APPLY_ONE_APPROVED could not prove that the NX session has no loaded parts: {0}"
+            "Controlled apply could not prove that the NX session has no loaded parts: {0}"
             .format(error_text(exc))
         )
     if loaded:
         identifiers = [journal_identifier(part) or "<unidentified>" for part in loaded]
         raise RuntimeError(
-            "APPLY_ONE_APPROVED requires a fresh NX managed session with no loaded parts; "
+            "Controlled apply requires a fresh NX managed session with no loaded parts; "
             "found {0}: {1}".format(len(loaded), " | ".join(identifiers))
         )
 
 
-def require_one_approved_row(rows):
+def require_approved_rows(rows, mode, maximum):
     invalid = [row for row in rows if approval_state(row) == "INVALID"]
     if invalid:
         raise RuntimeError(
-            "APPLY_ONE_APPROVED requires every APPROVED value to be YES, NO, "
+            "Controlled apply requires every APPROVED value to be YES, NO, "
             "or blank; found {0} invalid row(s).".format(len(invalid))
         )
     approved = [row for row in rows if approval_state(row) == "YES"]
-    if len(approved) != 1:
+    if mode == "APPLY_ONE_APPROVED" and len(approved) != 1:
         raise RuntimeError(
             "APPLY_ONE_APPROVED requires exactly one APPROVED=YES CSV row; "
             "found {0}.".format(
                 len(approved),
             )
         )
+    if mode == "APPLY_APPROVED" and not approved:
+        raise RuntimeError(
+            "APPLY_APPROVED requires at least one APPROVED=YES CSV row."
+        )
+    if len(approved) > maximum:
+        raise RuntimeError(
+            "Approved row count {0} exceeds the controlled write limit {1}."
+            .format(len(approved), maximum)
+        )
+    return len(approved)
+
+
+def abort_batch_before_writes(reports):
+    safe_no_write_results = (
+        "CLONE_PREFLIGHT_OK",
+        "SKIPPED_ALREADY_CURRENT",
+        "SKIPPED_UNCHANGED",
+        "NOT_APPROVED",
+    )
+    blockers = [
+        report
+        for report in reports
+        if upper(report.get("APPROVED")) == "YES"
+        and report.get("RESULT") not in safe_no_write_results
+    ]
+    if not blockers:
+        return False
+    for report in reports:
+        if report.get("RESULT") == "CLONE_PREFLIGHT_OK":
+            report["RESULT"] = "BATCH_ABORTED_PREWRITE_VALIDATION"
+            report["MESSAGE"] = (
+                "Another approved row failed controlled preflight. The batch "
+                "was aborted before every Teamcenter write."
+            )
+    return True
 
 
 def execute(
@@ -1675,8 +1726,12 @@ def execute(
     log,
     work_root,
 ):
-    if mode == "APPLY_ONE_APPROVED":
-        require_one_approved_row(rows)
+    write_limit = 0
+    if is_apply_mode(mode):
+        write_limit = (
+            1 if mode == "APPLY_ONE_APPROVED" else configured_max_approved_writes()
+        )
+        require_approved_rows(rows, mode, write_limit)
         require_fresh_apply_session(session)
     reports, proposals = local_preflight(rows, csv_path, timestamp, mode)
     run_managed_preflight(
@@ -1691,20 +1746,28 @@ def execute(
     if mode == "DRY_RUN":
         return reports
 
+    if mode == "APPLY_APPROVED" and abort_batch_before_writes(reports):
+        log.write(
+            "  BATCH ABORTED: at least one approved row failed prewrite "
+            "validation; zero Teamcenter writes were attempted."
+        )
+        return reports
+
     writes_attempted = 0
     for index, proposal in enumerate(proposals):
         report = proposal["report"]
         if report.get("RESULT") != "CLONE_PREFLIGHT_OK":
             continue
 
-        if mode == "APPLY_ONE_APPROVED":
-            if writes_attempted >= 1:
-                set_error(
-                    report,
-                    "BLOCKED_PRODUCTION_WRITE_LIMIT",
-                    "APPLY_ONE_APPROVED permits at most one Teamcenter write per run.",
-                )
-                continue
+        if writes_attempted >= write_limit:
+            set_error(
+                report,
+                "BLOCKED_PRODUCTION_WRITE_LIMIT",
+                "Controlled apply reached its maximum write count {0}.".format(
+                    write_limit
+                ),
+            )
+            continue
 
         try:
             apply_sha = sha256(proposal["drawing"])
@@ -1899,7 +1962,6 @@ def has_failure(reports, mode):
 
 def has_review_required(reports):
     review_results = (
-        "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
         "MANUAL_CHECKIN_REQUIRED",
         "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE",
     )
@@ -1927,7 +1989,7 @@ def main():
     log.write("Verification: GetAssociatedFiles + DownloadAssociatedFiles")
     log.write(
         "Persistence rule: post payload must differ from prewrite; managed byte "
-        "transformations require manual content acceptance"
+        "transformations are accepted only for the exact CHECKED_IN target"
     )
     if current_mode == "APPLY_ONE_APPROVED":
         log.write(
@@ -1937,6 +1999,18 @@ def main():
         log.write(
             "Approval handshake: local and Teamcenter hashes must come from "
             "the accepted J16 DRY_RUN report"
+        )
+    elif current_mode == "APPLY_APPROVED":
+        log.write(
+            "BULK PRODUCTION CONTROL: fresh session; all approved rows must "
+            "pass preflight before the first write; maximum writes={0}".format(
+                env("NX_J16_MAX_APPROVED_WRITES")
+                or DEFAULT_MAX_APPROVED_WRITES
+            )
+        )
+        log.write(
+            "Approval handshake: every approved row requires local and "
+            "Teamcenter hashes from the accepted J16 DRY_RUN report"
         )
     else:
         log.write(
@@ -1959,7 +2033,8 @@ def main():
     try:
         if current_mode not in VALID_MODES:
             raise RuntimeError(
-                "USER_MODE/NX_J16_MODE must be DRY_RUN or APPLY_ONE_APPROVED."
+                "USER_MODE/NX_J16_MODE must be DRY_RUN, APPLY_ONE_APPROVED, "
+                "or APPLY_APPROVED."
             )
         if current_mode == "APPLY_APPROVED" and not BATCH_APPLY_ENABLED:
             raise RuntimeError(

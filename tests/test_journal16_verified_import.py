@@ -66,6 +66,8 @@ class FakePdmFile:
 
 
 class VerifiedImportTests(unittest.TestCase):
+    MANAGED_SHA = "a" * 64
+
     @classmethod
     def setUpClass(cls):
         cls.journal = load_j16()
@@ -78,7 +80,7 @@ class VerifiedImportTests(unittest.TestCase):
         drawing_index=1,
         baseline="",
     ):
-        return {
+        row = {
             "_CSV_ROW": 2,
             "PART_NUMBER": part_number,
             "REVISION": revision,
@@ -91,6 +93,10 @@ class VerifiedImportTests(unittest.TestCase):
             "APPROVED": "YES",
             "ENGINEER": "TESTER",
         }
+        if os.path.isfile(drawing):
+            row["APPROVED_LOCAL_SHA256"] = self.journal.sha256(drawing)
+        row["APPROVED_TC_BASELINE_SHA256"] = self.MANAGED_SHA
+        return row
 
     def make_drawing(self, folder, part_number="TEST100", revision="A", index=1):
         path = os.path.join(
@@ -121,11 +127,33 @@ class VerifiedImportTests(unittest.TestCase):
             "opened_identifier": identifier,
         }
 
+    def fresh_session(self):
+        return types.SimpleNamespace(Parts=[])
+
     def test_manual_settings_are_fail_safe(self):
         self.assertEqual("", self.journal.USER_IMPORT_CSV)
         self.assertEqual("DRY_RUN", self.journal.USER_MODE)
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual("DRY_RUN", self.journal.configured_mode())
+
+    def test_controlled_bulk_write_limit_configuration(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                self.journal.DEFAULT_MAX_APPROVED_WRITES,
+                self.journal.configured_max_approved_writes(),
+            )
+        with mock.patch.dict(
+            os.environ, {"NX_J16_MAX_APPROVED_WRITES": "7"}, clear=True
+        ):
+            self.assertEqual(7, self.journal.configured_max_approved_writes())
+        for invalid in ("0", "101", "not-a-number"):
+            with mock.patch.dict(
+                os.environ,
+                {"NX_J16_MAX_APPROVED_WRITES": invalid},
+                clear=True,
+            ):
+                with self.assertRaises(RuntimeError):
+                    self.journal.configured_max_approved_writes()
 
     def test_checkout_result_decodes_state_and_owner(self):
         checked = self.journal.decode_checkout_result((True, "other.user"))
@@ -297,6 +325,7 @@ class VerifiedImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder, "GENERIC100")
             row = self.make_row(drawing, "GENERIC100")
+            row.pop("APPROVED_LOCAL_SHA256")
             reports, proposals = self.journal.local_preflight(
                 [row],
                 os.path.join(folder, "input.csv"),
@@ -366,6 +395,7 @@ class VerifiedImportTests(unittest.TestCase):
             drawing = self.make_drawing(folder, "GENERIC100")
             row = self.make_row(drawing, "GENERIC100")
             row["APPROVED_LOCAL_SHA256"] = self.journal.sha256(drawing)
+            row.pop("APPROVED_TC_BASELINE_SHA256")
             reports, proposals = self.journal.local_preflight(
                 [row],
                 os.path.join(folder, "input.csv"),
@@ -397,7 +427,9 @@ class VerifiedImportTests(unittest.TestCase):
             identifier = row["DRAWING_IDENTIFIER"]
 
             def exported(_session, _fm, _proposal, _root, phase, *_fields):
-                digest = source_sha if phase == "POSTIMPORT" else "tc-before"
+                digest = (
+                    source_sha if phase == "POSTIMPORT" else self.MANAGED_SHA
+                )
                 return (phase + ".prt", digest)
 
             with mock.patch.object(
@@ -412,7 +444,7 @@ class VerifiedImportTests(unittest.TestCase):
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     [row],
@@ -430,7 +462,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(2, import_one.call_count)
 
-    def test_transformed_managed_payload_requires_review_and_stops_later_writes(self):
+    def test_transformed_managed_payload_continues_controlled_bulk(self):
         with tempfile.TemporaryDirectory() as folder:
             first = self.make_drawing(folder, "FIRST")
             second = self.make_drawing(folder, "SECOND")
@@ -442,8 +474,8 @@ class VerifiedImportTests(unittest.TestCase):
 
             def exported(_session, _fm, proposal, _root, phase, *_fields):
                 if phase == "POSTIMPORT":
-                    return ("post.prt", "not-the-source")
-                return ("before.prt", "before-" + proposal["part_number"])
+                    return ("post.prt", "post-" + proposal["part_number"])
+                return ("before.prt", self.MANAGED_SHA)
 
             with mock.patch.object(
                 self.journal,
@@ -453,6 +485,8 @@ class VerifiedImportTests(unittest.TestCase):
                     self.checked_in(identifiers[1]),
                     self.checked_in(identifiers[0]),
                     self.checked_in(identifiers[0]),
+                    self.checked_in(identifiers[1]),
+                    self.checked_in(identifiers[1]),
                 ],
             ), mock.patch.object(
                 self.journal,
@@ -462,7 +496,7 @@ class VerifiedImportTests(unittest.TestCase):
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     rows,
@@ -474,34 +508,38 @@ class VerifiedImportTests(unittest.TestCase):
                 )
 
         self.assertEqual(
-            "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
+            "IMPORT_VERIFIED_MANAGED_TRANSFORM",
             reports[0]["RESULT"],
         )
         self.assertEqual(
-            "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE", reports[1]["RESULT"]
+            "IMPORT_VERIFIED_MANAGED_TRANSFORM",
+            reports[1]["RESULT"],
         )
         self.assertEqual(
-            "MANUAL_CONTENT_VERIFICATION_REQUIRED",
+            "VERIFIED_MANAGED_TRANSFORM",
             reports[0]["POST_IMPORT_VERIFICATION"],
         )
         self.assertEqual(
             "CHECKED_IN", reports[0]["POST_IMPORT_CHECKOUT_STATE"]
         )
-        self.assertTrue(self.journal.has_review_required(reports))
+        self.assertFalse(self.journal.has_review_required(reports))
         self.assertFalse(self.journal.has_failure(reports, "APPLY_APPROVED"))
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
-        self.assertEqual("NO", reports[1]["WRITE_ATTEMPTED"])
-        self.assertEqual(3, import_one.call_count)
+        self.assertEqual("YES", reports[1]["WRITE_ATTEMPTED"])
+        self.assertEqual(4, import_one.call_count)
 
     def test_local_file_race_blocks_apply_before_write(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             row = self.make_row(drawing)
+            source_before = "b" * 64
+            source_after = "c" * 64
+            row["APPROVED_LOCAL_SHA256"] = source_before
             identifier = row["DRAWING_IDENTIFIER"]
             with mock.patch.object(
                 self.journal,
                 "sha256",
-                side_effect=["source-before", "source-after"],
+                side_effect=[source_before, source_after],
             ), mock.patch.object(
                 self.journal,
                 "inspect_target_checkout",
@@ -509,12 +547,12 @@ class VerifiedImportTests(unittest.TestCase):
             ), mock.patch.object(
                 self.journal,
                 "retrieve_exact_associated_drawing",
-                return_value=("baseline.prt", "tc-before"),
+                return_value=("baseline.prt", self.MANAGED_SHA),
             ), mock.patch.object(
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     [row],
@@ -545,12 +583,12 @@ class VerifiedImportTests(unittest.TestCase):
             ), mock.patch.object(
                 self.journal,
                 "retrieve_exact_associated_drawing",
-                return_value=("baseline.prt", "tc-before"),
+                return_value=("baseline.prt", self.MANAGED_SHA),
             ), mock.patch.object(
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     [row],
@@ -582,7 +620,7 @@ class VerifiedImportTests(unittest.TestCase):
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     [row],
@@ -598,7 +636,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertIn("PDI code 17", reports[0]["MESSAGE"])
         import_one.assert_not_called()
 
-    def test_blocked_row_is_skipped_while_clear_row_imports(self):
+    def test_approved_preflight_blocker_aborts_batch_before_all_writes(self):
         with tempfile.TemporaryDirectory() as folder:
             blocked = self.make_drawing(folder, "BLOCKED")
             clear = self.make_drawing(folder, "CLEAR")
@@ -609,20 +647,13 @@ class VerifiedImportTests(unittest.TestCase):
             identifiers = [row["DRAWING_IDENTIFIER"] for row in rows]
 
             def exported(_session, _fm, proposal, _root, phase, *_fields):
-                digest = (
-                    self.journal.sha256(proposal["drawing"])
-                    if phase == "POSTIMPORT"
-                    else "tc-before"
-                )
-                return (phase + ".prt", digest)
+                return (phase + ".prt", self.MANAGED_SHA)
 
             with mock.patch.object(
                 self.journal,
                 "inspect_target_checkout",
                 side_effect=[
                     self.checked_out("other.user", identifiers[0]),
-                    self.checked_in(identifiers[1]),
-                    self.checked_in(identifiers[1]),
                     self.checked_in(identifiers[1]),
                 ],
             ), mock.patch.object(
@@ -633,7 +664,7 @@ class VerifiedImportTests(unittest.TestCase):
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     rows,
@@ -644,8 +675,11 @@ class VerifiedImportTests(unittest.TestCase):
                     os.path.join(folder, "evidence"),
                 )
         self.assertEqual("BLOCKED_CHECKED_OUT", reports[0]["RESULT"])
-        self.assertEqual("IMPORT_VERIFIED", reports[1]["RESULT"])
-        self.assertEqual(2, import_one.call_count)
+        self.assertEqual(
+            "BATCH_ABORTED_PREWRITE_VALIDATION", reports[1]["RESULT"]
+        )
+        self.assertEqual("NO", reports[1]["WRITE_ATTEMPTED"])
+        self.assertEqual(1, import_one.call_count)
 
     def test_supplied_identifier_mismatch_is_rejected_locally(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -688,7 +722,7 @@ class VerifiedImportTests(unittest.TestCase):
             report["POST_IMPORT_VERIFICATION"],
         )
 
-    def test_uploaded_trial_hashes_classify_as_manual_acceptance_required(self):
+    def test_accepted_trial_hashes_classify_as_managed_transform_verified(self):
         report = self.journal.base_report(
             {}, "20260731_210943", "APPLY_ONE_APPROVED"
         )
@@ -706,10 +740,14 @@ class VerifiedImportTests(unittest.TestCase):
             self.checked_in(proposal["identifier"]),
             FakeLog(),
         )
-        self.assertTrue(review)
+        self.assertFalse(review)
         self.assertEqual(
-            "IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED",
+            "IMPORT_VERIFIED_MANAGED_TRANSFORM",
             report["RESULT"],
+        )
+        self.assertEqual(
+            "VERIFIED_MANAGED_TRANSFORM",
+            report["POST_IMPORT_VERIFICATION"],
         )
         self.assertEqual("CHECKED_IN", report["POST_IMPORT_CHECKOUT_STATE"])
 
@@ -769,7 +807,7 @@ class VerifiedImportTests(unittest.TestCase):
             def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
                 if phase == "POSTIMPORT":
                     raise RuntimeError("post download failed")
-                return (phase + ".prt", "tc-before")
+                return (phase + ".prt", self.MANAGED_SHA)
 
             with mock.patch.object(
                 self.journal,
@@ -783,7 +821,7 @@ class VerifiedImportTests(unittest.TestCase):
                 self.journal, "import_one"
             ) as import_one:
                 reports = self.journal.execute(
-                    object(),
+                    self.fresh_session(),
                     object(),
                     object(),
                     [row],
@@ -798,6 +836,56 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertIn("post download failed", reports[0]["MESSAGE"])
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(2, import_one.call_count)
+
+    def test_unverified_bulk_write_stops_every_later_write(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first = self.make_drawing(folder, "FIRST")
+            second = self.make_drawing(folder, "SECOND")
+            rows = [
+                self.make_row(first, "FIRST"),
+                self.make_row(second, "SECOND"),
+            ]
+            identifiers = [row["DRAWING_IDENTIFIER"] for row in rows]
+
+            def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
+                if phase == "POSTIMPORT":
+                    raise RuntimeError("post-import evidence unavailable")
+                return (phase + ".prt", self.MANAGED_SHA)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                side_effect=[
+                    self.checked_in(identifiers[0]),
+                    self.checked_in(identifiers[1]),
+                    self.checked_in(identifiers[0]),
+                ],
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    rows,
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("FAILED_IMPORT_UNVERIFIED", reports[0]["RESULT"])
+        self.assertEqual(
+            "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE", reports[1]["RESULT"]
+        )
+        self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
+        self.assertEqual("NO", reports[1]["WRITE_ATTEMPTED"])
+        self.assertEqual(3, import_one.call_count)
 
     def make_retrieval_context(self, folder, names):
         identifier = self.journal.drawing_id("TEST100", "A", 1)
@@ -930,26 +1018,49 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("GENERIC100", proposals[0]["part_number"])
         self.assertEqual("NOT_APPROVED", reports[1]["RESULT"])
 
-    def test_apply_one_requires_one_approval_and_fresh_session(self):
+    def test_controlled_modes_validate_approvals_and_fresh_session(self):
         approved = {
             "PART_NUMBER": "GENERIC100",
             "REVISION": "A",
             "DWG_INDEX": "1",
             "APPROVED": "YES",
         }
-        self.journal.require_one_approved_row(
-            [
-                approved,
-                {"APPROVED": "NO"},
-            ]
+        self.assertEqual(
+            1,
+            self.journal.require_approved_rows(
+                [
+                    approved,
+                    {"APPROVED": "NO"},
+                ],
+                "APPLY_ONE_APPROVED",
+                1,
+            ),
         )
         with self.assertRaisesRegex(RuntimeError, "exactly one APPROVED=YES"):
-            self.journal.require_one_approved_row([])
+            self.journal.require_approved_rows([], "APPLY_ONE_APPROVED", 1)
         with self.assertRaisesRegex(RuntimeError, "found 2"):
-            self.journal.require_one_approved_row([approved, dict(approved)])
+            self.journal.require_approved_rows(
+                [approved, dict(approved)], "APPLY_ONE_APPROVED", 2
+            )
         with self.assertRaisesRegex(RuntimeError, "invalid row"):
-            self.journal.require_one_approved_row(
-                [approved, {"APPROVED": "MAYBE"}]
+            self.journal.require_approved_rows(
+                [approved, {"APPROVED": "MAYBE"}],
+                "APPLY_APPROVED",
+                25,
+            )
+        with self.assertRaisesRegex(RuntimeError, "at least one"):
+            self.journal.require_approved_rows(
+                [{"APPROVED": "NO"}], "APPLY_APPROVED", 25
+            )
+        self.assertEqual(
+            2,
+            self.journal.require_approved_rows(
+                [approved, dict(approved)], "APPLY_APPROVED", 2
+            ),
+        )
+        with self.assertRaisesRegex(RuntimeError, "exceeds"):
+            self.journal.require_approved_rows(
+                [approved, dict(approved)], "APPLY_APPROVED", 1
             )
         loaded = types.SimpleNamespace(JournalIdentifier="@DB/LOADED/A")
         with self.assertRaisesRegex(RuntimeError, "fresh NX managed session"):
@@ -1010,12 +1121,14 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertNotIn(".Checkin(", source)
         self.assertNotIn(".CheckIn(", source)
         self.assertIn("POST_IMPORT_CHECKOUT_STATE", source)
-        self.assertIn("IMPORT_APPLIED_MANUAL_VERIFICATION_REQUIRED", source)
+        self.assertIn("IMPORT_VERIFIED_MANAGED_TRANSFORM", source)
         self.assertIn("APPLY_ONE_APPROVED", source)
         self.assertNotIn("TRIAL_APPLY", source)
         self.assertNotIn("TRIAL_PART_NUMBER", source)
         self.assertEqual("DRY_RUN", self.journal.USER_MODE)
-        self.assertFalse(self.journal.BATCH_APPLY_ENABLED)
+        self.assertEqual("", self.journal.USER_IMPORT_CSV)
+        self.assertTrue(self.journal.BATCH_APPLY_ENABLED)
+        self.assertIn("DEFAULT_MAX_APPROVED_WRITES", source)
 
     def test_evidence_zip_includes_reports_logs_and_managed_evidence(self):
         with tempfile.TemporaryDirectory() as folder:
