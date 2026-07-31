@@ -14,7 +14,9 @@ Core safety rule:
 - Only the exact local drawing is set to Overwrite.
 - Item ID, revision, and 3D/reference parts are never intentionally replaced.
 
-Run DRY_RUN first. APPLY_APPROVED writes only APPROVED=YES rows with ENGINEER.
+Run DRY_RUN first. TRIAL_APPLY is hard-limited to 264MN021218A01/A/dwg1,
+one approved write, in a fresh NX session. Batch APPLY_APPROVED is disabled in
+this release until the controlled trial is accepted.
 """
 
 import csv
@@ -22,6 +24,7 @@ import datetime
 import hashlib
 import os
 import re
+import shutil
 import traceback
 from collections import Counter
 
@@ -33,15 +36,19 @@ import NXOpen.UF
 # USER SETTINGS
 # ============================================================================
 USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
-USER_MODE = "DRY_RUN"  # DRY_RUN | APPLY_APPROVED
+USER_MODE = "DRY_RUN"  # DRY_RUN | TRIAL_APPLY
 # Optional environment overrides:
 #   NX_TC_DRAWING_IMPORT_FILE=<full CSV path>
-#   NX_J16_MODE=DRY_RUN or APPLY_APPROVED
+#   NX_J16_MODE=DRY_RUN or TRIAL_APPLY
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V6"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V7-TRIAL"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
-VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
+VALID_MODES = ("DRY_RUN", "TRIAL_APPLY", "APPLY_APPROVED")
+BATCH_APPLY_ENABLED = False
+TRIAL_PART_NUMBER = "264MN021218A01"
+TRIAL_REVISION = "A"
+TRIAL_DRAWING_INDEX = 1
 DEFAULT_DATASET_TYPE = "UGPART"
 DEFAULT_EXPORT_TOOL = "UGII V10-ALL"
 RELATION_CANDIDATES = (
@@ -79,16 +86,23 @@ REPORT_COLUMNS = [
     "CHECKOUT_STATE",
     "CHECKOUT_OWNER",
     "CHECKOUT_RAW",
+    "VERIFICATION_CHANNEL",
     "RELATION_TYPE",
+    "BASELINE_ASSOCIATED_FILES",
+    "BASELINE_DOWNLOAD_CWD",
     "BASELINE_EXPORT_PDI_CODE",
     "BASELINE_EXPORT_FILE",
     "TC_BASELINE_SHA256",
     "CLONE_PREFLIGHT",
     "CHECKOUT_RECHECK_STATE",
     "CHECKOUT_RECHECK_OWNER",
+    "PREWRITE_ASSOCIATED_FILES",
+    "PREWRITE_DOWNLOAD_CWD",
     "PREWRITE_EXPORT_PDI_CODE",
     "PREWRITE_EXPORT_FILE",
     "PREWRITE_TC_SHA256",
+    "POST_IMPORT_ASSOCIATED_FILES",
+    "POST_IMPORT_DOWNLOAD_CWD",
     "POST_IMPORT_EXPORT_PDI_CODE",
     "POST_IMPORT_EXPORT_FILE",
     "POST_IMPORT_TC_SHA256",
@@ -130,6 +144,18 @@ def io_root():
 
 def configured_mode():
     return upper(env("NX_J16_MODE") or USER_MODE or "DRY_RUN")
+
+
+def is_apply_mode(mode):
+    return mode in ("TRIAL_APPLY", "APPLY_APPROVED")
+
+
+def trial_target_key():
+    return (upper(TRIAL_PART_NUMBER), upper(TRIAL_REVISION), TRIAL_DRAWING_INDEX)
+
+
+def is_trial_target(part_number, revision, drawing_index):
+    return (upper(part_number), upper(revision), drawing_index) == trial_target_key()
 
 
 def configured_input_path():
@@ -343,16 +369,23 @@ def base_report(row, timestamp, mode):
         "CHECKOUT_STATE": "NOT_CHECKED",
         "CHECKOUT_OWNER": "",
         "CHECKOUT_RAW": "",
+        "VERIFICATION_CHANNEL": "GetAssociatedFiles+DownloadAssociatedFiles",
         "RELATION_TYPE": "",
+        "BASELINE_ASSOCIATED_FILES": "",
+        "BASELINE_DOWNLOAD_CWD": "",
         "BASELINE_EXPORT_PDI_CODE": "",
         "BASELINE_EXPORT_FILE": "",
         "TC_BASELINE_SHA256": "",
         "CLONE_PREFLIGHT": "NOT_RUN",
         "CHECKOUT_RECHECK_STATE": "NOT_RUN",
         "CHECKOUT_RECHECK_OWNER": "",
+        "PREWRITE_ASSOCIATED_FILES": "",
+        "PREWRITE_DOWNLOAD_CWD": "",
         "PREWRITE_EXPORT_PDI_CODE": "",
         "PREWRITE_EXPORT_FILE": "",
         "PREWRITE_TC_SHA256": "",
+        "POST_IMPORT_ASSOCIATED_FILES": "",
+        "POST_IMPORT_DOWNLOAD_CWD": "",
         "POST_IMPORT_EXPORT_PDI_CODE": "",
         "POST_IMPORT_EXPORT_FILE": "",
         "POST_IMPORT_TC_SHA256": "",
@@ -383,6 +416,21 @@ def local_preflight(rows, csv_path, timestamp, mode):
         report = base_report(row, timestamp, mode)
         reports.append(report)
 
+        try:
+            part_number, revision, drawing_index = parse_target(row)
+        except Exception as exc:
+            set_error(report, "ERROR_INPUT", error_text(exc), exc)
+            continue
+
+        if mode == "TRIAL_APPLY" and not is_trial_target(
+            part_number, revision, drawing_index
+        ):
+            report["RESULT"] = "TRIAL_SCOPE_SKIPPED"
+            report["MESSAGE"] = (
+                "TRIAL_APPLY is locked to {0}/{1}/dwg{2}; this row cannot write."
+            ).format(TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX)
+            continue
+
         approval = approval_state(row)
         if approval == "INVALID":
             set_error(
@@ -392,17 +440,18 @@ def local_preflight(rows, csv_path, timestamp, mode):
             )
             continue
 
-        # In apply mode, unapproved rows are not candidates and cannot block
-        # approved rows because of stale/missing local files.
-        if mode == "APPLY_APPROVED" and approval != "YES":
-            report["RESULT"] = "NOT_APPROVED"
-            report["MESSAGE"] = "No write authorized for this row."
-            continue
-
-        try:
-            part_number, revision, drawing_index = parse_target(row)
-        except Exception as exc:
-            set_error(report, "ERROR_INPUT", error_text(exc), exc)
+        # In an apply mode, unapproved rows are not candidates and cannot
+        # block approved rows because of stale/missing local files.
+        if is_apply_mode(mode) and approval != "YES":
+            if mode == "TRIAL_APPLY":
+                set_error(
+                    report,
+                    "BLOCKED_TRIAL_NOT_APPROVED",
+                    "The locked trial row must have APPROVED=YES before any write.",
+                )
+            else:
+                report["RESULT"] = "NOT_APPROVED"
+                report["MESSAGE"] = "No write authorized for this row."
             continue
 
         target_key = (upper(part_number), upper(revision), drawing_index)
@@ -414,7 +463,7 @@ def local_preflight(rows, csv_path, timestamp, mode):
             )
             continue
 
-        if mode == "APPLY_APPROVED" and not clean(row.get("ENGINEER")):
+        if is_apply_mode(mode) and not clean(row.get("ENGINEER")):
             set_error(
                 report,
                 "ERROR_ENGINEER_REQUIRED",
@@ -699,7 +748,7 @@ def inspect_target_checkout(session, identifier, log):
 
 
 # ---------------------------------------------------------------------------
-# Read-only exact-dataset export and persistence verification
+# Read-only exact-dataset associated-file retrieval and verification
 # ---------------------------------------------------------------------------
 def new_file_management(session):
     pdm = getattr(session, "PdmSession", None)
@@ -713,163 +762,79 @@ def new_file_management(session):
     return pdm, method()
 
 
-def integer_list(value):
-    if value is None or isinstance(value, bool):
-        return []
-    if isinstance(value, int):
-        return [int(value)]
-    if isinstance(value, (tuple, list)):
-        return [
-            int(item)
-            for item in value
-            if isinstance(item, int) and not isinstance(item, bool)
-        ]
-    try:
-        return [int(item) for item in value]
-    except Exception:
-        return []
-
-
-def string_list(value):
-    if isinstance(value, str):
-        return [value] if value else []
-    if isinstance(value, (tuple, list)):
-        return [item for item in value if isinstance(item, str) and item]
-    try:
-        return [item for item in value if isinstance(item, str) and item]
-    except Exception:
-        return []
-
-
-def parse_codes_and_strings(result):
-    codes = []
-    strings = []
-    if isinstance(result, (tuple, list)):
-        for item in result:
-            candidate_codes = integer_list(item)
-            if candidate_codes and not codes:
-                codes = candidate_codes
-            strings.extend(string_list(item))
-    else:
-        codes = integer_list(result)
-        strings = string_list(result)
-    return codes, strings
-
-
-def invoke_export_files(file_management, proposal, relation_type, export_root):
-    os.makedirs(export_root, exist_ok=True)
-    args = (
-        [proposal["part_number"]],
-        [proposal["revision"]],
-        [proposal["dataset_name"]],
-        [proposal["dataset_type"]],
-        [relation_type],
-        [export_root],
-        [proposal["export_tool"]],
-    )
-    method = getattr(file_management, "ExportFiles", None)
-    if not callable(method):
-        raise RuntimeError("PDM FileManagement.ExportFiles is unavailable.")
-
-    output_directories = []
-    try:
-        raw = method(*args)
-    except TypeError:
-        raw = method(*(args + (output_directories,)))
-    codes, returned_paths = parse_codes_and_strings(raw)
-    returned_paths.extend(string_list(output_directories))
-    return (codes[0] if codes else None), returned_paths, repr(raw)[:2000]
-
-
-def all_prt_files(root, returned_paths):
-    candidates = []
-    for path in returned_paths:
-        absolute = os.path.abspath(path)
-        if os.path.isfile(absolute) and absolute.lower().endswith(".prt"):
-            candidates.append(absolute)
-        elif os.path.isdir(absolute):
-            for folder, _, files in os.walk(absolute):
-                candidates.extend(
-                    os.path.join(folder, name)
-                    for name in files
-                    if name.lower().endswith(".prt")
-                )
-    if os.path.isdir(root):
-        for folder, _, files in os.walk(root):
-            candidates.extend(
-                os.path.join(folder, name)
-                for name in files
-                if name.lower().endswith(".prt")
-            )
-    unique = {
-        os.path.normcase(os.path.abspath(path)): os.path.abspath(path)
-        for path in candidates
-    }
-    return sorted(unique.values(), key=lambda value: value.lower())
-
-
-def select_exported_drawing(root, returned_paths, proposal):
-    files = all_prt_files(root, returned_paths)
-    matches = [
-        path
-        for path in files
-        if valid_native(
-            path,
-            proposal["part_number"],
-            proposal["revision"],
-            proposal["drawing_index"],
-        )
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        raise RuntimeError(
-            "Multiple exported .prt files matched the exact drawing: {0}".format(
-                " | ".join(matches)
-            )
-        )
-    if len(files) == 1:
-        return files[0]
-    if not files:
-        raise RuntimeError("Export returned no native .prt file for the target.")
-    raise RuntimeError(
-        "Export returned multiple unmatched .prt files: {0}".format(
-            " | ".join(files)
-        )
-    )
-
-
-def export_exact_dataset(
-    file_management,
-    proposal,
-    relation_type,
-    export_root,
-    pdi_field,
-    file_field,
-):
-    code, returned_paths, raw = invoke_export_files(
-        file_management, proposal, relation_type, export_root
-    )
-    proposal["report"][pdi_field] = "" if code is None else str(code)
-    if code != 0:
-        raise RuntimeError(
-            "PDM ExportFiles failed for relation '{0}' with PDI code {1}; "
-            "raw={2}".format(
-                relation_type,
-                "<missing>" if code is None else code,
-                raw,
-            )
-        )
-    exported = select_exported_drawing(export_root, returned_paths, proposal)
-    proposal["report"][file_field] = exported
-    return exported, sha256(exported)
-
-
 def safe_folder_name(value):
     return re.sub(r"[^A-Za-z0-9_.-]", "_", clean(value))
 
 
-def resolve_relation_and_export(
+def managed_native_name(part_number, revision, drawing_index):
+    return "{0}_{1}_dwg{2}.prt".format(
+        part_number, revision, drawing_index
+    )
+
+
+def collect_pdm_files(value):
+    files = []
+    seen = set()
+
+    def visit(candidate):
+        if isinstance(candidate, (tuple, list)):
+            for item in candidate:
+                visit(item)
+            return
+        if callable(getattr(candidate, "GetFileName", None)):
+            marker = id(candidate)
+            if marker not in seen:
+                seen.add(marker)
+                files.append(candidate)
+
+    visit(value)
+    return files
+
+
+def pdm_file_name(value):
+    method = getattr(value, "GetFileName", None)
+    if not callable(method):
+        return ""
+    try:
+        return clean(method())
+    except Exception:
+        return ""
+
+
+def release_pdm_files(files):
+    for value in files:
+        method = getattr(value, "FreeResource", None)
+        if not callable(method):
+            method = getattr(value, "Dispose", None)
+        if callable(method):
+            try:
+                method()
+            except Exception:
+                pass
+
+
+def phase_report_fields(phase):
+    fields = {
+        "BASELINE": (
+            "BASELINE_ASSOCIATED_FILES",
+            "BASELINE_DOWNLOAD_CWD",
+        ),
+        "PREWRITE": (
+            "PREWRITE_ASSOCIATED_FILES",
+            "PREWRITE_DOWNLOAD_CWD",
+        ),
+        "POSTIMPORT": (
+            "POST_IMPORT_ASSOCIATED_FILES",
+            "POST_IMPORT_DOWNLOAD_CWD",
+        ),
+    }
+    if phase not in fields:
+        raise RuntimeError("Unknown retrieval phase: {0}".format(phase))
+    return fields[phase]
+
+
+def retrieve_exact_associated_drawing(
+    session,
     file_management,
     proposal,
     root,
@@ -877,40 +842,124 @@ def resolve_relation_and_export(
     pdi_field,
     file_field,
 ):
-    relations = (
-        (proposal["relation_type"],)
-        if clean(proposal.get("relation_type"))
-        else configured_relation_candidates()
+    """Download and fingerprint the exact native UGPART proven by J19 V2."""
+    report = proposal["report"]
+    associated_field, cwd_field = phase_report_fields(phase)
+    evidence_root = os.path.join(root, "{0}_ASSOCIATED_FILES".format(phase))
+    os.makedirs(evidence_root, exist_ok=True)
+    expected_name = managed_native_name(
+        proposal["part_number"],
+        proposal["revision"],
+        proposal["drawing_index"],
     )
-    attempts = []
-    for index, relation in enumerate(relations, 1):
-        candidate_root = os.path.join(
-            root,
-            "{0}_RELATION_{1}_{2}".format(
-                safe_folder_name(phase),
-                index,
-                safe_folder_name(relation),
-            ),
-        )
-        try:
-            exported, digest = export_exact_dataset(
-                file_management,
-                proposal,
-                relation,
-                candidate_root,
-                pdi_field,
-                file_field,
+    part = find_loaded_by_identifier(session, proposal["identifier"])
+    load_status = None
+    opened_here = False
+    pdm_files = []
+    original_cwd = os.getcwd()
+    download_cwd = original_cwd
+    try:
+        if part is None:
+            part, load_status = unwrap_open_result(
+                session.Parts.OpenBase(proposal["identifier"])
             )
-            proposal["relation_type"] = relation
-            proposal["report"]["RELATION_TYPE"] = relation
-            return exported, digest
-        except Exception as exc:
-            attempts.append("{0}: {1}".format(relation, error_text(exc)))
-    raise RuntimeError(
-        "Could not export the exact UGPART specification. Attempts: {0}".format(
-            " || ".join(attempts)
+            opened_here = True
+        if part is None:
+            raise RuntimeError("OpenBase returned no part for exact specification.")
+        actual = journal_identifier(part)
+        if upper(actual).replace("\\", "/") != upper(
+            proposal["identifier"]
+        ).replace("\\", "/"):
+            raise RuntimeError(
+                "Opened JournalIdentifier does not match exact target: {0}".format(
+                    actual or "<blank>"
+                )
+            )
+
+        get_method = getattr(file_management, "GetAssociatedFiles", None)
+        download_method = getattr(file_management, "DownloadAssociatedFiles", None)
+        if not callable(get_method) or not callable(download_method):
+            raise RuntimeError(
+                "PDM GetAssociatedFiles/DownloadAssociatedFiles is unavailable."
+            )
+
+        raw_files = get_method([part], [])
+        pdm_files = collect_pdm_files(raw_files)
+        names = [pdm_file_name(value) for value in pdm_files]
+        report[associated_field] = " | ".join(
+            name or "<unreadable>" for name in names
         )
-    )
+        exact_files = [
+            value
+            for value, name in zip(pdm_files, names)
+            if os.path.basename(name).lower() == expected_name.lower()
+        ]
+        if len(exact_files) != 1:
+            raise RuntimeError(
+                "Expected exactly one associated native drawing named {0}; "
+                "found {1}. Associated files: {2}".format(
+                    expected_name,
+                    len(exact_files),
+                    report[associated_field] or "<none>",
+                )
+            )
+
+        download_result = download_method([part], pdm_files)
+        returned_files = collect_pdm_files(download_result)
+        for value in returned_files:
+            if all(value is not existing for existing in pdm_files):
+                pdm_files.append(value)
+        download_cwd = os.getcwd()
+        report[cwd_field] = "{0} -> {1}".format(original_cwd, download_cwd)
+        report[pdi_field] = "N/A_ASSOCIATED_FILES"
+        report["RELATION_TYPE"] = "N/A_ASSOCIATED_FILES"
+
+        candidate_names = [pdm_file_name(exact_files[0]), expected_name]
+        candidate_names.extend(
+            pdm_file_name(value)
+            for value in returned_files
+            if os.path.basename(pdm_file_name(value)).lower()
+            == expected_name.lower()
+        )
+        physical = {}
+        for name in candidate_names:
+            if not name:
+                continue
+            candidates = [name] if os.path.isabs(name) else [
+                os.path.join(download_cwd, name)
+            ]
+            for candidate in candidates:
+                if os.path.isfile(candidate):
+                    absolute = os.path.abspath(candidate)
+                    physical[os.path.normcase(absolute)] = absolute
+        if len(physical) != 1:
+            raise RuntimeError(
+                "DownloadAssociatedFiles did not materialize one unambiguous "
+                "{0}; found {1} physical matches in download cwd {2}.".format(
+                    expected_name, len(physical), download_cwd
+                )
+            )
+
+        downloaded = next(iter(physical.values()))
+        evidence_file = os.path.join(evidence_root, expected_name)
+        shutil.copy2(downloaded, evidence_file)
+        report[file_field] = evidence_file
+        return evidence_file, sha256(evidence_file)
+    finally:
+        # NX 2506 DownloadAssociatedFiles changes the process working directory.
+        # Always restore it; failure is safety-critical and must propagate.
+        try:
+            os.chdir(original_cwd)
+        finally:
+            release_pdm_files(pdm_files)
+            dispose(load_status)
+            if opened_here:
+                close_opened_part(part, proposal.get("log") or _NullLog())
+
+
+class _NullLog:
+    def write(self, message=""):
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -1277,6 +1326,7 @@ def run_managed_preflight(
 ):
     for proposal in proposals:
         report = proposal["report"]
+        proposal["log"] = log
         if report.get("RESULT") != "LOCAL_PREFLIGHT_OK":
             continue
 
@@ -1301,7 +1351,8 @@ def run_managed_preflight(
             continue
 
         try:
-            _, baseline_sha = resolve_relation_and_export(
+            _, baseline_sha = retrieve_exact_associated_drawing(
+                session,
                 file_management,
                 proposal,
                 target_evidence_root(work_root, proposal),
@@ -1312,19 +1363,18 @@ def run_managed_preflight(
             report["TC_BASELINE_SHA256"] = baseline_sha
             proposal["tc_baseline_sha"] = baseline_sha
             log.write(
-                "  BASELINE {0}: relation={1}; sha256={2}".format(
+                "  BASELINE {0}: channel=associated-files; sha256={1}".format(
                     proposal["identifier"],
-                    proposal.get("relation_type", "") or "<unreported>",
                     baseline_sha,
                 )
             )
         except Exception as exc:
             set_error(
                 report,
-                "FAILED_TARGET_BASELINE_EXPORT",
+                "FAILED_TARGET_BASELINE_RETRIEVAL",
                 (
-                    "Could not export and fingerprint the exact Teamcenter "
-                    "drawing before clone preflight."
+                    "Could not retrieve and fingerprint the exact Teamcenter "
+                    "native drawing before clone preflight."
                 ),
                 exc,
             )
@@ -1366,7 +1416,7 @@ def run_managed_preflight(
         report["RESULT"] = "MANAGED_PREFLIGHT_OK"
         report["MESSAGE"] = (
             "Exact target identity and CHECKED_IN state were proven; current "
-            "Teamcenter drawing was exported and fingerprinted."
+            "Teamcenter native drawing was downloaded and fingerprinted."
         )
 
 
@@ -1409,6 +1459,42 @@ def mark_remaining_after_unverified_write(proposals, start):
             )
 
 
+def require_fresh_trial_session(session):
+    try:
+        loaded = list(session.Parts)
+    except Exception as exc:
+        raise RuntimeError(
+            "TRIAL_APPLY could not prove that the NX session has no loaded parts: {0}"
+            .format(error_text(exc))
+        )
+    if loaded:
+        identifiers = [journal_identifier(part) or "<unidentified>" for part in loaded]
+        raise RuntimeError(
+            "TRIAL_APPLY requires a fresh NX managed session with no loaded parts; "
+            "found {0}: {1}".format(len(loaded), " | ".join(identifiers))
+        )
+
+
+def require_one_trial_row(rows):
+    matches = 0
+    for row in rows:
+        try:
+            if is_trial_target(*parse_target(row)):
+                matches += 1
+        except Exception:
+            continue
+    if matches != 1:
+        raise RuntimeError(
+            "TRIAL_APPLY requires exactly one CSV row for {0}/{1}/dwg{2}; "
+            "found {3}.".format(
+                TRIAL_PART_NUMBER,
+                TRIAL_REVISION,
+                TRIAL_DRAWING_INDEX,
+                matches,
+            )
+        )
+
+
 def execute(
     session,
     file_management,
@@ -1420,6 +1506,9 @@ def execute(
     log,
     work_root,
 ):
+    if mode == "TRIAL_APPLY":
+        require_one_trial_row(rows)
+        require_fresh_trial_session(session)
     reports, proposals = local_preflight(rows, csv_path, timestamp, mode)
     run_managed_preflight(
         session,
@@ -1433,10 +1522,31 @@ def execute(
     if mode == "DRY_RUN":
         return reports
 
+    writes_attempted = 0
     for index, proposal in enumerate(proposals):
         report = proposal["report"]
         if report.get("RESULT") != "CLONE_PREFLIGHT_OK":
             continue
+
+        if mode == "TRIAL_APPLY":
+            if not is_trial_target(
+                proposal["part_number"],
+                proposal["revision"],
+                proposal["drawing_index"],
+            ):
+                set_error(
+                    report,
+                    "BLOCKED_TRIAL_SCOPE",
+                    "Internal trial-scope guard blocked a non-target write.",
+                )
+                continue
+            if writes_attempted >= 1:
+                set_error(
+                    report,
+                    "BLOCKED_TRIAL_WRITE_LIMIT",
+                    "TRIAL_APPLY permits at most one Teamcenter write per run.",
+                )
+                continue
 
         try:
             apply_sha = sha256(proposal["drawing"])
@@ -1477,7 +1587,8 @@ def execute(
             continue
 
         try:
-            _, prewrite_sha = resolve_relation_and_export(
+            _, prewrite_sha = retrieve_exact_associated_drawing(
+                session,
                 file_management,
                 proposal,
                 target_evidence_root(work_root, proposal),
@@ -1494,9 +1605,9 @@ def execute(
         except Exception as exc:
             set_error(
                 report,
-                "FAILED_PREWRITE_TARGET_EXPORT",
+                "FAILED_PREWRITE_TARGET_RETRIEVAL",
                 (
-                    "Could not re-export the exact Teamcenter drawing "
+                    "Could not re-download the exact Teamcenter drawing "
                     "immediately before import."
                 ),
                 exc,
@@ -1527,10 +1638,12 @@ def execute(
         logfile = clone_log_path(proposal, mode, "APPLY")
         report["CLONE_LOG"] = logfile
         report["WRITE_ATTEMPTED"] = "YES"
+        writes_attempted += 1
         try:
             import_one(api, proposal["drawing"], logfile, False, log)
 
-            _, post_sha = resolve_relation_and_export(
+            _, post_sha = retrieve_exact_associated_drawing(
+                session,
                 file_management,
                 proposal,
                 target_evidence_root(work_root, proposal),
@@ -1546,7 +1659,7 @@ def execute(
                     "FAILED_IMPORT_UNVERIFIED",
                     (
                         "UF Clone returned without an exception, but the exact "
-                        "Teamcenter drawing re-export does not match the "
+                        "Teamcenter drawing re-download does not match the "
                         "approved local SHA-256."
                     ),
                 )
@@ -1565,7 +1678,7 @@ def execute(
             report["RESULT"] = "IMPORT_VERIFIED"
             report["MESSAGE"] = (
                 "Exact Teamcenter drawing replacement was verified by "
-                "post-import re-export SHA-256."
+                "post-import associated-file SHA-256."
             )
             log.write(
                 "  VERIFIED {0}: sha256={1}".format(
@@ -1606,7 +1719,7 @@ def has_failure(reports, mode):
     for report in reports:
         result = report.get("RESULT", "")
         if result.startswith(failure_prefixes):
-            if mode == "APPLY_APPROVED":
+            if is_apply_mode(mode):
                 if result == "ERROR_APPROVAL_VALUE" or upper(report.get("APPROVED")) == "YES":
                     return True
                 continue
@@ -1631,7 +1744,14 @@ def main():
     log.write("Build: {0} | Mode: {1}".format(BUILD, current_mode))
     log.write("Runtime target: NX X 2506 only")
     log.write("Checkout rule: every existing checkout blocks that row")
-    log.write("Success rule: exact-target re-export SHA-256 must match source")
+    log.write("Verification: GetAssociatedFiles + DownloadAssociatedFiles")
+    log.write("Success rule: exact downloaded native SHA-256 must match source")
+    if current_mode == "TRIAL_APPLY":
+        log.write(
+            "TRIAL LOCK: {0}/{1}/dwg{2}; fresh session; maximum one write".format(
+                TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX
+            )
+        )
     log.write("Input: {0}".format(input_path))
     log.write("Evidence: {0}".format(work_root))
     log.write("=" * 72)
@@ -1641,7 +1761,14 @@ def main():
     try:
         if current_mode not in VALID_MODES:
             raise RuntimeError(
-                "USER_MODE/NX_J16_MODE must be DRY_RUN or APPLY_APPROVED."
+                "USER_MODE/NX_J16_MODE must be DRY_RUN or TRIAL_APPLY."
+            )
+        if current_mode == "APPLY_APPROVED" and not BATCH_APPLY_ENABLED:
+            raise RuntimeError(
+                "APPLY_APPROVED batch mode is disabled in this one-shot release. "
+                "Use DRY_RUN or TRIAL_APPLY for {0}/{1}/dwg{2}.".format(
+                    TRIAL_PART_NUMBER, TRIAL_REVISION, TRIAL_DRAWING_INDEX
+                )
             )
         if not os.path.isfile(input_path):
             raise RuntimeError("Import CSV not found: {0}".format(input_path))

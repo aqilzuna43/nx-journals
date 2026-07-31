@@ -52,6 +52,18 @@ class FakeLoadStatus:
         self.disposed = True
 
 
+class FakePdmFile:
+    def __init__(self, name):
+        self.name = name
+        self.released = False
+
+    def GetFileName(self):
+        return self.name
+
+    def FreeResource(self):
+        self.released = True
+
+
 class VerifiedImportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -167,7 +179,7 @@ class VerifiedImportTests(unittest.TestCase):
             "inspect_target_checkout",
             return_value=checkout,
         ), mock.patch.object(
-            self.journal, "resolve_relation_and_export"
+            self.journal, "retrieve_exact_associated_drawing"
         ) as export:
             self.journal.run_managed_preflight(
                 object(), object(), [proposal], "evidence", log
@@ -242,7 +254,7 @@ class VerifiedImportTests(unittest.TestCase):
             ],
         ), mock.patch.object(
             self.journal,
-            "resolve_relation_and_export",
+            "retrieve_exact_associated_drawing",
             return_value=("baseline.prt", "teamcenter"),
         ) as export:
             self.journal.run_managed_preflight(
@@ -271,7 +283,7 @@ class VerifiedImportTests(unittest.TestCase):
             return_value=self.checked_in("exact"),
         ), mock.patch.object(
             self.journal,
-            "resolve_relation_and_export",
+            "retrieve_exact_associated_drawing",
             return_value=("baseline.prt", "different"),
         ):
             self.journal.run_managed_preflight(
@@ -286,7 +298,7 @@ class VerifiedImportTests(unittest.TestCase):
             row = self.make_row(drawing)
             identifier = row["DRAWING_IDENTIFIER"]
 
-            def exported(_fm, _proposal, _root, phase, *_fields):
+            def exported(_session, _fm, _proposal, _root, phase, *_fields):
                 digest = source_sha if phase == "POSTIMPORT" else "tc-before"
                 return (phase + ".prt", digest)
 
@@ -296,7 +308,7 @@ class VerifiedImportTests(unittest.TestCase):
                 return_value=self.checked_in(identifier),
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 side_effect=exported,
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -328,7 +340,7 @@ class VerifiedImportTests(unittest.TestCase):
             ]
             identifiers = [row["DRAWING_IDENTIFIER"] for row in rows]
 
-            def exported(_fm, proposal, _root, phase, *_fields):
+            def exported(_session, _fm, proposal, _root, phase, *_fields):
                 if phase == "POSTIMPORT":
                     return ("post.prt", "not-the-source")
                 return ("before.prt", "before-" + proposal["part_number"])
@@ -343,7 +355,7 @@ class VerifiedImportTests(unittest.TestCase):
                 ],
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 side_effect=exported,
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -383,7 +395,7 @@ class VerifiedImportTests(unittest.TestCase):
                 return_value=self.checked_in(identifier),
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 return_value=("baseline.prt", "tc-before"),
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -419,7 +431,7 @@ class VerifiedImportTests(unittest.TestCase):
                 ],
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 return_value=("baseline.prt", "tc-before"),
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -440,7 +452,7 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("NO", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(1, import_one.call_count)
 
-    def test_exact_export_failure_never_reaches_clone(self):
+    def test_exact_retrieval_failure_never_reaches_clone(self):
         with tempfile.TemporaryDirectory() as folder:
             drawing = self.make_drawing(folder)
             row = self.make_row(drawing)
@@ -451,7 +463,7 @@ class VerifiedImportTests(unittest.TestCase):
                 return_value=self.checked_in(identifier),
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 side_effect=RuntimeError("PDI code 17"),
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -468,7 +480,7 @@ class VerifiedImportTests(unittest.TestCase):
                     os.path.join(folder, "evidence"),
                 )
         self.assertEqual(
-            "FAILED_TARGET_BASELINE_EXPORT", reports[0]["RESULT"]
+            "FAILED_TARGET_BASELINE_RETRIEVAL", reports[0]["RESULT"]
         )
         self.assertIn("PDI code 17", reports[0]["MESSAGE"])
         import_one.assert_not_called()
@@ -483,7 +495,7 @@ class VerifiedImportTests(unittest.TestCase):
             ]
             identifiers = [row["DRAWING_IDENTIFIER"] for row in rows]
 
-            def exported(_fm, proposal, _root, phase, *_fields):
+            def exported(_session, _fm, proposal, _root, phase, *_fields):
                 digest = (
                     self.journal.sha256(proposal["drawing"])
                     if phase == "POSTIMPORT"
@@ -501,7 +513,7 @@ class VerifiedImportTests(unittest.TestCase):
                 ],
             ), mock.patch.object(
                 self.journal,
-                "resolve_relation_and_export",
+                "retrieve_exact_associated_drawing",
                 side_effect=exported,
             ), mock.patch.object(
                 self.journal, "import_one"
@@ -540,6 +552,222 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertTrue(
             self.journal.has_failure([report], "APPLY_APPROVED")
         )
+
+    def make_retrieval_context(self, folder, names):
+        identifier = self.journal.drawing_id("TEST100", "A", 1)
+        status = FakeLoadStatus()
+        part = types.SimpleNamespace(
+            JournalIdentifier=identifier,
+            Close=mock.Mock(),
+        )
+        parts = mock.MagicMock()
+        parts.__iter__.return_value = iter([])
+        parts.FindObject.side_effect = RuntimeError("not loaded")
+        parts.OpenBase.return_value = (part, status)
+        session = types.SimpleNamespace(Parts=parts)
+        pdm_files = [FakePdmFile(name) for name in names]
+        download_folder = os.path.join(folder, "managed_download")
+
+        def download(_parts, files):
+            self.assertEqual(pdm_files, files)
+            os.makedirs(download_folder, exist_ok=True)
+            for value in files:
+                with open(os.path.join(download_folder, value.name), "wb") as handle:
+                    handle.write(("payload-" + value.name).encode("ascii"))
+            os.chdir(download_folder)
+            return None
+
+        file_management = types.SimpleNamespace(
+            GetAssociatedFiles=mock.Mock(return_value=(pdm_files,)),
+            DownloadAssociatedFiles=mock.Mock(side_effect=download),
+        )
+        report = self.journal.base_report({}, "stamp", "DRY_RUN")
+        proposal = {
+            "report": report,
+            "identifier": identifier,
+            "part_number": "TEST100",
+            "revision": "A",
+            "drawing_index": 1,
+            "log": FakeLog(),
+        }
+        return session, file_management, proposal, pdm_files, status
+
+    def test_associated_retrieval_selects_exact_native_and_restores_cwd(self):
+        with tempfile.TemporaryDirectory() as folder:
+            names = [
+                "dwg_SHEET-1.qaf",
+                "qafmetadata.qaf",
+                "TEST100_A_dwg1.prt",
+            ]
+            session, fm, proposal, files, status = self.make_retrieval_context(
+                folder, names
+            )
+            original_cwd = os.getcwd()
+            evidence, digest = self.journal.retrieve_exact_associated_drawing(
+                session,
+                fm,
+                proposal,
+                folder,
+                "BASELINE",
+                "BASELINE_EXPORT_PDI_CODE",
+                "BASELINE_EXPORT_FILE",
+            )
+
+            self.assertEqual(original_cwd, os.getcwd())
+            self.assertTrue(os.path.isfile(evidence))
+            self.assertEqual(self.journal.sha256(evidence), digest)
+            self.assertTrue(evidence.endswith("TEST100_A_dwg1.prt"))
+            self.assertEqual(
+                "N/A_ASSOCIATED_FILES",
+                proposal["report"]["BASELINE_EXPORT_PDI_CODE"],
+            )
+            self.assertIn("dwg_SHEET-1.qaf", proposal["report"]["BASELINE_ASSOCIATED_FILES"])
+            self.assertTrue(all(value.released for value in files))
+            self.assertTrue(status.disposed)
+
+    def test_associated_retrieval_blocks_missing_exact_native(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session, fm, proposal, files, _ = self.make_retrieval_context(
+                folder, ["dwg_SHEET-1.qaf", "qafmetadata.qaf"]
+            )
+            original_cwd = os.getcwd()
+            with self.assertRaisesRegex(RuntimeError, "exactly one"):
+                self.journal.retrieve_exact_associated_drawing(
+                    session,
+                    fm,
+                    proposal,
+                    folder,
+                    "BASELINE",
+                    "BASELINE_EXPORT_PDI_CODE",
+                    "BASELINE_EXPORT_FILE",
+                )
+            self.assertEqual(original_cwd, os.getcwd())
+            fm.DownloadAssociatedFiles.assert_not_called()
+            self.assertTrue(all(value.released for value in files))
+
+    def test_associated_retrieval_blocks_duplicate_exact_native(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session, fm, proposal, _, _ = self.make_retrieval_context(
+                folder,
+                ["TEST100_A_dwg1.prt", "TEST100_A_dwg1.prt"],
+            )
+            with self.assertRaisesRegex(RuntimeError, "found 2"):
+                self.journal.retrieve_exact_associated_drawing(
+                    session,
+                    fm,
+                    proposal,
+                    folder,
+                    "BASELINE",
+                    "BASELINE_EXPORT_PDI_CODE",
+                    "BASELINE_EXPORT_FILE",
+                )
+            fm.DownloadAssociatedFiles.assert_not_called()
+
+    def test_trial_mode_only_proposes_confirmed_target(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = self.make_drawing(
+                folder,
+                self.journal.TRIAL_PART_NUMBER,
+                self.journal.TRIAL_REVISION,
+                self.journal.TRIAL_DRAWING_INDEX,
+            )
+            other = self.make_drawing(folder, "OTHER")
+            rows = [
+                self.make_row(
+                    target,
+                    self.journal.TRIAL_PART_NUMBER,
+                    self.journal.TRIAL_REVISION,
+                    self.journal.TRIAL_DRAWING_INDEX,
+                ),
+                self.make_row(other, "OTHER"),
+            ]
+            reports, proposals = self.journal.local_preflight(
+                rows,
+                os.path.join(folder, "input.csv"),
+                "stamp",
+                "TRIAL_APPLY",
+            )
+        self.assertEqual(1, len(proposals))
+        self.assertEqual(self.journal.TRIAL_PART_NUMBER, proposals[0]["part_number"])
+        self.assertEqual("TRIAL_SCOPE_SKIPPED", reports[1]["RESULT"])
+
+    def test_trial_requires_one_target_and_fresh_session(self):
+        self.journal.require_one_trial_row(
+            [
+                {
+                    "PART_NUMBER": self.journal.TRIAL_PART_NUMBER,
+                    "REVISION": self.journal.TRIAL_REVISION,
+                    "DWG_INDEX": str(self.journal.TRIAL_DRAWING_INDEX),
+                }
+            ]
+        )
+        with self.assertRaisesRegex(RuntimeError, "exactly one CSV row"):
+            self.journal.require_one_trial_row([])
+        loaded = types.SimpleNamespace(JournalIdentifier="@DB/LOADED/A")
+        with self.assertRaisesRegex(RuntimeError, "fresh NX managed session"):
+            self.journal.require_fresh_trial_session(
+                types.SimpleNamespace(Parts=[loaded])
+            )
+
+    def test_trial_exact_target_reaches_one_verified_write(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(
+                folder,
+                self.journal.TRIAL_PART_NUMBER,
+                self.journal.TRIAL_REVISION,
+                self.journal.TRIAL_DRAWING_INDEX,
+            )
+            row = self.make_row(
+                drawing,
+                self.journal.TRIAL_PART_NUMBER,
+                self.journal.TRIAL_REVISION,
+                self.journal.TRIAL_DRAWING_INDEX,
+            )
+            identifier = row["DRAWING_IDENTIFIER"]
+            source_sha = self.journal.sha256(drawing)
+            session = types.SimpleNamespace(Parts=[])
+
+            def retrieved(_session, _fm, _proposal, _root, phase, *_fields):
+                digest = source_sha if phase == "POSTIMPORT" else "tc-before"
+                return (phase + ".prt", digest)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=retrieved,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    session,
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "TRIAL_APPLY",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("IMPORT_VERIFIED", reports[0]["RESULT"])
+        self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
+        self.assertEqual(2, import_one.call_count)
+        self.assertTrue(import_one.call_args_list[0].args[3])
+        self.assertFalse(import_one.call_args_list[1].args[3])
+
+    def test_j16_uses_associated_files_not_legacy_export(self):
+        source = J16_PATH.read_text(encoding="utf-8")
+        self.assertIn("GetAssociatedFiles", source)
+        self.assertIn("DownloadAssociatedFiles", source)
+        self.assertNotIn("file_management.ExportFiles", source)
+        self.assertNotIn("resolve_relation_and_export", source)
+        self.assertEqual("DRY_RUN", self.journal.USER_MODE)
+        self.assertFalse(self.journal.BATCH_APPLY_ENABLED)
 
     def test_j19_source_has_no_teamcenter_mutation_calls(self):
         source = J19_PATH.read_text(encoding="utf-8")
