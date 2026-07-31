@@ -16,7 +16,11 @@ JOURNAL = (
 
 
 def load_journal():
-    sys.modules.setdefault("NXOpen", types.ModuleType("NXOpen"))
+    nxopen = sys.modules.setdefault("NXOpen", types.ModuleType("NXOpen"))
+    annotations = sys.modules.setdefault(
+        "NXOpen.Annotations", types.ModuleType("NXOpen.Annotations")
+    )
+    nxopen.Annotations = annotations
     spec = importlib.util.spec_from_file_location("journal07", JOURNAL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -34,6 +38,10 @@ class StepValidationTests(unittest.TestCase):
         path.write_text(content, encoding="utf-8")
         self.addCleanup(folder.cleanup)
         return path
+
+    def test_annotations_submodule_is_explicitly_imported(self):
+        source_lines = JOURNAL.read_text(encoding="utf-8").splitlines()
+        self.assertIn("import NXOpen.Annotations", source_lines)
 
     def test_header_only_step_has_no_body_geometry(self):
         path = self.write_step(
