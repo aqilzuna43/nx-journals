@@ -110,7 +110,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5
+Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

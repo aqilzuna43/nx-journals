@@ -234,7 +234,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5",
+            "J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
@@ -256,6 +256,58 @@ class PdfGroupingTests(unittest.TestCase):
             self.journal.build_export_timestamp_text(run_datetime),
             "EXPORTED: 2026-07-31 00:13 MYT",
         )
+
+    def test_sheet_units_accept_nx2506_numeric_values(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace()
+
+        self.assertTrue(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=1)
+            )
+        )
+        self.assertFalse(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=2)
+            )
+        )
+
+    def test_sheet_units_accept_both_nx_sheet_enum_class_names(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace(
+            DrawingSheet=types.SimpleNamespace(
+                Unit=types.SimpleNamespace(
+                    UnitInches="legacy-inches",
+                    UnitMillimeters="legacy-millimeters",
+                )
+            ),
+            DraftingDrawingSheet=types.SimpleNamespace(
+                Unit=types.SimpleNamespace(
+                    Inches="drafting-inches",
+                    Millimeters="drafting-millimeters",
+                )
+            ),
+        )
+
+        self.assertTrue(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units="legacy-inches")
+            )
+        )
+        self.assertFalse(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units="drafting-millimeters")
+            )
+        )
+
+    def test_sheet_units_still_reject_unknown_numeric_value(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Unsupported or unavailable drawing-sheet units: 3",
+        ):
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=3)
+            )
 
     def test_timestamp_note_placement_handles_metric_and_inch_sheets(self):
         class TextBlock:

@@ -38,7 +38,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -1096,18 +1096,34 @@ def resolve_pdf_watermark(session, number, revision, candidates):
 def sheet_uses_inches(sheet):
     units = getattr(sheet, "Units", None)
 
-    try:
-        if units == NXOpen.Drawings.DrawingSheet.Unit.Inches:
-            return True
-        if units == NXOpen.Drawings.DrawingSheet.Unit.Millimeters:
-            return False
-    except Exception:
-        pass
+    drawings = getattr(NXOpen, "Drawings", None)
+    for sheet_type_name in ("DrawingSheet", "DraftingDrawingSheet"):
+        sheet_type = getattr(drawings, sheet_type_name, None)
+        unit_enum = getattr(sheet_type, "Unit", None)
+        for member_name in ("Inches", "UnitInches"):
+            member = getattr(unit_enum, member_name, None)
+            if member is not None and units == member:
+                return True
+        for member_name in ("Millimeters", "UnitMillimeters"):
+            member = getattr(unit_enum, member_name, None)
+            if member is not None and units == member:
+                return False
 
     text = normalize_text(getattr(units, "name", units)).upper()
     if "INCH" in text or "ENGLISH" in text:
         return True
     if "MILLIM" in text or "METRIC" in text:
+        return False
+
+    numeric_units = getattr(
+        units,
+        "value",
+        getattr(units, "Value", units),
+    )
+    numeric_text = normalize_text(numeric_units)
+    if numeric_units == 1 or numeric_text == "1":
+        return True
+    if numeric_units == 2 or numeric_text == "2":
         return False
 
     raise RuntimeError(

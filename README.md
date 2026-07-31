@@ -171,7 +171,7 @@ mark before J07 continues.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-V5
+Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
