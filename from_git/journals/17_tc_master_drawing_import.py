@@ -40,7 +40,7 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_NEW_DRAWING_SPECIFICATION.csv
+USER_IMPORT_CSV = r"C:\Users\my62022696\Desktop\J17 Test\NX_TC_NEW_DRAWING_SPECIFICATION.csv"  # blank => <I/O root>\NX_TC_NEW_DRAWING_SPECIFICATION.csv
 USER_MODE = "APPLY_APPROVED"  # production default; DRY_RUN remains diagnostic
 # Optional environment overrides:
 #   NX_TC_NEW_DRAWING_SPECIFICATION_FILE=<full CSV path>
