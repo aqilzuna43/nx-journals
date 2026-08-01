@@ -50,7 +50,7 @@ shared helpers from `from_git\utils`.
 | 14 | `from_git/journals/14_bulk_part_name_updater.py` | Approved bulk Teamcenter Item Name update |
 | 15 | `from_git/journals/15_tc_offline_drawing_workflow.py` | Exports native drawing packages for controlled offline editing |
 | 16 | `from_git/journals/16_tc_offline_drawing_import.py` | Checkout-gated drawing import with exact-target re-export verification |
-| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Separate master-drawing import workflow |
+| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Verified creation of a separate Teamcenter drawing master while preserving its 3D reference |
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 
@@ -65,6 +65,42 @@ shared helpers from `from_git\utils`.
   - Input CSV files: `%USERPROFILE%\Desktop`
   - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
 - To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
+
+## Journal 17 - Create a Separate Drawing Master
+
+Use J17 when a local NX drawing must become the master file of a new, separate
+Teamcenter drawing Item/Revision. Use J16 instead when replacing an existing
+`/specification/` drawing under a 3D Item/Revision.
+
+Start a fresh NX X 2506 managed session with no parts loaded. Copy
+`from_git/templates/NX_TC_MASTER_DRAWING_IMPORT_TEMPLATE.csv` to the configured
+I/O folder and complete one row per new drawing master:
+
+```csv
+MASTER_PART_NUMBER,MASTER_REVISION,SOURCE_DRAWING_FILE,PRESERVE_3D_PART_NUMBER,PRESERVE_3D_REVISION,APPROVED,ENGINEER
+NEW_DRAWING_ITEM,A,C:\drawings\local_drawing.prt,EXISTING_3D_ITEM,A,YES,AQIL
+```
+
+`MASTER_PART_NUMBER/MASTER_REVISION` is the new drawing Item/Revision to create.
+It must differ from, and must not already exist as, the preserved 3D target.
+`PRESERVE_3D_PART_NUMBER/PRESERVE_3D_REVISION` identifies the existing model
+referenced by the local drawing.
+
+Run `from_git/journals/17_tc_master_drawing_import.py` once. Its production
+default is `APPLY_APPROVED`; the managed checks and UF Clone dry run happen
+inside that same run. J17 quarantines existing or ambiguous destinations,
+checked-out 3D references, stale local files, and other prewrite failures with
+zero writes. Every discovered reference defaults to `UseExisting`; only the
+staged local drawing receives `Overwrite` for creation of its new managed
+master.
+
+Require `IMPORT_CREATED_VERIFIED` or
+`IMPORT_CREATED_VERIFIED_MANAGED_TRANSFORM` in the result CSV. The report must
+also show `PRESERVE_3D_UNCHANGED=YES`, the exact new master identifier, at least
+one drawing sheet, one attached native `.prt`, and a post-import `CHECKED_IN`
+state. If the result is `MANUAL_CHECKIN_REQUIRED`, do not rerun J17: verify the
+new drawing and manually check it in only when the checkout belongs to you.
+J17 never checks in automatically.
 
 ## Journal 04 + 05 - Business Attribute Update
 
