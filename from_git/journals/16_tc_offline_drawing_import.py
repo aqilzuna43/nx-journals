@@ -12,6 +12,10 @@ Purpose:
 Core safety rule:
 - Every discovered object defaults to UseExisting.
 - Only the exact local drawing is set to Overwrite.
+- The exact 3D master must be discovered, remain UseExisting, and retain an
+  identical associated native SHA-256 across the import.
+- Post-import success requires the exact specification to reopen with at least
+  one drawing sheet.
 - Item ID, revision, and 3D/reference parts are never intentionally replaced.
 
 For normal production, mark the intended CSV rows APPROVED=YES, provide the
@@ -45,7 +49,7 @@ USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
 #   NX_J16_RECEIPT_FILE=<optional full receipt CSV path>
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V11-ONE-RUN-QUARANTINE"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V12-3D-PRESERVATION"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
 DEFAULT_RECEIPTS = "J16_VERIFIED_IMPORT_RECEIPTS.csv"
 VALID_MODES = ("DRY_RUN", "APPLY_ONE_APPROVED", "APPLY_APPROVED")
@@ -87,6 +91,11 @@ REPORT_COLUMNS = [
     "AUTHORIZATION_SOURCE",
     "DEFAULT_IMPORT_ACTION",
     "DRAWING_IMPORT_ACTION",
+    "PRESERVE_3D_ACTION",
+    "DISCOVERED_PARTS",
+    "DRAWING_DISCOVERED",
+    "PRESERVE_3D_DISCOVERED",
+    "PRESERVE_3D_DISCOVERED_NAME",
     "OPENED_IDENTIFIER",
     "CHECKOUT_STATE",
     "CHECKOUT_OWNER",
@@ -119,7 +128,24 @@ REPORT_COLUMNS = [
     "POST_IMPORT_CHECKOUT_STATE",
     "POST_IMPORT_CHECKOUT_OWNER",
     "POST_IMPORT_CHECKOUT_RAW",
+    "POST_IMPORT_DRAWING_SHEET_COUNT",
     "POST_IMPORT_VERIFICATION",
+    "PRESERVE_3D_IDENTIFIER",
+    "PRESERVE_3D_OPENED_IDENTIFIER",
+    "PRESERVE_3D_CHECKOUT_STATE",
+    "PRESERVE_3D_CHECKOUT_OWNER",
+    "PRESERVE_3D_CHECKOUT_RAW",
+    "PRESERVE_3D_ASSOCIATED_FILES",
+    "PRESERVE_3D_NATIVE_FILE",
+    "PRESERVE_3D_BASELINE_SHA256",
+    "PRESERVE_3D_RECHECK_STATE",
+    "PRESERVE_3D_RECHECK_OWNER",
+    "PRESERVE_3D_PREWRITE_SHA256",
+    "PRESERVE_3D_POST_CHECKOUT_STATE",
+    "PRESERVE_3D_POST_CHECKOUT_OWNER",
+    "PRESERVE_3D_POST_CHECKOUT_RAW",
+    "PRESERVE_3D_POST_SHA256",
+    "PRESERVE_3D_UNCHANGED",
     "WRITE_ATTEMPTED",
     "DISPOSITION",
     "QUARANTINE_REASON",
@@ -457,6 +483,10 @@ def drawing_id(part_number, revision, drawing_index):
     )
 
 
+def model_id(part_number, revision):
+    return "@DB/{0}/{1}".format(part_number, revision)
+
+
 def expected_native(part_number, revision, drawing_index):
     return "{0}_{1}_s_{2}.prt".format(
         part_number, revision, dataset_name(part_number, revision, drawing_index)
@@ -549,6 +579,11 @@ def base_report(row, timestamp, mode):
         ),
         "DEFAULT_IMPORT_ACTION": "UseExisting",
         "DRAWING_IMPORT_ACTION": "Overwrite",
+        "PRESERVE_3D_ACTION": "UseExisting",
+        "DISCOVERED_PARTS": "",
+        "DRAWING_DISCOVERED": "NO",
+        "PRESERVE_3D_DISCOVERED": "NO",
+        "PRESERVE_3D_DISCOVERED_NAME": "",
         "OPENED_IDENTIFIER": "",
         "CHECKOUT_STATE": "NOT_CHECKED",
         "CHECKOUT_OWNER": "",
@@ -581,7 +616,24 @@ def base_report(row, timestamp, mode):
         "POST_IMPORT_CHECKOUT_STATE": "NOT_RUN",
         "POST_IMPORT_CHECKOUT_OWNER": "",
         "POST_IMPORT_CHECKOUT_RAW": "",
+        "POST_IMPORT_DRAWING_SHEET_COUNT": -1,
         "POST_IMPORT_VERIFICATION": "NOT_RUN",
+        "PRESERVE_3D_IDENTIFIER": "",
+        "PRESERVE_3D_OPENED_IDENTIFIER": "",
+        "PRESERVE_3D_CHECKOUT_STATE": "NOT_CHECKED",
+        "PRESERVE_3D_CHECKOUT_OWNER": "",
+        "PRESERVE_3D_CHECKOUT_RAW": "",
+        "PRESERVE_3D_ASSOCIATED_FILES": "",
+        "PRESERVE_3D_NATIVE_FILE": "",
+        "PRESERVE_3D_BASELINE_SHA256": "",
+        "PRESERVE_3D_RECHECK_STATE": "NOT_RUN",
+        "PRESERVE_3D_RECHECK_OWNER": "",
+        "PRESERVE_3D_PREWRITE_SHA256": "",
+        "PRESERVE_3D_POST_CHECKOUT_STATE": "NOT_RUN",
+        "PRESERVE_3D_POST_CHECKOUT_OWNER": "",
+        "PRESERVE_3D_POST_CHECKOUT_RAW": "",
+        "PRESERVE_3D_POST_SHA256": "",
+        "PRESERVE_3D_UNCHANGED": "NOT_RUN",
         "WRITE_ATTEMPTED": "NO",
         "DISPOSITION": "PENDING",
         "QUARANTINE_REASON": "",
@@ -663,6 +715,7 @@ def local_preflight(rows, csv_path, timestamp, mode):
             )
             continue
         report["DRAWING_IDENTIFIER"] = identifier
+        report["PRESERVE_3D_IDENTIFIER"] = model_id(part_number, revision)
 
         drawing = resolve_local_path(csv_path, row.get("DRAWING_FILE"))
         report["DRAWING_FILE"] = drawing
@@ -756,6 +809,10 @@ def local_preflight(rows, csv_path, timestamp, mode):
             "relation_type": "",
             "drawing": drawing,
             "identifier": identifier,
+            "model_identifier": model_id(part_number, revision),
+            "model_native_name": managed_model_native_name(
+                part_number, revision
+            ),
             "preflight_sha": current_sha,
         })
 
@@ -913,8 +970,18 @@ def close_opened_part(part, log):
         )
 
 
+def collection_count(value):
+    try:
+        return int(value.Count)
+    except Exception:
+        try:
+            return len(list(value))
+        except Exception:
+            return -1
+
+
 def inspect_target_checkout(session, identifier, log):
-    """Open the exact specification, verify identity, and query checkout owner."""
+    """Open an exact managed part and query identity, checkout, and sheets."""
     part = find_loaded_by_identifier(session, identifier)
     load_status = None
     opened_here = False
@@ -923,6 +990,7 @@ def inspect_target_checkout(session, identifier, log):
         "owner": "",
         "raw": "",
         "opened_identifier": "",
+        "drawing_sheet_count": -1,
     }
     try:
         if part is None:
@@ -946,6 +1014,9 @@ def inspect_target_checkout(session, identifier, log):
 
         checkout = query_pdm_checkout(part)
         result.update(checkout)
+        result["drawing_sheet_count"] = collection_count(
+            getattr(part, "DrawingSheets", [])
+        )
         return result
     except Exception as exc:
         result["raw"] = error_text(exc)
@@ -954,6 +1025,11 @@ def inspect_target_checkout(session, identifier, log):
         dispose(load_status)
         if opened_here:
             close_opened_part(part, log)
+
+
+def inspect_master_checkout(session, proposal, log):
+    """Read-only checkout inspection for the exact preserved 3D master."""
+    return inspect_target_checkout(session, proposal["model_identifier"], log)
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +1055,27 @@ def managed_native_name(part_number, revision, drawing_index):
     return "{0}_{1}_dwg{2}.prt".format(
         part_number, revision, drawing_index
     )
+
+
+def managed_model_native_name(part_number, revision):
+    return "{0}_{1}.prt".format(part_number, revision)
+
+
+def ensure_model_identity(proposal):
+    proposal.setdefault(
+        "model_identifier",
+        model_id(proposal["part_number"], proposal["revision"]),
+    )
+    proposal.setdefault(
+        "model_native_name",
+        managed_model_native_name(
+            proposal["part_number"], proposal["revision"]
+        ),
+    )
+    proposal["report"].setdefault(
+        "PRESERVE_3D_IDENTIFIER", proposal["model_identifier"]
+    )
+    return proposal
 
 
 def collect_pdm_files(value):
@@ -1214,6 +1311,114 @@ def retrieve_exact_associated_drawing(
                 close_opened_part(part, proposal.get("log") or _NullLog())
 
 
+def retrieve_exact_master_native(
+    session,
+    file_management,
+    proposal,
+    root,
+    phase,
+):
+    """Download one exact native .prt from the preserved 3D master."""
+    report = proposal["report"]
+    identifier = proposal["model_identifier"]
+    expected_name = proposal["model_native_name"]
+    evidence_root = os.path.join(root, "PRESERVE_3D_{0}".format(phase))
+    os.makedirs(evidence_root, exist_ok=True)
+    part = find_loaded_by_identifier(session, identifier)
+    load_status = None
+    opened_here = False
+    pdm_files = []
+    original_cwd = os.getcwd()
+    try:
+        if part is None:
+            part, load_status = unwrap_open_result(
+                session.Parts.OpenBase(identifier)
+            )
+            opened_here = True
+        if part is None:
+            raise RuntimeError("OpenBase returned no part for exact 3D master.")
+
+        actual = journal_identifier(part)
+        if upper(actual).replace("\\", "/") != upper(identifier).replace(
+            "\\", "/"
+        ):
+            raise RuntimeError(
+                "Opened JournalIdentifier does not match exact 3D master: {0}"
+                .format(actual or "<blank>")
+            )
+
+        get_method = getattr(file_management, "GetAssociatedFiles", None)
+        download_method = getattr(
+            file_management, "DownloadAssociatedFiles", None
+        )
+        if not callable(get_method) or not callable(download_method):
+            raise RuntimeError(
+                "PDM GetAssociatedFiles/DownloadAssociatedFiles is unavailable."
+            )
+
+        raw_files = get_method([part], [])
+        pdm_files = collect_pdm_files(raw_files)
+        names = [pdm_file_name(value) for value in pdm_files]
+        report["PRESERVE_3D_ASSOCIATED_FILES"] = " | ".join(
+            name or "<unreadable>" for name in names
+        )
+        exact_files = [
+            value
+            for value, name in zip(pdm_files, names)
+            if os.path.basename(name).lower() == expected_name.lower()
+        ]
+        if len(exact_files) != 1:
+            raise RuntimeError(
+                "Expected exactly one associated 3D master native named {0}; "
+                "found {1}. Associated files: {2}".format(
+                    expected_name,
+                    len(exact_files),
+                    report["PRESERVE_3D_ASSOCIATED_FILES"] or "<none>",
+                )
+            )
+
+        download_result = download_method([part], pdm_files)
+        returned_files = collect_pdm_files(download_result)
+        for value in returned_files:
+            if all(value is not existing for existing in pdm_files):
+                pdm_files.append(value)
+        download_cwd = os.getcwd()
+        candidates = [pdm_file_name(exact_files[0]), expected_name]
+        candidates.extend(
+            pdm_file_name(value)
+            for value in returned_files
+            if os.path.basename(pdm_file_name(value)).lower()
+            == expected_name.lower()
+        )
+        physical = locate_downloaded_files(candidates, download_cwd)
+        if len(physical) != 1:
+            raise RuntimeError(
+                "DownloadAssociatedFiles did not materialize one unambiguous "
+                "3D master {0}; found {1} physical matches in {2}.".format(
+                    expected_name, len(physical), download_cwd
+                )
+            )
+
+        downloaded = next(iter(physical.values()))
+        evidence_file = os.path.join(evidence_root, expected_name)
+        shutil.copy2(downloaded, evidence_file)
+        report["PRESERVE_3D_NATIVE_FILE"] = expected_name
+        return evidence_file, sha256(evidence_file)
+    finally:
+        try:
+            os.chdir(original_cwd)
+        except Exception as exc:
+            raise ProcessStateError(
+                "Could not restore process working directory after preserved-3D "
+                "{0} retrieval: {1}".format(phase, error_text(exc))
+            )
+        finally:
+            release_pdm_files(pdm_files)
+            dispose(load_status)
+            if opened_here and part is not None:
+                close_opened_part(part, proposal.get("log") or _NullLog())
+
+
 class _NullLog:
     def write(self, message=""):
         pass
@@ -1446,10 +1651,25 @@ def same_part(candidate, target):
     return os.path.basename(candidate).lower() == os.path.basename(target).lower()
 
 
-def import_one(api, drawing, logfile, dry_run, log):
+def model_reference_matches(candidate, proposal):
+    value = clean(candidate).lower().replace("\\", "/").rstrip("/")
+    leaf = os.path.basename(value)
+    stem = "{0}_{1}".format(
+        proposal["part_number"], proposal["revision"]
+    ).lower()
+    return value == proposal["model_identifier"].lower() or leaf in (
+        stem,
+        stem + ".prt",
+    )
+
+
+def import_one(api, proposal, logfile, dry_run, log):
     """Run one UF Clone import with refs UseExisting and exact drawing Overwrite."""
+    ensure_model_identity(proposal)
     clone = api["clone"]
     load_status = None
+    drawing = proposal["drawing"]
+    report = proposal["report"]
     folder = os.path.dirname(drawing)
     try:
         terminate(clone)
@@ -1475,12 +1695,34 @@ def import_one(api, drawing, logfile, dry_run, log):
 
         load_status = add_assembly(clone, drawing)
         discovered_parts = iterate_parts(clone)
-        drawing_action_set = False
+        if not discovered_parts:
+            raise RuntimeError("UF Clone discovered no parts.")
+
+        drawing_matches = [
+            part_name
+            for part_name in discovered_parts
+            if same_part(part_name, drawing)
+        ]
+        if len(drawing_matches) != 1:
+            raise RuntimeError(
+                "UF Clone must discover the exact local drawing once; found {0}."
+                .format(len(drawing_matches))
+            )
+        model_matches = [
+            part_name
+            for part_name in discovered_parts
+            if not same_part(part_name, drawing)
+            and model_reference_matches(part_name, proposal)
+        ]
+        if not model_matches:
+            raise RuntimeError(
+                "UF Clone did not discover the required preserved 3D master: {0}"
+                .format(proposal["model_identifier"])
+            )
 
         for part_name in discovered_parts:
             if same_part(part_name, drawing):
                 set_action(clone, part_name, api["overwrite"])
-                drawing_action_set = True
             else:
                 # Default is already UseExisting, so failure of this redundant
                 # per-object call does not weaken reference protection.
@@ -1489,9 +1731,10 @@ def import_one(api, drawing, logfile, dry_run, log):
                 except Exception:
                     pass
 
-        if not drawing_action_set:
-            # Same fallback used by the current J15 import implementation.
-            set_action(clone, drawing, api["overwrite"])
+        report["DISCOVERED_PARTS"] = " | ".join(discovered_parts)
+        report["DRAWING_DISCOVERED"] = "YES"
+        report["PRESERVE_3D_DISCOVERED"] = "YES"
+        report["PRESERVE_3D_DISCOVERED_NAME"] = " | ".join(model_matches)
 
         failures = naming_failures(clone)
         clone.SetDryrun(bool(dry_run))
@@ -1503,7 +1746,9 @@ def import_one(api, drawing, logfile, dry_run, log):
 
         log.write(
             "  UF Clone completed: discovered={0}; default=UseExisting; "
-            "drawing=Overwrite; dry_run={1}".format(len(discovered_parts), dry_run)
+            "drawing=Overwrite; 3D master=UseExisting; dry_run={1}".format(
+                len(discovered_parts), dry_run
+            )
         )
         return discovered_parts
     finally:
@@ -1555,6 +1800,32 @@ def record_post_import_checkout(report, checkout):
     report["POST_IMPORT_CHECKOUT_STATE"] = checkout.get("state", "UNKNOWN")
     report["POST_IMPORT_CHECKOUT_OWNER"] = checkout.get("owner", "")
     report["POST_IMPORT_CHECKOUT_RAW"] = checkout.get("raw", "")
+    report["POST_IMPORT_DRAWING_SHEET_COUNT"] = checkout.get(
+        "drawing_sheet_count", -1
+    )
+
+
+def record_master_checkout(report, checkout, recheck=False):
+    if recheck:
+        report["PRESERVE_3D_RECHECK_STATE"] = checkout.get(
+            "state", "UNKNOWN"
+        )
+        report["PRESERVE_3D_RECHECK_OWNER"] = checkout.get("owner", "")
+        return
+    report["PRESERVE_3D_OPENED_IDENTIFIER"] = checkout.get(
+        "opened_identifier", ""
+    )
+    report["PRESERVE_3D_CHECKOUT_STATE"] = checkout.get("state", "UNKNOWN")
+    report["PRESERVE_3D_CHECKOUT_OWNER"] = checkout.get("owner", "")
+    report["PRESERVE_3D_CHECKOUT_RAW"] = checkout.get("raw", "")
+
+
+def record_master_post_checkout(report, checkout):
+    report["PRESERVE_3D_POST_CHECKOUT_STATE"] = checkout.get(
+        "state", "UNKNOWN"
+    )
+    report["PRESERVE_3D_POST_CHECKOUT_OWNER"] = checkout.get("owner", "")
+    report["PRESERVE_3D_POST_CHECKOUT_RAW"] = checkout.get("raw", "")
 
 
 def block_for_checkout(report, checkout, phase):
@@ -1583,6 +1854,32 @@ def block_for_checkout(report, checkout, phase):
     return False
 
 
+def block_for_master_checkout(report, checkout, phase):
+    state = checkout.get("state", "UNKNOWN")
+    owner = checkout.get("owner", "")
+    if state == "CHECKED_OUT":
+        set_error(
+            report,
+            "BLOCKED_MASTER_CHECKED_OUT",
+            (
+                "Exact 3D master is checked out by {0}; J16 will not import "
+                "its drawing specification before {1}."
+            ).format(owner or "<owner unavailable>", phase),
+        )
+        return True
+    if state != "CHECKED_IN":
+        set_error(
+            report,
+            "BLOCKED_MASTER_CHECKOUT_UNKNOWN",
+            (
+                "Exact 3D master checkout state could not be proven CHECKED_IN "
+                "before {0}. Raw status: {1}"
+            ).format(phase, checkout.get("raw", "") or "<none>"),
+        )
+        return True
+    return False
+
+
 def run_managed_preflight(
     session,
     file_management,
@@ -1593,6 +1890,7 @@ def run_managed_preflight(
 ):
     receipts = receipts or {}
     for proposal in proposals:
+        ensure_model_identity(proposal)
         report = proposal["report"]
         proposal["log"] = log
         if report.get("RESULT") != "LOCAL_PREFLIGHT_OK":
@@ -1723,10 +2021,61 @@ def run_managed_preflight(
             )
             continue
 
+        master_checkout = inspect_master_checkout(session, proposal, log)
+        record_master_checkout(report, master_checkout)
+        log.write(
+            "  PRESERVE 3D {0}: state={1}; owner={2}; opened={3}".format(
+                proposal["model_identifier"],
+                master_checkout.get("state", "UNKNOWN"),
+                master_checkout.get("owner", "") or "<blank>",
+                master_checkout.get("opened_identifier", "") or "<blank>",
+            )
+        )
+        if block_for_master_checkout(
+            report, master_checkout, "clone preflight"
+        ):
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            continue
+
+        try:
+            _, master_sha = retrieve_exact_master_native(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "BASELINE",
+            )
+            proposal["model_baseline_sha"] = master_sha
+            report["PRESERVE_3D_BASELINE_SHA256"] = master_sha
+            log.write(
+                "  PRESERVE 3D BASELINE {0}: sha256={1}".format(
+                    proposal["model_identifier"], master_sha
+                )
+            )
+        except ProcessStateError:
+            raise
+        except Exception as exc:
+            set_error(
+                report,
+                "FAILED_MASTER_BASELINE_RETRIEVAL",
+                "Could not retrieve and fingerprint the exact 3D master.",
+                exc,
+            )
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            continue
+
         report["RESULT"] = "MANAGED_PREFLIGHT_OK"
         report["MESSAGE"] = (
-            "Exact target identity and CHECKED_IN state were proven; current "
-            "Teamcenter native drawing was downloaded and fingerprinted."
+            "Exact drawing and 3D identities were CHECKED_IN; both native "
+            "payloads were downloaded and fingerprinted."
         )
 
 
@@ -1739,7 +2088,7 @@ def run_dry_run(api, proposals, log, mode):
         report["CLONE_LOG"] = logfile
         report["CLONE_PREFLIGHT_LOG"] = logfile
         try:
-            import_one(api, proposal["drawing"], logfile, True, log)
+            import_one(api, proposal, logfile, True, log)
             report["CLONE_PREFLIGHT"] = "PASS"
             report["RESULT"] = "DRY_RUN_OK" if mode == "DRY_RUN" else "CLONE_PREFLIGHT_OK"
             report["MESSAGE"] = (
@@ -1825,6 +2174,21 @@ def classify_post_import(
                 "The exact managed payload changed after UF Clone, but its "
                 "post-import checkout state could not be proven. Raw status: {0}"
             ).format(checkout.get("raw", "") or "<none>"),
+        )
+        report["DISPOSITION"] = "FAILED_AFTER_WRITE"
+        return False
+
+    sheet_count = checkout.get("drawing_sheet_count", -1)
+    if sheet_count < 1:
+        report["POST_IMPORT_VERIFICATION"] = "FAILED_DRAWING_SHEETS_UNPROVEN"
+        set_error(
+            report,
+            "FAILED_IMPORT_UNVERIFIED",
+            (
+                "The exact managed payload changed after UF Clone, but the "
+                "reopened specification did not prove at least one drawing "
+                "sheet; observed count={0}."
+            ).format(sheet_count),
         )
         report["DISPOSITION"] = "FAILED_AFTER_WRITE"
         return False
@@ -2150,13 +2514,68 @@ def execute(
             quarantine_report(report)
             continue
 
+        master_checkout = inspect_master_checkout(session, proposal, log)
+        record_master_checkout(report, master_checkout, recheck=True)
+        log.write(
+            "  PRESERVE 3D RECHECK {0}: state={1}; owner={2}".format(
+                proposal["model_identifier"],
+                master_checkout.get("state", "UNKNOWN"),
+                master_checkout.get("owner", "") or "<blank>",
+            )
+        )
+        if block_for_master_checkout(
+            report, master_checkout, "UF Clone apply"
+        ):
+            quarantine_report(report)
+            continue
+
+        try:
+            _, master_prewrite_sha = retrieve_exact_master_native(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "PREWRITE",
+            )
+            report["PRESERVE_3D_PREWRITE_SHA256"] = master_prewrite_sha
+        except ProcessStateError as exc:
+            message = "Process-wide 3D prewrite retrieval failure: {0}".format(
+                error_text(exc)
+            )
+            set_error(report, "FAILED_PROCESS_STATE", message, exc)
+            report["DISPOSITION"] = "ABORTED"
+            mark_process_abort(
+                [item["report"] for item in proposals[index + 1:]],
+                "Batch stopped after a process-wide state failure on a prior row.",
+            )
+            log.write("  BATCH ABORTED: {0}".format(message))
+            break
+        except Exception as exc:
+            set_error(
+                report,
+                "FAILED_PREWRITE_MASTER_RETRIEVAL",
+                "Could not re-download the exact 3D master before import.",
+                exc,
+            )
+            quarantine_report(report)
+            continue
+
+        if master_prewrite_sha.lower() != proposal["model_baseline_sha"].lower():
+            set_error(
+                report,
+                "BLOCKED_STALE_MASTER",
+                "The exact 3D master changed after managed preflight.",
+            )
+            quarantine_report(report)
+            continue
+
         logfile = clone_log_path(proposal, mode, "APPLY")
         report["CLONE_LOG"] = logfile
         report["CLONE_APPLY_LOG"] = logfile
         report["WRITE_ATTEMPTED"] = "YES"
         writes_attempted += 1
         try:
-            import_one(api, proposal["drawing"], logfile, False, log)
+            import_one(api, proposal, logfile, False, log)
 
             _, post_sha = retrieve_exact_associated_drawing(
                 session,
@@ -2171,6 +2590,38 @@ def execute(
             post_checkout = inspect_target_checkout(
                 session, proposal["identifier"], log
             )
+            master_post_checkout = inspect_master_checkout(
+                session, proposal, log
+            )
+            record_master_post_checkout(report, master_post_checkout)
+            if master_post_checkout.get("state") != "CHECKED_IN":
+                raise RuntimeError(
+                    "Post-import 3D master checkout state is not CHECKED_IN: "
+                    "{0}; owner={1}; raw={2}".format(
+                        master_post_checkout.get("state", "UNKNOWN"),
+                        master_post_checkout.get("owner", "") or "<blank>",
+                        master_post_checkout.get("raw", "") or "<none>",
+                    )
+                )
+            _, master_post_sha = retrieve_exact_master_native(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "POSTIMPORT",
+            )
+            report["PRESERVE_3D_POST_SHA256"] = master_post_sha
+            master_unchanged = (
+                master_post_sha.lower()
+                == proposal["model_baseline_sha"].lower()
+            )
+            report["PRESERVE_3D_UNCHANGED"] = (
+                "YES" if master_unchanged else "NO"
+            )
+            if not master_unchanged:
+                raise RuntimeError(
+                    "Preserved 3D master SHA-256 changed across the J16 import."
+                )
             review_required = classify_post_import(
                 proposal,
                 prewrite_sha,

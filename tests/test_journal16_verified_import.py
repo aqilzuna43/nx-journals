@@ -67,10 +67,32 @@ class FakePdmFile:
 
 class VerifiedImportTests(unittest.TestCase):
     MANAGED_SHA = "a" * 64
+    MODEL_SHA = "c" * 64
 
     @classmethod
     def setUpClass(cls):
         cls.journal = load_j16()
+        cls.real_retrieve_exact_master_native = (
+            cls.journal.retrieve_exact_master_native
+        )
+
+    def setUp(self):
+        self.master_checkout_patcher = mock.patch.object(
+            self.journal,
+            "inspect_master_checkout",
+            side_effect=lambda _session, proposal, _log: self.checked_in(
+                proposal.get("model_identifier", "")
+            ),
+        )
+        self.master_retrieval_patcher = mock.patch.object(
+            self.journal,
+            "retrieve_exact_master_native",
+            return_value=("master.prt", self.MODEL_SHA),
+        )
+        self.master_checkout_patcher.start()
+        self.master_retrieval_patcher.start()
+        self.addCleanup(self.master_checkout_patcher.stop)
+        self.addCleanup(self.master_retrieval_patcher.stop)
 
     def make_row(
         self,
@@ -117,6 +139,7 @@ class VerifiedImportTests(unittest.TestCase):
             "owner": "",
             "raw": "(False, '')",
             "opened_identifier": identifier,
+            "drawing_sheet_count": 1,
         }
 
     def checked_out(self, owner="other.user", identifier=""):
@@ -125,10 +148,36 @@ class VerifiedImportTests(unittest.TestCase):
             "owner": owner,
             "raw": "(True, '{0}')".format(owner),
             "opened_identifier": identifier,
+            "drawing_sheet_count": 1,
         }
 
     def fresh_session(self):
         return types.SimpleNamespace(Parts=[])
+
+    def make_clone_proposal(self, drawing, part_number="TEST100"):
+        report = self.journal.base_report({}, "stamp", "APPLY_APPROVED")
+        return {
+            "report": report,
+            "drawing": drawing,
+            "part_number": part_number,
+            "revision": "A",
+            "drawing_index": 1,
+            "identifier": self.journal.drawing_id(part_number, "A", 1),
+            "model_identifier": self.journal.model_id(part_number, "A"),
+            "model_native_name": self.journal.managed_model_native_name(
+                part_number, "A"
+            ),
+        }
+
+    def clone_api(self, clone):
+        return {
+            "clone": clone,
+            "import_operation": "IMPORT",
+            "treat_as_lost": "TREAT_AS_LOST",
+            "autotranslate": "AUTOTRANSLATE",
+            "use_existing": "USE_EXISTING",
+            "overwrite": "OVERWRITE",
+        }
 
     def test_manual_settings_default_to_approved_one_run(self):
         self.assertEqual("", self.journal.USER_IMPORT_CSV)
@@ -458,6 +507,12 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual("VERIFIED_SHA256", reports[0]["POST_IMPORT_VERIFICATION"])
         self.assertEqual("CHECKED_IN", reports[0]["POST_IMPORT_CHECKOUT_STATE"])
         self.assertEqual(identifier, reports[0]["POST_IMPORT_OPENED_IDENTIFIER"])
+        self.assertEqual(1, reports[0]["POST_IMPORT_DRAWING_SHEET_COUNT"])
+        self.assertEqual("YES", reports[0]["PRESERVE_3D_UNCHANGED"])
+        self.assertEqual(self.MODEL_SHA, reports[0]["PRESERVE_3D_POST_SHA256"])
+        self.assertEqual(
+            "CHECKED_IN", reports[0]["PRESERVE_3D_POST_CHECKOUT_STATE"]
+        )
         self.assertEqual("YES", reports[0]["WRITE_ATTEMPTED"])
         self.assertEqual(2, import_one.call_count)
 
@@ -1458,6 +1513,284 @@ class VerifiedImportTests(unittest.TestCase):
         self.assertEqual(2, import_one.call_count)
         self.assertTrue(import_one.call_args_list[0].args[3])
         self.assertFalse(import_one.call_args_list[1].args[3])
+
+    def test_clone_discovery_fails_closed_before_perform(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            proposal = self.make_clone_proposal(drawing)
+            model = os.path.join(folder, "TEST100_A.prt")
+            cases = (
+                ([], "discovered no parts"),
+                ([model], "exact local drawing"),
+                ([drawing], "preserved 3D master"),
+            )
+            for discovered, message in cases:
+                with self.subTest(discovered=discovered), mock.patch.object(
+                    self.journal, "iterate_parts", return_value=discovered
+                ), mock.patch.object(
+                    self.journal, "perform_clone"
+                ) as perform:
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        self.journal.import_one(
+                            self.clone_api(mock.MagicMock()),
+                            proposal,
+                            os.path.join(folder, "clone.log"),
+                            True,
+                            FakeLog(),
+                        )
+                    perform.assert_not_called()
+
+    def test_clone_assigns_only_drawing_overwrite_and_master_use_existing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            proposal = self.make_clone_proposal(drawing)
+            model = os.path.join(folder, "TEST100_A.prt")
+            reference = os.path.join(folder, "REFERENCE_A.prt")
+            clone = mock.MagicMock()
+            with mock.patch.object(
+                self.journal,
+                "iterate_parts",
+                return_value=[model, drawing, reference],
+            ), mock.patch.object(
+                self.journal, "naming_failures", return_value=None
+            ), mock.patch.object(
+                self.journal, "perform_clone"
+            ) as perform:
+                discovered = self.journal.import_one(
+                    self.clone_api(clone),
+                    proposal,
+                    os.path.join(folder, "clone.log"),
+                    True,
+                    FakeLog(),
+                )
+
+        self.assertEqual([model, drawing, reference], discovered)
+        clone.SetDefAction.assert_called_once_with("USE_EXISTING")
+        self.assertIn(
+            mock.call(drawing, "OVERWRITE", ""), clone.SetAction.call_args_list
+        )
+        self.assertIn(
+            mock.call(model, "USE_EXISTING", ""), clone.SetAction.call_args_list
+        )
+        self.assertEqual("YES", proposal["report"]["DRAWING_DISCOVERED"])
+        self.assertEqual("YES", proposal["report"]["PRESERVE_3D_DISCOVERED"])
+        perform.assert_called_once()
+
+    def test_checked_out_master_blocks_before_clone_preflight(self):
+        report = self.journal.base_report({}, "stamp", "APPLY_APPROVED")
+        report["RESULT"] = "LOCAL_PREFLIGHT_OK"
+        report["MODE"] = "APPLY_APPROVED"
+        proposal = {
+            "report": report,
+            "identifier": self.journal.drawing_id("TEST100", "A", 1),
+            "part_number": "TEST100",
+            "revision": "A",
+            "drawing_index": 1,
+            "preflight_sha": "source",
+        }
+        with mock.patch.object(
+            self.journal,
+            "inspect_target_checkout",
+            return_value=self.checked_in(proposal["identifier"]),
+        ), mock.patch.object(
+            self.journal,
+            "retrieve_exact_associated_drawing",
+            return_value=("drawing.prt", self.MANAGED_SHA),
+        ), mock.patch.object(
+            self.journal,
+            "inspect_master_checkout",
+            return_value=self.checked_out("other.user", "@DB/TEST100/A"),
+        ), mock.patch.object(
+            self.journal, "retrieve_exact_master_native"
+        ) as retrieve_master:
+            self.journal.run_managed_preflight(
+                object(), object(), [proposal], "evidence", FakeLog()
+            )
+
+        self.assertEqual("BLOCKED_MASTER_CHECKED_OUT", report["RESULT"])
+        self.assertIn("other.user", report["MESSAGE"])
+        retrieve_master.assert_not_called()
+
+    def test_unknown_master_checkout_blocks_fail_closed(self):
+        report = {}
+        blocked = self.journal.block_for_master_checkout(
+            report,
+            {
+                "state": "UNKNOWN",
+                "owner": "",
+                "raw": "unrecognized NX output",
+            },
+            "clone preflight",
+        )
+        self.assertTrue(blocked)
+        self.assertEqual("BLOCKED_MASTER_CHECKOUT_UNKNOWN", report["RESULT"])
+        self.assertIn("unrecognized NX output", report["MESSAGE"])
+
+    def test_master_change_before_apply_quarantines_without_write(self):
+        with tempfile.TemporaryDirectory() as folder:
+            drawing = self.make_drawing(folder)
+            row = self.make_row(drawing)
+            identifier = row["DRAWING_IDENTIFIER"]
+
+            def target_retrieval(_s, _f, _p, _r, phase, *_fields):
+                return (phase + ".prt", self.MANAGED_SHA)
+
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(identifier),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=target_retrieval,
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_master_native",
+                side_effect=[
+                    ("master-baseline.prt", self.MODEL_SHA),
+                    ("master-prewrite.prt", "d" * 64),
+                ],
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    [row],
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("QUARANTINED_PREFLIGHT", reports[0]["RESULT"])
+        self.assertEqual("NO", reports[0]["WRITE_ATTEMPTED"])
+        self.assertEqual(1, import_one.call_count)
+
+    def test_changed_3d_after_write_fails_and_stops_later_rows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first = self.make_drawing(folder, "FIRST")
+            second = self.make_drawing(folder, "SECOND")
+            rows = [self.make_row(first, "FIRST"), self.make_row(second, "SECOND")]
+
+            def target_retrieval(_s, _f, proposal, _r, phase, *_fields):
+                if phase == "POSTIMPORT":
+                    return (phase + ".prt", "post-" + proposal["part_number"])
+                return (phase + ".prt", self.MANAGED_SHA)
+
+            master_hashes = [
+                ("first-base.prt", self.MODEL_SHA),
+                ("second-base.prt", self.MODEL_SHA),
+                ("first-pre.prt", self.MODEL_SHA),
+                ("first-post.prt", "d" * 64),
+            ]
+            with mock.patch.object(
+                self.journal,
+                "inspect_target_checkout",
+                return_value=self.checked_in(),
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_associated_drawing",
+                side_effect=target_retrieval,
+            ), mock.patch.object(
+                self.journal,
+                "retrieve_exact_master_native",
+                side_effect=master_hashes,
+            ), mock.patch.object(
+                self.journal, "import_one"
+            ) as import_one:
+                reports = self.journal.execute(
+                    self.fresh_session(),
+                    object(),
+                    object(),
+                    rows,
+                    os.path.join(folder, "input.csv"),
+                    "stamp",
+                    "APPLY_APPROVED",
+                    FakeLog(),
+                    os.path.join(folder, "evidence"),
+                )
+
+        self.assertEqual("FAILED_IMPORT_UNVERIFIED", reports[0]["RESULT"])
+        self.assertEqual("NO", reports[0]["PRESERVE_3D_UNCHANGED"])
+        self.assertEqual(
+            "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE", reports[1]["RESULT"]
+        )
+        self.assertEqual(3, import_one.call_count)
+
+    def test_zero_sheet_post_import_is_failed_unverified(self):
+        proposal = {
+            "report": self.journal.base_report({}, "stamp", "APPLY_APPROVED"),
+            "identifier": self.journal.drawing_id("TEST100", "A", 1),
+            "preflight_sha": "source",
+        }
+        checkout = self.checked_in(proposal["identifier"])
+        checkout["drawing_sheet_count"] = 0
+        review = self.journal.classify_post_import(
+            proposal,
+            "before",
+            "after",
+            checkout,
+            FakeLog(),
+        )
+        self.assertFalse(review)
+        self.assertEqual(
+            "FAILED_IMPORT_UNVERIFIED", proposal["report"]["RESULT"]
+        )
+        self.assertEqual(
+            "FAILED_DRAWING_SHEETS_UNPROVEN",
+            proposal["report"]["POST_IMPORT_VERIFICATION"],
+        )
+
+    def test_exact_master_retrieval_restores_cwd_and_hashes_native(self):
+        with tempfile.TemporaryDirectory() as folder:
+            identifier = self.journal.model_id("TEST100", "A")
+            status = FakeLoadStatus()
+            part = types.SimpleNamespace(
+                JournalIdentifier=identifier,
+                Close=mock.Mock(),
+            )
+            parts = mock.MagicMock()
+            parts.__iter__.return_value = iter([])
+            parts.FindObject.side_effect = RuntimeError("not loaded")
+            parts.OpenBase.return_value = (part, status)
+            session = types.SimpleNamespace(Parts=parts)
+            pdm_files = [
+                FakePdmFile("qafmetadata.qaf"),
+                FakePdmFile("TEST100_A.prt"),
+            ]
+            download_folder = os.path.join(folder, "managed_download")
+
+            def download(_parts, files):
+                os.makedirs(download_folder, exist_ok=True)
+                for value in files:
+                    with open(
+                        os.path.join(download_folder, value.name), "wb"
+                    ) as handle:
+                        handle.write(("payload-" + value.name).encode("ascii"))
+                os.chdir(download_folder)
+
+            fm = types.SimpleNamespace(
+                GetAssociatedFiles=mock.Mock(return_value=(pdm_files,)),
+                DownloadAssociatedFiles=mock.Mock(side_effect=download),
+            )
+            proposal = self.make_clone_proposal(
+                os.path.join(folder, "drawing.prt")
+            )
+            proposal["log"] = FakeLog()
+            original_cwd = os.getcwd()
+            evidence, digest = type(self).real_retrieve_exact_master_native(
+                session, fm, proposal, folder, "BASELINE"
+            )
+            evidence_sha = self.journal.sha256(evidence)
+
+        self.assertEqual(original_cwd, os.getcwd())
+        self.assertTrue(evidence.endswith("TEST100_A.prt"))
+        self.assertEqual(evidence_sha, digest)
+        self.assertTrue(all(value.released for value in pdm_files))
+        self.assertTrue(status.disposed)
 
     def test_j16_uses_associated_files_not_legacy_export(self):
         source = J16_PATH.read_text(encoding="utf-8")

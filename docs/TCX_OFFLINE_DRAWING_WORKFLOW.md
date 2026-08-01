@@ -226,22 +226,29 @@ ENGINEER=<nonblank>
 ### Standalone verified import
 
 J16 is the standalone import path. Its committed defaults are deliberately
-read-only:
+configured for the validated one-run production workflow:
 
 ```python
 USER_IMPORT_CSV = r""
-USER_MODE = "DRY_RUN"
+USER_MODE = "APPLY_APPROVED"
 ```
 
-Before any clone dry run, J16 opens the exact `/specification/` identifier,
-queries `PDMPart.GetCheckedoutStatusAndUser()`, and exports the exact UGPART
-dataset for a baseline hash. A checkout by any user blocks that row and records
-the owner. Rows whose checkout state cannot be proven are also blocked.
+For each approved row, J16 performs the managed checks and UF Clone dry run
+inside the same execution before any write. It opens the exact
+`/specification/` and corresponding `@DB/<part>/<revision>` 3D master, requires
+both to be `CHECKED_IN`, and downloads their exact associated native files for
+baseline hashes. A checkout or ambiguous identity blocks only that row.
 
-In `APPLY_APPROVED`, J16 rechecks checkout state and re-exports the target
-immediately before the V1 UF Clone writer runs. An exception-free clone return
-is not success. J16 reports `IMPORT_VERIFIED` only when a post-import export of
-the exact specification has the same SHA-256 as the approved local drawing.
+Immediately before apply, J16 rechecks checkout and native hashes. UF Clone
+must discover the exact local drawing and its 3D master. Every object defaults
+to `UseExisting`; only the discovered local drawing receives `Overwrite`.
+
+After apply, J16 reopens the exact specification, requires at least one drawing
+sheet, downloads the managed drawing again, and proves the 3D master remained
+byte-identical. Teamcenter may rewrite the managed drawing bytes, so either an
+exact source hash or a changed managed payload is accepted when all identity,
+checkout, sheet, and 3D-preservation checks pass. An exception-free UF Clone
+return alone is never success.
 
 Run J19 before the first controlled apply:
 
@@ -250,8 +257,8 @@ from_git/journals/19_test_teamcenter_drawing_import_contract.py
 ```
 
 J19 is read-only against Teamcenter. It records the exact opened identifier,
-checkout owner, `FileManagement.ExportFiles` result, exported SHA-256, and a UF
-Clone dry-run log in `J19_CONTRACT_<timestamp>`.
+checkout owner, attached-file download evidence, named-reference/export probe
+results, SHA-256 values, and a UF Clone dry-run log.
 
 ## 8. First acceptance test
 
