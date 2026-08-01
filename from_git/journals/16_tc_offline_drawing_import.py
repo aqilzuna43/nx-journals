@@ -14,14 +14,19 @@ Core safety rule:
 - Only the exact local drawing is set to Overwrite.
 - Item ID, revision, and 3D/reference parts are never intentionally replaced.
 
-Run DRY_RUN first. APPLY_APPROVED writes only APPROVED=YES rows with ENGINEER.
+For normal production, mark the intended CSV rows APPROVED=YES, provide the
+ENGINEER, and run APPLY_APPROVED once in a fresh NX session. J16 performs its
+read-only managed checks and UF Clone dry run internally before any write.
 """
 
 import csv
 import datetime
 import hashlib
 import os
+import re
+import shutil
 import traceback
+import zipfile
 from collections import Counter
 
 import NXOpen
@@ -31,16 +36,28 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r"C:\Users\my62022696\Desktop\TEST_IMPORT\NX_TC_DRAWING_IMPORT.csv"  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
-USER_MODE = "APPLY_APPROVED"  # DRY_RUN | APPLY_APPROVED
+USER_MODE = "APPLY_APPROVED"  # production default; DRY_RUN remains diagnostic
+USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_DRAWING_IMPORT.csv
 # Optional environment overrides:
 #   NX_TC_DRAWING_IMPORT_FILE=<full CSV path>
-#   NX_J16_MODE=DRY_RUN or APPLY_APPROVED
+#   NX_J16_MODE=DRY_RUN, APPLY_ONE_APPROVED, or APPLY_APPROVED
+#   NX_J16_MAX_APPROVED_WRITES=1..100 (APPLY_APPROVED only; default 25)
+#   NX_J16_RECEIPT_FILE=<optional full receipt CSV path>
 # ============================================================================
 
-BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V1"
+BUILD = "J16-TCX-DRAWING-IMPORT-NX2506-V11-ONE-RUN-QUARANTINE"
 DEFAULT_INPUT = "NX_TC_DRAWING_IMPORT.csv"
-VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
+DEFAULT_RECEIPTS = "J16_VERIFIED_IMPORT_RECEIPTS.csv"
+VALID_MODES = ("DRY_RUN", "APPLY_ONE_APPROVED", "APPLY_APPROVED")
+BATCH_APPLY_ENABLED = True
+DEFAULT_MAX_APPROVED_WRITES = 25
+DEFAULT_DATASET_TYPE = "UGPART"
+DEFAULT_EXPORT_TOOL = "UGII V10-ALL"
+RELATION_CANDIDATES = (
+    "has specification",
+    "specification",
+    "IMAN_specification",
+)
 
 REQUIRED_COLUMNS = [
     "PART_NUMBER",
@@ -61,18 +78,72 @@ REPORT_COLUMNS = [
     "DRAWING_IDENTIFIER",
     "DRAWING_FILE",
     "BASELINE_SHA256",
+    "APPROVED_LOCAL_SHA256",
+    "APPROVED_TC_BASELINE_SHA256",
     "PREFLIGHT_SHA256",
     "CHANGED_FROM_BASELINE",
     "APPROVED",
     "ENGINEER",
+    "AUTHORIZATION_SOURCE",
     "DEFAULT_IMPORT_ACTION",
     "DRAWING_IMPORT_ACTION",
+    "OPENED_IDENTIFIER",
+    "CHECKOUT_STATE",
+    "CHECKOUT_OWNER",
+    "CHECKOUT_RAW",
+    "VERIFICATION_CHANNEL",
+    "RELATION_TYPE",
+    "BASELINE_ASSOCIATED_FILES",
+    "BASELINE_DOWNLOAD_CWD",
+    "BASELINE_EXPORT_PDI_CODE",
+    "BASELINE_EXPORT_FILE",
+    "TC_BASELINE_SHA256",
+    "EXPECTED_MANAGED_NATIVE",
+    "OBSERVED_NATIVE_FILES",
+    "ANOMALY_EVIDENCE_FILE",
+    "ANOMALY_SHA256",
     "CLONE_PREFLIGHT",
+    "CHECKOUT_RECHECK_STATE",
+    "CHECKOUT_RECHECK_OWNER",
+    "PREWRITE_ASSOCIATED_FILES",
+    "PREWRITE_DOWNLOAD_CWD",
+    "PREWRITE_EXPORT_PDI_CODE",
+    "PREWRITE_EXPORT_FILE",
+    "PREWRITE_TC_SHA256",
+    "POST_IMPORT_ASSOCIATED_FILES",
+    "POST_IMPORT_DOWNLOAD_CWD",
+    "POST_IMPORT_EXPORT_PDI_CODE",
+    "POST_IMPORT_EXPORT_FILE",
+    "POST_IMPORT_TC_SHA256",
+    "POST_IMPORT_OPENED_IDENTIFIER",
+    "POST_IMPORT_CHECKOUT_STATE",
+    "POST_IMPORT_CHECKOUT_OWNER",
+    "POST_IMPORT_CHECKOUT_RAW",
+    "POST_IMPORT_VERIFICATION",
     "WRITE_ATTEMPTED",
+    "DISPOSITION",
+    "QUARANTINE_REASON",
+    "RECEIPT_STATUS",
     "RESULT",
     "MESSAGE",
+    "CLONE_PREFLIGHT_LOG",
+    "CLONE_APPLY_LOG",
     "CLONE_LOG",
 ]
+
+RECEIPT_COLUMNS = [
+    "TARGET_IDENTIFIER",
+    "SOURCE_SHA256",
+    "VERIFIED_POST_TC_SHA256",
+    "RESULT",
+    "ENGINEER",
+    "BUILD",
+    "VERIFIED_AT",
+]
+
+
+class ProcessStateError(RuntimeError):
+    """A process-wide state failure after which later rows are not safe."""
 
 
 def text(value):
@@ -107,11 +178,48 @@ def configured_mode():
     return upper(env("NX_J16_MODE") or USER_MODE or "DRY_RUN")
 
 
+def is_apply_mode(mode):
+    return mode in ("APPLY_ONE_APPROVED", "APPLY_APPROVED")
+
+
+def configured_max_approved_writes():
+    raw = env("NX_J16_MAX_APPROVED_WRITES")
+    try:
+        value = int(raw) if raw else DEFAULT_MAX_APPROVED_WRITES
+    except Exception:
+        raise RuntimeError("NX_J16_MAX_APPROVED_WRITES must be an integer.")
+    if value < 1 or value > 100:
+        raise RuntimeError(
+            "NX_J16_MAX_APPROVED_WRITES must be between 1 and 100."
+        )
+    return value
+
+
 def configured_input_path():
     configured = env("NX_TC_DRAWING_IMPORT_FILE") or clean(USER_IMPORT_CSV)
     if configured:
         return os.path.abspath(os.path.expanduser(configured))
     return os.path.join(io_root(), DEFAULT_INPUT)
+
+
+def configured_receipt_path(input_path):
+    configured = env("NX_J16_RECEIPT_FILE")
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    return os.path.join(os.path.dirname(input_path), DEFAULT_RECEIPTS)
+
+
+def configured_dataset_type():
+    return clean(env("NX_J16_DATASET_TYPE") or DEFAULT_DATASET_TYPE)
+
+
+def configured_export_tool():
+    return clean(env("NX_J16_EXPORT_TOOL") or DEFAULT_EXPORT_TOOL)
+
+
+def configured_relation_candidates():
+    configured = clean(env("NX_J16_RELATION_TYPE"))
+    return (configured,) if configured else RELATION_CANDIDATES
 
 
 def error_text(error):
@@ -192,10 +300,133 @@ def write_csv(path, rows):
             writer.writerow({column: row.get(column, "") for column in REPORT_COLUMNS})
 
 
+def receipt_key(identifier, source_sha):
+    return (
+        upper(identifier).replace("\\", "/"),
+        clean(source_sha).lower(),
+    )
+
+
+def load_receipts(path):
+    """Return verified receipts plus a nonfatal warning for malformed data."""
+    if not path or not os.path.isfile(path):
+        return {}, ""
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            headers = [clean(value) for value in (reader.fieldnames or [])]
+            missing = [value for value in RECEIPT_COLUMNS if value not in headers]
+            if missing:
+                raise RuntimeError(
+                    "missing receipt column(s): {0}".format(", ".join(missing))
+                )
+            receipts = {}
+            for source in reader:
+                row = {
+                    clean(key): clean(value)
+                    for key, value in source.items()
+                    if key is not None
+                }
+                identifier = row.get("TARGET_IDENTIFIER", "")
+                source_sha = row.get("SOURCE_SHA256", "")
+                post_sha = row.get("VERIFIED_POST_TC_SHA256", "")
+                result = row.get("RESULT", "")
+                if (
+                    "/SPECIFICATION/" not in upper(identifier).replace("\\", "/")
+                    or not valid_sha256(source_sha)
+                    or not valid_sha256(post_sha)
+                    or result
+                    not in (
+                        "IMPORT_VERIFIED",
+                        "IMPORT_VERIFIED_MANAGED_TRANSFORM",
+                    )
+                ):
+                    raise RuntimeError(
+                        "receipt contains an invalid identity, result, or SHA-256"
+                    )
+                receipts[receipt_key(identifier, source_sha)] = row
+            return receipts, ""
+    except Exception as exc:
+        return {}, "Receipt file was ignored: {0}".format(error_text(exc))
+
+
+def write_receipts_atomic(path, receipts):
+    folder = os.path.dirname(path)
+    os.makedirs(folder, exist_ok=True)
+    temporary = path + ".tmp"
+    rows = sorted(
+        receipts.values(),
+        key=lambda row: (
+            upper(row.get("TARGET_IDENTIFIER")),
+            clean(row.get("SOURCE_SHA256")),
+        ),
+    )
+    try:
+        with open(temporary, "w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=RECEIPT_COLUMNS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(
+                    {column: row.get(column, "") for column in RECEIPT_COLUMNS}
+                )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.isfile(temporary):
+            try:
+                os.remove(temporary)
+            except Exception:
+                pass
+
+
+def record_verified_receipt(path, receipts, proposal, post_sha, timestamp):
+    row = {
+        "TARGET_IDENTIFIER": proposal["identifier"],
+        "SOURCE_SHA256": proposal["preflight_sha"],
+        "VERIFIED_POST_TC_SHA256": post_sha,
+        "RESULT": proposal["report"].get("RESULT", ""),
+        "ENGINEER": proposal["report"].get("ENGINEER", ""),
+        "BUILD": BUILD,
+        "VERIFIED_AT": timestamp,
+    }
+    receipts[receipt_key(row["TARGET_IDENTIFIER"], row["SOURCE_SHA256"])] = row
+    write_receipts_atomic(path, receipts)
+
+
 def write_log(path, lines):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8-sig") as handle:
         handle.write("\n".join(lines) + "\n")
+
+
+def zip_artifacts(zip_path, evidence_root, artifact_paths):
+    """Create one portable evidence ZIP without including the source drawing."""
+    os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+    temporary = zip_path + ".tmp"
+    added = set()
+    with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        if os.path.isdir(evidence_root):
+            parent = os.path.dirname(evidence_root)
+            for folder, directories, files in os.walk(evidence_root):
+                directories.sort(key=lambda value: value.lower())
+                files.sort(key=lambda value: value.lower())
+                for name in files:
+                    path = os.path.abspath(os.path.join(folder, name))
+                    arcname = os.path.relpath(path, parent)
+                    archive.write(path, arcname)
+                    added.add(os.path.normcase(path))
+        for value in artifact_paths:
+            path = os.path.abspath(clean(value)) if clean(value) else ""
+            if (
+                path
+                and os.path.isfile(path)
+                and os.path.normcase(path) not in added
+            ):
+                archive.write(path, os.path.basename(path))
+                added.add(os.path.normcase(path))
+    os.replace(temporary, zip_path)
+    return zip_path
 
 
 def sha256(path):
@@ -207,6 +438,10 @@ def sha256(path):
                 break
             digest.update(block)
     return digest.hexdigest()
+
+
+def valid_sha256(value):
+    return bool(re.match(r"^[0-9a-fA-F]{64}$", clean(value)))
 
 
 # ---------------------------------------------------------------------------
@@ -295,16 +530,66 @@ def base_report(row, timestamp, mode):
         "DRAWING_IDENTIFIER": "",
         "DRAWING_FILE": row.get("DRAWING_FILE", ""),
         "BASELINE_SHA256": row.get("EXPORT_SHA256", ""),
+        "APPROVED_LOCAL_SHA256": (
+            row.get("APPROVED_LOCAL_SHA256", "")
+            or row.get("PREFLIGHT_SHA256", "")
+        ),
+        "APPROVED_TC_BASELINE_SHA256": (
+            row.get("APPROVED_TC_BASELINE_SHA256", "")
+            or row.get("TC_BASELINE_SHA256", "")
+        ),
         "PREFLIGHT_SHA256": "",
         "CHANGED_FROM_BASELINE": "",
-        "APPROVED": row.get("APPROVED", ""),
-        "ENGINEER": row.get("ENGINEER", ""),
+        # DRY_RUN never carries write authorization. Production authorization
+        # always comes from APPROVED=YES plus a named engineer in the input.
+        "APPROVED": "NO" if mode == "DRY_RUN" else row.get("APPROVED", ""),
+        "ENGINEER": "" if mode == "DRY_RUN" else row.get("ENGINEER", ""),
+        "AUTHORIZATION_SOURCE": (
+            "DIAGNOSTIC_ONLY" if mode == "DRY_RUN" else "CSV_APPROVED_ROW"
+        ),
         "DEFAULT_IMPORT_ACTION": "UseExisting",
         "DRAWING_IMPORT_ACTION": "Overwrite",
+        "OPENED_IDENTIFIER": "",
+        "CHECKOUT_STATE": "NOT_CHECKED",
+        "CHECKOUT_OWNER": "",
+        "CHECKOUT_RAW": "",
+        "VERIFICATION_CHANNEL": "GetAssociatedFiles+DownloadAssociatedFiles",
+        "RELATION_TYPE": "",
+        "BASELINE_ASSOCIATED_FILES": "",
+        "BASELINE_DOWNLOAD_CWD": "",
+        "BASELINE_EXPORT_PDI_CODE": "",
+        "BASELINE_EXPORT_FILE": "",
+        "TC_BASELINE_SHA256": "",
+        "EXPECTED_MANAGED_NATIVE": "",
+        "OBSERVED_NATIVE_FILES": "",
+        "ANOMALY_EVIDENCE_FILE": "",
+        "ANOMALY_SHA256": "",
         "CLONE_PREFLIGHT": "NOT_RUN",
+        "CHECKOUT_RECHECK_STATE": "NOT_RUN",
+        "CHECKOUT_RECHECK_OWNER": "",
+        "PREWRITE_ASSOCIATED_FILES": "",
+        "PREWRITE_DOWNLOAD_CWD": "",
+        "PREWRITE_EXPORT_PDI_CODE": "",
+        "PREWRITE_EXPORT_FILE": "",
+        "PREWRITE_TC_SHA256": "",
+        "POST_IMPORT_ASSOCIATED_FILES": "",
+        "POST_IMPORT_DOWNLOAD_CWD": "",
+        "POST_IMPORT_EXPORT_PDI_CODE": "",
+        "POST_IMPORT_EXPORT_FILE": "",
+        "POST_IMPORT_TC_SHA256": "",
+        "POST_IMPORT_OPENED_IDENTIFIER": "",
+        "POST_IMPORT_CHECKOUT_STATE": "NOT_RUN",
+        "POST_IMPORT_CHECKOUT_OWNER": "",
+        "POST_IMPORT_CHECKOUT_RAW": "",
+        "POST_IMPORT_VERIFICATION": "NOT_RUN",
         "WRITE_ATTEMPTED": "NO",
+        "DISPOSITION": "PENDING",
+        "QUARANTINE_REASON": "",
+        "RECEIPT_STATUS": "NOT_CHECKED",
         "RESULT": "",
         "MESSAGE": "",
+        "CLONE_PREFLIGHT_LOG": "",
+        "CLONE_APPLY_LOG": "",
         "CLONE_LOG": "",
     }
 
@@ -328,6 +613,12 @@ def local_preflight(rows, csv_path, timestamp, mode):
         report = base_report(row, timestamp, mode)
         reports.append(report)
 
+        try:
+            part_number, revision, drawing_index = parse_target(row)
+        except Exception as exc:
+            set_error(report, "ERROR_INPUT", error_text(exc), exc)
+            continue
+
         approval = approval_state(row)
         if approval == "INVALID":
             set_error(
@@ -337,17 +628,12 @@ def local_preflight(rows, csv_path, timestamp, mode):
             )
             continue
 
-        # In apply mode, unapproved rows are not candidates and cannot block
-        # approved rows because of stale/missing local files.
-        if mode == "APPLY_APPROVED" and approval != "YES":
+        # In an apply mode, unapproved rows are not candidates and cannot
+        # block approved rows because of stale/missing local files.
+        if is_apply_mode(mode) and approval != "YES":
             report["RESULT"] = "NOT_APPROVED"
             report["MESSAGE"] = "No write authorized for this row."
-            continue
-
-        try:
-            part_number, revision, drawing_index = parse_target(row)
-        except Exception as exc:
-            set_error(report, "ERROR_INPUT", error_text(exc), exc)
+            report["DISPOSITION"] = "NOT_APPROVED"
             continue
 
         target_key = (upper(part_number), upper(revision), drawing_index)
@@ -359,7 +645,7 @@ def local_preflight(rows, csv_path, timestamp, mode):
             )
             continue
 
-        if mode == "APPLY_APPROVED" and not clean(row.get("ENGINEER")):
+        if is_apply_mode(mode) and not clean(row.get("ENGINEER")):
             set_error(
                 report,
                 "ERROR_ENGINEER_REQUIRED",
@@ -411,6 +697,32 @@ def local_preflight(rows, csv_path, timestamp, mode):
             continue
 
         report["PREFLIGHT_SHA256"] = current_sha
+        if mode == "DRY_RUN":
+            report["APPROVED_LOCAL_SHA256"] = current_sha
+        elif is_apply_mode(mode):
+            approved_local_sha = clean(report.get("APPROVED_LOCAL_SHA256"))
+            if approved_local_sha and not valid_sha256(approved_local_sha):
+                set_error(
+                    report,
+                    "ERROR_OPTIONAL_LOCAL_SHA256",
+                    (
+                        "APPROVED_LOCAL_SHA256 is optional, but when supplied "
+                        "it must be a 64-character SHA-256."
+                    ),
+                )
+                continue
+            if approved_local_sha and current_sha.lower() != approved_local_sha.lower():
+                set_error(
+                    report,
+                    "BLOCKED_LOCAL_CHANGED_AFTER_APPROVAL",
+                    (
+                        "DRAWING_FILE SHA-256 no longer matches the approved "
+                        "J16 DRY_RUN local hash."
+                    ),
+                )
+                continue
+            if not approved_local_sha:
+                report["APPROVED_LOCAL_SHA256"] = current_sha
         baseline = clean(row.get("EXPORT_SHA256"))
         if baseline:
             changed = current_sha.lower() != baseline.lower()
@@ -420,6 +732,7 @@ def local_preflight(rows, csv_path, timestamp, mode):
                 report["MESSAGE"] = (
                     "Current drawing SHA-256 matches EXPORT_SHA256; no import is required."
                 )
+                report["DISPOSITION"] = "SKIPPED"
                 continue
         else:
             report["CHANGED_FROM_BASELINE"] = "UNKNOWN"
@@ -435,6 +748,12 @@ def local_preflight(rows, csv_path, timestamp, mode):
             "part_number": part_number,
             "revision": revision,
             "drawing_index": drawing_index,
+            "dataset_name": dataset_name(
+                part_number, revision, drawing_index
+            ),
+            "dataset_type": configured_dataset_type(),
+            "export_tool": configured_export_tool(),
+            "relation_type": "",
             "drawing": drawing,
             "identifier": identifier,
             "preflight_sha": current_sha,
@@ -443,12 +762,461 @@ def local_preflight(rows, csv_path, timestamp, mode):
     return reports, proposals
 
 
-def apply_blocking_error(report):
-    if report.get("RESULT") == "ERROR_APPROVAL_VALUE":
-        return True
-    if upper(report.get("APPROVED")) != "YES":
-        return False
-    return report.get("RESULT", "").startswith("ERROR_")
+# ---------------------------------------------------------------------------
+# Exact Teamcenter target and checkout inspection
+# ---------------------------------------------------------------------------
+def journal_identifier(part):
+    try:
+        return clean(part.JournalIdentifier)
+    except Exception:
+        return ""
+
+
+def unwrap_open_result(value):
+    if isinstance(value, (tuple, list)):
+        return (
+            value[0] if value else None,
+            value[1] if len(value) > 1 else None,
+        )
+    return value, None
+
+
+def find_loaded_by_identifier(session, identifier):
+    expected = upper(identifier).replace("\\", "/")
+    try:
+        parts = list(session.Parts)
+    except Exception:
+        parts = []
+    for part in parts:
+        actual = upper(journal_identifier(part)).replace("\\", "/")
+        if actual == expected:
+            return part
+    try:
+        candidate = session.Parts.FindObject(identifier)
+    except Exception:
+        candidate = None
+    if candidate is not None:
+        actual = upper(journal_identifier(candidate)).replace("\\", "/")
+        if actual == expected:
+            return candidate
+    return None
+
+
+def pdm_part(part):
+    value = getattr(part, "PDMPart", None)
+    return value() if callable(value) else value
+
+
+def decode_checkout_result(raw):
+    """Decode NX 2506 Python out-parameter shapes without guessing success."""
+    checked = None
+    owner = ""
+
+    if isinstance(raw, dict):
+        for key in ("isCheckedOut", "is_checked_out", "checkedOut", "checked_out"):
+            if key in raw and isinstance(raw[key], bool):
+                checked = raw[key]
+                break
+        for key in ("checkedOutBy", "checked_out_by", "owner", "user"):
+            if key in raw:
+                owner = clean(raw[key])
+                break
+    elif isinstance(raw, (tuple, list)):
+        for value in raw:
+            if checked is None and isinstance(value, bool):
+                checked = value
+            elif isinstance(value, str) and not owner:
+                owner = clean(value)
+    elif isinstance(raw, bool):
+        checked = raw
+    else:
+        for name in ("IsCheckedOut", "isCheckedOut", "CheckedOut"):
+            value = getattr(raw, name, None)
+            if isinstance(value, bool):
+                checked = value
+                break
+        for name in ("CheckedOutBy", "checkedOutBy", "Owner", "User"):
+            value = getattr(raw, name, None)
+            if value is not None:
+                owner = clean(value)
+                break
+
+    state = (
+        "CHECKED_OUT"
+        if checked is True
+        else "CHECKED_IN"
+        if checked is False
+        else "UNKNOWN"
+    )
+    return {
+        "state": state,
+        "owner": owner,
+        "raw": repr(raw)[:2000],
+    }
+
+
+def query_pdm_checkout(part):
+    target_pdm = pdm_part(part)
+    if target_pdm is None:
+        return {
+            "state": "UNKNOWN",
+            "owner": "",
+            "raw": "PDMPart unavailable",
+        }
+    method = getattr(target_pdm, "GetCheckedoutStatusAndUser", None)
+    if not callable(method):
+        return {
+            "state": "UNKNOWN",
+            "owner": "",
+            "raw": "PDMPart.GetCheckedoutStatusAndUser unavailable",
+        }
+    try:
+        raw = method()
+    except TypeError:
+        try:
+            raw = method(False, "")
+        except Exception as exc:
+            return {
+                "state": "UNKNOWN",
+                "owner": "",
+                "raw": error_text(exc),
+            }
+    except Exception as exc:
+        return {
+            "state": "UNKNOWN",
+            "owner": "",
+            "raw": error_text(exc),
+        }
+    return decode_checkout_result(raw)
+
+
+def close_opened_part(part, log):
+    if part is None:
+        return
+    try:
+        whole_tree, _ = resolve_attr(
+            NXOpen.BasePart.CloseWholeTree,
+            ("FalseValue", "False_", "False", "CloseWholeTreeFalse"),
+            "BasePart.CloseWholeTree false value",
+        )
+        close_modified, _ = resolve_attr(
+            NXOpen.BasePart.CloseModified,
+            ("CloseModified", "UseResponses", "UseLatest"),
+            "BasePart.CloseModified value",
+        )
+        part.Close(whole_tree, close_modified, None)
+    except Exception as exc:
+        log.write(
+            "  WARNING: could not close checkout-inspection drawing: {0}".format(
+                error_text(exc)
+            )
+        )
+
+
+def inspect_target_checkout(session, identifier, log):
+    """Open the exact specification, verify identity, and query checkout owner."""
+    part = find_loaded_by_identifier(session, identifier)
+    load_status = None
+    opened_here = False
+    result = {
+        "state": "UNKNOWN",
+        "owner": "",
+        "raw": "",
+        "opened_identifier": "",
+    }
+    try:
+        if part is None:
+            part, load_status = unwrap_open_result(
+                session.Parts.OpenBase(identifier)
+            )
+            opened_here = True
+        if part is None:
+            result["raw"] = "OpenBase returned no part"
+            return result
+
+        actual = journal_identifier(part)
+        result["opened_identifier"] = actual
+        if upper(actual).replace("\\", "/") != upper(identifier).replace("\\", "/"):
+            result["raw"] = (
+                "Opened JournalIdentifier does not match exact target: {0}".format(
+                    actual or "<blank>"
+                )
+            )
+            return result
+
+        checkout = query_pdm_checkout(part)
+        result.update(checkout)
+        return result
+    except Exception as exc:
+        result["raw"] = error_text(exc)
+        return result
+    finally:
+        dispose(load_status)
+        if opened_here:
+            close_opened_part(part, log)
+
+
+# ---------------------------------------------------------------------------
+# Read-only exact-dataset associated-file retrieval and verification
+# ---------------------------------------------------------------------------
+def new_file_management(session):
+    pdm = getattr(session, "PdmSession", None)
+    if pdm is None:
+        raise RuntimeError(
+            "NXOpen.Session.PdmSession is unavailable. Run J16 in managed mode."
+        )
+    method = getattr(pdm, "NewFileManagement", None)
+    if not callable(method):
+        raise RuntimeError("PdmSession.NewFileManagement is unavailable.")
+    return pdm, method()
+
+
+def safe_folder_name(value):
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", clean(value))
+
+
+def managed_native_name(part_number, revision, drawing_index):
+    return "{0}_{1}_dwg{2}.prt".format(
+        part_number, revision, drawing_index
+    )
+
+
+def collect_pdm_files(value):
+    files = []
+    seen = set()
+
+    def visit(candidate):
+        if isinstance(candidate, (tuple, list)):
+            for item in candidate:
+                visit(item)
+            return
+        if callable(getattr(candidate, "GetFileName", None)):
+            marker = id(candidate)
+            if marker not in seen:
+                seen.add(marker)
+                files.append(candidate)
+
+    visit(value)
+    return files
+
+
+def pdm_file_name(value):
+    method = getattr(value, "GetFileName", None)
+    if not callable(method):
+        return ""
+    try:
+        return clean(method())
+    except Exception:
+        return ""
+
+
+def release_pdm_files(files):
+    for value in files:
+        method = getattr(value, "FreeResource", None)
+        if not callable(method):
+            method = getattr(value, "Dispose", None)
+        if callable(method):
+            try:
+                method()
+            except Exception:
+                pass
+
+
+def locate_downloaded_files(names, download_cwd):
+    physical = {}
+    for name in names:
+        if not name:
+            continue
+        candidates = [name] if os.path.isabs(name) else [
+            os.path.join(download_cwd, name)
+        ]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                absolute = os.path.abspath(candidate)
+                physical[os.path.normcase(absolute)] = absolute
+    return physical
+
+
+def phase_report_fields(phase):
+    fields = {
+        "BASELINE": (
+            "BASELINE_ASSOCIATED_FILES",
+            "BASELINE_DOWNLOAD_CWD",
+        ),
+        "PREWRITE": (
+            "PREWRITE_ASSOCIATED_FILES",
+            "PREWRITE_DOWNLOAD_CWD",
+        ),
+        "POSTIMPORT": (
+            "POST_IMPORT_ASSOCIATED_FILES",
+            "POST_IMPORT_DOWNLOAD_CWD",
+        ),
+    }
+    if phase not in fields:
+        raise RuntimeError("Unknown retrieval phase: {0}".format(phase))
+    return fields[phase]
+
+
+def retrieve_exact_associated_drawing(
+    session,
+    file_management,
+    proposal,
+    root,
+    phase,
+    pdi_field,
+    file_field,
+):
+    """Download and fingerprint the exact native UGPART proven by J19 V2."""
+    report = proposal["report"]
+    associated_field, cwd_field = phase_report_fields(phase)
+    evidence_root = os.path.join(root, "{0}_ASSOCIATED_FILES".format(phase))
+    os.makedirs(evidence_root, exist_ok=True)
+    expected_name = managed_native_name(
+        proposal["part_number"],
+        proposal["revision"],
+        proposal["drawing_index"],
+    )
+    report["EXPECTED_MANAGED_NATIVE"] = expected_name
+    part = find_loaded_by_identifier(session, proposal["identifier"])
+    load_status = None
+    opened_here = False
+    pdm_files = []
+    original_cwd = os.getcwd()
+    download_cwd = original_cwd
+    try:
+        if part is None:
+            part, load_status = unwrap_open_result(
+                session.Parts.OpenBase(proposal["identifier"])
+            )
+            opened_here = True
+        if part is None:
+            raise RuntimeError("OpenBase returned no part for exact specification.")
+        actual = journal_identifier(part)
+        if upper(actual).replace("\\", "/") != upper(
+            proposal["identifier"]
+        ).replace("\\", "/"):
+            raise RuntimeError(
+                "Opened JournalIdentifier does not match exact target: {0}".format(
+                    actual or "<blank>"
+                )
+            )
+
+        get_method = getattr(file_management, "GetAssociatedFiles", None)
+        download_method = getattr(file_management, "DownloadAssociatedFiles", None)
+        if not callable(get_method) or not callable(download_method):
+            raise RuntimeError(
+                "PDM GetAssociatedFiles/DownloadAssociatedFiles is unavailable."
+            )
+
+        raw_files = get_method([part], [])
+        pdm_files = collect_pdm_files(raw_files)
+        names = [pdm_file_name(value) for value in pdm_files]
+        report[associated_field] = " | ".join(
+            name or "<unreadable>" for name in names
+        )
+        exact_files = [
+            value
+            for value, name in zip(pdm_files, names)
+            if os.path.basename(name).lower() == expected_name.lower()
+        ]
+        native_names = [
+            name
+            for name in names
+            if os.path.basename(name).lower().endswith(".prt")
+        ]
+        report["OBSERVED_NATIVE_FILES"] = " | ".join(native_names)
+        if len(exact_files) != 1:
+            if native_names:
+                download_result = download_method([part], pdm_files)
+                returned_files = collect_pdm_files(download_result)
+                for value in returned_files:
+                    if all(value is not existing for existing in pdm_files):
+                        pdm_files.append(value)
+                download_cwd = os.getcwd()
+                report[cwd_field] = "{0} -> {1}".format(
+                    original_cwd, download_cwd
+                )
+                report[pdi_field] = "N/A_ASSOCIATED_FILES"
+                report["RELATION_TYPE"] = "N/A_ASSOCIATED_FILES"
+                candidates = list(native_names)
+                candidates.extend(
+                    pdm_file_name(value)
+                    for value in returned_files
+                    if os.path.basename(pdm_file_name(value)).lower().endswith(".prt")
+                )
+                anomaly_files = locate_downloaded_files(
+                    candidates, download_cwd
+                )
+                evidence_files = []
+                evidence_hashes = []
+                for downloaded in anomaly_files.values():
+                    name = safe_folder_name(os.path.basename(downloaded))
+                    evidence_file = os.path.join(evidence_root, name)
+                    shutil.copy2(downloaded, evidence_file)
+                    evidence_files.append(evidence_file)
+                    evidence_hashes.append(sha256(evidence_file))
+                report["ANOMALY_EVIDENCE_FILE"] = " | ".join(evidence_files)
+                report["ANOMALY_SHA256"] = " | ".join(evidence_hashes)
+            raise RuntimeError(
+                "Expected exactly one associated native drawing named {0}; "
+                "found {1}. Associated files: {2}".format(
+                    expected_name,
+                    len(exact_files),
+                    report[associated_field] or "<none>",
+                )
+            )
+
+        download_result = download_method([part], pdm_files)
+        returned_files = collect_pdm_files(download_result)
+        for value in returned_files:
+            if all(value is not existing for existing in pdm_files):
+                pdm_files.append(value)
+        download_cwd = os.getcwd()
+        report[cwd_field] = "{0} -> {1}".format(original_cwd, download_cwd)
+        report[pdi_field] = "N/A_ASSOCIATED_FILES"
+        report["RELATION_TYPE"] = "N/A_ASSOCIATED_FILES"
+
+        candidate_names = [pdm_file_name(exact_files[0]), expected_name]
+        candidate_names.extend(
+            pdm_file_name(value)
+            for value in returned_files
+            if os.path.basename(pdm_file_name(value)).lower()
+            == expected_name.lower()
+        )
+        physical = locate_downloaded_files(candidate_names, download_cwd)
+        if len(physical) != 1:
+            raise RuntimeError(
+                "DownloadAssociatedFiles did not materialize one unambiguous "
+                "{0}; found {1} physical matches in download cwd {2}.".format(
+                    expected_name, len(physical), download_cwd
+                )
+            )
+
+        downloaded = next(iter(physical.values()))
+        evidence_file = os.path.join(evidence_root, expected_name)
+        shutil.copy2(downloaded, evidence_file)
+        report[file_field] = evidence_file
+        return evidence_file, sha256(evidence_file)
+    finally:
+        # NX 2506 DownloadAssociatedFiles changes the process working directory.
+        # Always restore it; failure is safety-critical and must propagate.
+        try:
+            os.chdir(original_cwd)
+        except Exception as exc:
+            raise ProcessStateError(
+                "Could not restore process working directory after {0} "
+                "retrieval: {1}".format(phase, error_text(exc))
+            )
+        finally:
+            release_pdm_files(pdm_files)
+            dispose(load_status)
+            if opened_here:
+                close_opened_part(part, proposal.get("log") or _NullLog())
+
+
+class _NullLog:
+    def write(self, message=""):
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -756,20 +1524,220 @@ def clone_log_path(proposal, mode, phase):
     )
 
 
-def mark_batch_aborted(proposals, result, message):
-    for proposal in proposals:
-        report = proposal["report"]
-        if report.get("RESULT") in ("LOCAL_PREFLIGHT_OK", "CLONE_PREFLIGHT_OK"):
-            report["RESULT"] = result
-            report["MESSAGE"] = message
+def target_evidence_root(work_root, proposal):
+    return os.path.join(
+        work_root,
+        safe_folder_name(
+            "{0}_{1}_DWG{2}".format(
+                proposal["part_number"],
+                proposal["revision"],
+                proposal["drawing_index"],
+            )
+        ),
+    )
 
 
-def run_dry_run(api, reports, proposals, log, mode, stop_on_failure):
-    failed = False
+def record_checkout(report, checkout, recheck=False):
+    if recheck:
+        report["CHECKOUT_RECHECK_STATE"] = checkout.get("state", "UNKNOWN")
+        report["CHECKOUT_RECHECK_OWNER"] = checkout.get("owner", "")
+    else:
+        report["OPENED_IDENTIFIER"] = checkout.get("opened_identifier", "")
+        report["CHECKOUT_STATE"] = checkout.get("state", "UNKNOWN")
+        report["CHECKOUT_OWNER"] = checkout.get("owner", "")
+        report["CHECKOUT_RAW"] = checkout.get("raw", "")
+
+
+def record_post_import_checkout(report, checkout):
+    report["POST_IMPORT_OPENED_IDENTIFIER"] = checkout.get(
+        "opened_identifier", ""
+    )
+    report["POST_IMPORT_CHECKOUT_STATE"] = checkout.get("state", "UNKNOWN")
+    report["POST_IMPORT_CHECKOUT_OWNER"] = checkout.get("owner", "")
+    report["POST_IMPORT_CHECKOUT_RAW"] = checkout.get("raw", "")
+
+
+def block_for_checkout(report, checkout, phase):
+    state = checkout.get("state", "UNKNOWN")
+    owner = checkout.get("owner", "")
+    if state == "CHECKED_OUT":
+        set_error(
+            report,
+            "BLOCKED_CHECKED_OUT",
+            (
+                "Exact drawing specification is checked out by {0}; "
+                "J16 blocks every existing checkout before {1}."
+            ).format(owner or "<owner unavailable>", phase),
+        )
+        return True
+    if state != "CHECKED_IN":
+        set_error(
+            report,
+            "BLOCKED_CHECKOUT_UNKNOWN",
+            (
+                "Exact drawing specification checkout state could not be "
+                "proven CHECKED_IN before {0}. Raw status: {1}"
+            ).format(phase, checkout.get("raw", "") or "<none>"),
+        )
+        return True
+    return False
+
+
+def run_managed_preflight(
+    session,
+    file_management,
+    proposals,
+    work_root,
+    log,
+    receipts=None,
+):
+    receipts = receipts or {}
     for proposal in proposals:
         report = proposal["report"]
+        proposal["log"] = log
+        if report.get("RESULT") != "LOCAL_PREFLIGHT_OK":
+            continue
+
+        checkout = inspect_target_checkout(
+            session, proposal["identifier"], log
+        )
+        record_checkout(report, checkout)
+        log.write(
+            "  CHECKOUT {0}: state={1}; owner={2}; opened={3}".format(
+                proposal["identifier"],
+                checkout.get("state", "UNKNOWN"),
+                checkout.get("owner", "") or "<blank>",
+                checkout.get("opened_identifier", "") or "<blank>",
+            )
+        )
+        if block_for_checkout(report, checkout, "clone preflight"):
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            continue
+
+        try:
+            _, baseline_sha = retrieve_exact_associated_drawing(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "BASELINE",
+                "BASELINE_EXPORT_PDI_CODE",
+                "BASELINE_EXPORT_FILE",
+            )
+            report["TC_BASELINE_SHA256"] = baseline_sha
+            proposal["tc_baseline_sha"] = baseline_sha
+            if report.get("MODE") == "DRY_RUN":
+                report["APPROVED_TC_BASELINE_SHA256"] = baseline_sha
+            log.write(
+                "  BASELINE {0}: channel=associated-files; sha256={1}".format(
+                    proposal["identifier"],
+                    baseline_sha,
+                )
+            )
+        except ProcessStateError:
+            raise
+        except Exception as exc:
+            set_error(
+                report,
+                "FAILED_TARGET_BASELINE_RETRIEVAL",
+                (
+                    "Could not retrieve and fingerprint the exact Teamcenter "
+                    "native drawing before clone preflight."
+                ),
+                exc,
+            )
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            continue
+
+        if is_apply_mode(report.get("MODE")):
+            prior = receipts.get(
+                receipt_key(proposal["identifier"], proposal["preflight_sha"])
+            )
+            if prior:
+                prior_post_sha = clean(
+                    prior.get("VERIFIED_POST_TC_SHA256")
+                )
+                if prior_post_sha.lower() == baseline_sha.lower():
+                    report["RECEIPT_STATUS"] = "MATCHED_VERIFIED_POST"
+                    report["RESULT"] = "SKIPPED_ALREADY_IMPORTED"
+                    report["DISPOSITION"] = "SKIPPED"
+                    report["MESSAGE"] = (
+                        "The same local source was already verified against "
+                        "this exact current Teamcenter payload."
+                    )
+                    continue
+                report["RECEIPT_STATUS"] = "STALE_CURRENT_TC_DIFFERS"
+            else:
+                report["RECEIPT_STATUS"] = "NOT_FOUND"
+
+            approved_tc_sha = clean(
+                report.get("APPROVED_TC_BASELINE_SHA256")
+            )
+            if approved_tc_sha and not valid_sha256(approved_tc_sha):
+                set_error(
+                    report,
+                    "ERROR_OPTIONAL_TC_SHA256",
+                    (
+                        "APPROVED_TC_BASELINE_SHA256 is optional, but when "
+                        "supplied it must be a 64-character SHA-256."
+                    ),
+                )
+                log.write(
+                    "  BLOCKED {0}: {1}".format(
+                        proposal["identifier"], report["MESSAGE"]
+                    )
+                )
+                continue
+            if approved_tc_sha and approved_tc_sha.lower() != baseline_sha.lower():
+                set_error(
+                    report,
+                    "BLOCKED_STALE_TARGET",
+                    (
+                        "The exact Teamcenter drawing does not match the "
+                        "optional asserted baseline SHA-256. No write was attempted."
+                    ),
+                )
+                log.write(
+                    "  BLOCKED {0}: {1}".format(
+                        proposal["identifier"], report["MESSAGE"]
+                    )
+                )
+                continue
+            if not approved_tc_sha:
+                report["APPROVED_TC_BASELINE_SHA256"] = baseline_sha
+
+        if proposal["preflight_sha"].lower() == baseline_sha.lower():
+            report["RESULT"] = "SKIPPED_ALREADY_CURRENT"
+            report["DISPOSITION"] = "SKIPPED"
+            report["MESSAGE"] = (
+                "The exact Teamcenter drawing already matches the approved "
+                "local drawing; no import is required."
+            )
+            continue
+
+        report["RESULT"] = "MANAGED_PREFLIGHT_OK"
+        report["MESSAGE"] = (
+            "Exact target identity and CHECKED_IN state were proven; current "
+            "Teamcenter native drawing was downloaded and fingerprinted."
+        )
+
+
+def run_dry_run(api, proposals, log, mode):
+    for proposal in proposals:
+        report = proposal["report"]
+        if report.get("RESULT") != "MANAGED_PREFLIGHT_OK":
+            continue
         logfile = clone_log_path(proposal, mode, "PREFLIGHT")
         report["CLONE_LOG"] = logfile
+        report["CLONE_PREFLIGHT_LOG"] = logfile
         try:
             import_one(api, proposal["drawing"], logfile, True, log)
             report["CLONE_PREFLIGHT"] = "PASS"
@@ -788,44 +1756,296 @@ def run_dry_run(api, reports, proposals, log, mode, stop_on_failure):
             )
             log.write("  FAILED dry run: {0}".format(error_text(exc)))
             log.write(traceback.format_exc())
-            failed = True
-            if stop_on_failure:
-                break
-    return failed
+    return proposals
 
 
-def execute(api, rows, csv_path, timestamp, mode, log):
+def mark_remaining_after_stopped_write(proposals, start, review_required):
+    for proposal in proposals[start:]:
+        report = proposal["report"]
+        if report.get("RESULT") == "CLONE_PREFLIGHT_OK":
+            if review_required:
+                report["RESULT"] = "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE"
+                report["MESSAGE"] = (
+                    "A previous write requires manual acceptance. No write "
+                    "was attempted for this row."
+                )
+                report["DISPOSITION"] = "STOPPED"
+            else:
+                report["RESULT"] = "BATCH_STOPPED_AFTER_UNVERIFIED_WRITE"
+                report["MESSAGE"] = (
+                    "A previous write was attempted but could not be verified. "
+                    "No write was attempted for this row."
+                )
+                report["DISPOSITION"] = "STOPPED"
+
+
+def classify_post_import(
+    proposal,
+    prewrite_sha,
+    post_sha,
+    checkout,
+    log,
+):
+    """Classify persistence separately from managed-mode byte transformation."""
+    report = proposal["report"]
+    source_sha = proposal["preflight_sha"]
+    record_post_import_checkout(report, checkout)
+    state = checkout.get("state", "UNKNOWN")
+    owner = checkout.get("owner", "")
+
+    log.write(
+        "  POSTIMPORT CHECKOUT {0}: state={1}; owner={2}; opened={3}".format(
+            proposal["identifier"],
+            state,
+            owner or "<blank>",
+            checkout.get("opened_identifier", "") or "<blank>",
+        )
+    )
+
+    if post_sha.lower() == prewrite_sha.lower():
+        report["POST_IMPORT_VERIFICATION"] = "FAILED_UNCHANGED_FROM_PREWRITE"
+        set_error(
+            report,
+            "FAILED_IMPORT_UNVERIFIED",
+            (
+                "UF Clone returned without an exception, but the exact managed "
+                "drawing payload is unchanged from immediately before the write."
+            ),
+        )
+        report["DISPOSITION"] = "FAILED_AFTER_WRITE"
+        return False
+
+    exact_source = post_sha.lower() == source_sha.lower()
+    if state not in ("CHECKED_IN", "CHECKED_OUT"):
+        report["POST_IMPORT_VERIFICATION"] = "FAILED_POST_CHECKOUT_UNKNOWN"
+        set_error(
+            report,
+            "FAILED_IMPORT_UNVERIFIED",
+            (
+                "The exact managed payload changed after UF Clone, but its "
+                "post-import checkout state could not be proven. Raw status: {0}"
+            ).format(checkout.get("raw", "") or "<none>"),
+        )
+        report["DISPOSITION"] = "FAILED_AFTER_WRITE"
+        return False
+
+    if state == "CHECKED_OUT":
+        report["POST_IMPORT_VERIFICATION"] = (
+            "VERIFIED_SHA256_CHECKIN_REQUIRED"
+            if exact_source
+            else "MANUAL_CONTENT_AND_CHECKIN_REQUIRED"
+        )
+        report["RESULT"] = "MANUAL_CHECKIN_REQUIRED"
+        report["DISPOSITION"] = "REVIEW_REQUIRED"
+        report["MESSAGE"] = (
+            "The exact managed drawing payload changed after UF Clone but is "
+            "still checked out by {0}. If this is your checkout, verify the "
+            "drawing and then check it in manually. If another user owns it or "
+            "the owner is unclear, stop and escalate. J16 will not call check-in."
+        ).format(owner or "<owner unavailable>")
+        return True
+
+    if exact_source:
+        report["POST_IMPORT_VERIFICATION"] = "VERIFIED_SHA256"
+        report["RESULT"] = "IMPORT_VERIFIED"
+        report["DISPOSITION"] = "IMPORTED"
+        report["MESSAGE"] = (
+            "Exact Teamcenter drawing replacement and CHECKED_IN state were "
+            "verified by post-import associated-file SHA-256."
+        )
+        return False
+
+    report["POST_IMPORT_VERIFICATION"] = "VERIFIED_MANAGED_TRANSFORM"
+    report["RESULT"] = "IMPORT_VERIFIED_MANAGED_TRANSFORM"
+    report["DISPOSITION"] = "IMPORTED"
+    report["MESSAGE"] = (
+        "The exact CHECKED_IN managed drawing payload changed after UF Clone, "
+        "and no longer matches its prewrite payload. Teamcenter's expected "
+        "managed-mode byte transformation is accepted by the production "
+        "contract validated in the controlled J16 trials."
+    )
+    return False
+
+
+def require_fresh_apply_session(session):
+    try:
+        loaded = list(session.Parts)
+    except Exception as exc:
+        raise RuntimeError(
+            "Controlled apply could not prove that the NX session has no loaded parts: {0}"
+            .format(error_text(exc))
+        )
+    if loaded:
+        identifiers = [journal_identifier(part) or "<unidentified>" for part in loaded]
+        raise RuntimeError(
+            "Controlled apply requires a fresh NX managed session with no loaded parts; "
+            "found {0}: {1}".format(len(loaded), " | ".join(identifiers))
+        )
+
+
+def require_approved_rows(rows, mode, maximum):
+    invalid = [row for row in rows if approval_state(row) == "INVALID"]
+    if invalid:
+        raise RuntimeError(
+            "Controlled apply requires every APPROVED value to be YES, NO, "
+            "or blank; found {0} invalid row(s).".format(len(invalid))
+        )
+    approved = [row for row in rows if approval_state(row) == "YES"]
+    if mode == "APPLY_ONE_APPROVED" and len(approved) != 1:
+        raise RuntimeError(
+            "APPLY_ONE_APPROVED requires exactly one APPROVED=YES CSV row; "
+            "found {0}.".format(
+                len(approved),
+            )
+        )
+    if mode == "APPLY_APPROVED" and not approved:
+        raise RuntimeError(
+            "APPLY_APPROVED requires at least one APPROVED=YES CSV row."
+        )
+    if len(approved) > maximum:
+        raise RuntimeError(
+            "Approved row count {0} exceeds the controlled write limit {1}."
+            .format(len(approved), maximum)
+        )
+    return len(approved)
+
+
+def quarantine_report(report):
+    """Convert a row-local prewrite failure into an explicit no-write result."""
+    prior_result = clean(report.get("RESULT")) or "UNKNOWN_PREFLIGHT_FAILURE"
+    prior_message = clean(report.get("MESSAGE"))
+    expected = os.path.basename(clean(report.get("EXPECTED_MANAGED_NATIVE"))).lower()
+    observed = [
+        os.path.basename(value.strip()).lower()
+        for value in clean(report.get("OBSERVED_NATIVE_FILES")).split("|")
+        if value.strip()
+    ]
+    report["QUARANTINE_REASON"] = "{0}: {1}".format(
+        prior_result, prior_message or "No detail was returned."
+    )
+    if observed and expected not in observed:
+        result = "QUARANTINED_TARGET_PAYLOAD_IDENTITY"
+        message = (
+            "The exact Teamcenter specification exposes a foreign native "
+            "payload. J16 captured read-only evidence and will not overwrite it."
+        )
+    elif prior_result in ("BLOCKED_CHECKED_OUT", "BLOCKED_CHECKOUT_UNKNOWN"):
+        result = "QUARANTINED_CHECKED_OUT"
+        message = "The row was quarantined because its exact target was not proven CHECKED_IN."
+    else:
+        result = "QUARANTINED_PREFLIGHT"
+        message = "The row failed isolated prewrite validation and was not imported."
+    report["RESULT"] = result
+    report["MESSAGE"] = "{0} | {1}".format(message, report["QUARANTINE_REASON"])
+    report["DISPOSITION"] = "QUARANTINED"
+    report["WRITE_ATTEMPTED"] = "NO"
+    return report
+
+
+def quarantine_prewrite_failures(reports):
+    safe_results = (
+        "CLONE_PREFLIGHT_OK",
+        "SKIPPED_ALREADY_CURRENT",
+        "SKIPPED_ALREADY_IMPORTED",
+        "SKIPPED_UNCHANGED",
+        "NOT_APPROVED",
+    )
+    for report in reports:
+        if (
+            upper(report.get("APPROVED")) == "YES"
+            and report.get("RESULT") not in safe_results
+            and report.get("WRITE_ATTEMPTED") != "YES"
+        ):
+            quarantine_report(report)
+
+
+def mark_process_abort(reports, message):
+    for report in reports:
+        if upper(report.get("APPROVED")) != "YES":
+            continue
+        if report.get("WRITE_ATTEMPTED") == "YES" or report.get("DISPOSITION") in (
+            "IMPORTED",
+            "QUARANTINED",
+            "SKIPPED",
+            "NOT_APPROVED",
+        ):
+            continue
+        report["RESULT"] = "FAILED_PROCESS_STATE"
+        report["MESSAGE"] = message
+        report["DISPOSITION"] = "ABORTED"
+        report["WRITE_ATTEMPTED"] = "NO"
+
+
+def execute(
+    session,
+    file_management,
+    api,
+    rows,
+    csv_path,
+    timestamp,
+    mode,
+    log,
+    work_root,
+    receipt_path="",
+    receipts=None,
+):
+    receipts = receipts if receipts is not None else {}
+    write_limit = 0
+    if is_apply_mode(mode):
+        write_limit = (
+            1 if mode == "APPLY_ONE_APPROVED" else configured_max_approved_writes()
+        )
+        require_approved_rows(rows, mode, write_limit)
+        require_fresh_apply_session(session)
     reports, proposals = local_preflight(rows, csv_path, timestamp, mode)
+    try:
+        run_managed_preflight(
+            session,
+            file_management,
+            proposals,
+            work_root,
+            log,
+            receipts,
+        )
+    except ProcessStateError as exc:
+        message = "Process-wide managed preflight failure: {0}".format(
+            error_text(exc)
+        )
+        mark_process_abort(reports, message)
+        log.write("  BATCH ABORTED: {0}".format(message))
+        return reports
+    run_dry_run(api, proposals, log, mode)
 
     if mode == "DRY_RUN":
-        run_dry_run(api, reports, proposals, log, mode, False)
         return reports
 
-    # APPLY_APPROVED: fail closed before any Teamcenter write.
-    blocking = [report for report in reports if apply_blocking_error(report)]
-    if blocking:
-        mark_batch_aborted(
-            proposals,
-            "BATCH_ABORTED_LOCAL_PREFLIGHT",
-            "At least one approved row failed local preflight. No Teamcenter write was attempted.",
+    quarantine_prewrite_failures(reports)
+    quarantined = sum(
+        1 for report in reports if report.get("DISPOSITION") == "QUARANTINED"
+    )
+    if quarantined:
+        log.write(
+            "  QUARANTINE: {0} approved row(s) failed isolated preflight; "
+            "independently verified rows remain eligible.".format(quarantined)
         )
-        return reports
 
-    # Dry-run every approved changed row before the first actual Teamcenter write.
-    clone_preflight_failed = run_dry_run(api, reports, proposals, log, mode, True)
-    if clone_preflight_failed:
-        mark_batch_aborted(
-            proposals,
-            "BATCH_ABORTED_CLONE_PREFLIGHT",
-            "UF Clone preflight failed for the approved batch. No Teamcenter write was attempted.",
-        )
-        return reports
-
+    writes_attempted = 0
     for index, proposal in enumerate(proposals):
         report = proposal["report"]
+        if report.get("RESULT") != "CLONE_PREFLIGHT_OK":
+            continue
 
-        # Guard against the local drawing changing after clone preflight but
-        # before the actual import in the same J16 run.
+        if writes_attempted >= write_limit:
+            set_error(
+                report,
+                "BLOCKED_PRODUCTION_WRITE_LIMIT",
+                "Controlled apply reached its maximum write count {0}.".format(
+                    write_limit
+                ),
+            )
+            quarantine_report(report)
+            continue
+
         try:
             apply_sha = sha256(proposal["drawing"])
         except Exception as exc:
@@ -835,12 +2055,8 @@ def execute(api, rows, csv_path, timestamp, mode, log):
                 "Could not reread drawing immediately before import.",
                 exc,
             )
-            mark_batch_aborted(
-                proposals[index + 1 :],
-                "BATCH_STOPPED_BEFORE_WRITE",
-                "A previous row failed the final local-file check. No write was attempted for this row.",
-            )
-            break
+            quarantine_report(report)
+            continue
 
         if apply_sha.lower() != proposal["preflight_sha"].lower():
             set_error(
@@ -848,38 +2064,190 @@ def execute(api, rows, csv_path, timestamp, mode, log):
                 "ERROR_FILE_CHANGED_AFTER_PREFLIGHT",
                 "DRAWING_FILE changed after clone preflight. J16 stopped before writing this row.",
             )
-            mark_batch_aborted(
-                proposals[index + 1 :],
-                "BATCH_STOPPED_BEFORE_WRITE",
-                "A previous row changed after preflight. No write was attempted for this row.",
-            )
-            break
+            quarantine_report(report)
+            continue
 
-        logfile = clone_log_path(proposal, mode, "APPLY")
-        report["CLONE_LOG"] = logfile
-        report["WRITE_ATTEMPTED"] = "YES"
-        try:
-            import_one(api, proposal["drawing"], logfile, False, log)
-            report["RESULT"] = "IMPORT_APPLIED"
-            report["MESSAGE"] = (
-                "UF Clone apply returned successfully. Exact drawing=Overwrite; "
-                "related 3D/reference objects=UseExisting. Reopen the managed drawing "
-                "from Teamcenter to confirm final persistence."
+        checkout = inspect_target_checkout(
+            session, proposal["identifier"], log
+        )
+        record_checkout(report, checkout, recheck=True)
+        log.write(
+            "  CHECKOUT RECHECK {0}: state={1}; owner={2}".format(
+                proposal["identifier"],
+                checkout.get("state", "UNKNOWN"),
+                checkout.get("owner", "") or "<blank>",
             )
+        )
+        if block_for_checkout(report, checkout, "UF Clone apply"):
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            quarantine_report(report)
+            continue
+
+        try:
+            _, prewrite_sha = retrieve_exact_associated_drawing(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "PREWRITE",
+                "PREWRITE_EXPORT_PDI_CODE",
+                "PREWRITE_EXPORT_FILE",
+            )
+            report["PREWRITE_TC_SHA256"] = prewrite_sha
+            log.write(
+                "  PREWRITE {0}: sha256={1}".format(
+                    proposal["identifier"], prewrite_sha
+                )
+            )
+        except ProcessStateError as exc:
+            message = "Process-wide prewrite retrieval failure: {0}".format(
+                error_text(exc)
+            )
+            set_error(report, "FAILED_PROCESS_STATE", message, exc)
+            report["DISPOSITION"] = "ABORTED"
+            mark_process_abort(
+                [item["report"] for item in proposals[index + 1:]],
+                "Batch stopped after a process-wide state failure on a prior row.",
+            )
+            log.write("  BATCH ABORTED: {0}".format(message))
+            break
         except Exception as exc:
             set_error(
                 report,
-                "FAILED_IMPORT_APPLY",
-                "UF Clone apply failed.",
+                "FAILED_PREWRITE_TARGET_RETRIEVAL",
+                (
+                    "Could not re-download the exact Teamcenter drawing "
+                    "immediately before import."
+                ),
                 exc,
             )
-            log.write("  FAILED apply: {0}".format(error_text(exc)))
-            log.write(traceback.format_exc())
-            mark_batch_aborted(
-                proposals[index + 1 :],
-                "BATCH_STOPPED_AFTER_RUNTIME_FAILURE",
-                "A previous approved import failed. No write was attempted for this row.",
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
             )
+            quarantine_report(report)
+            continue
+
+        if prewrite_sha.lower() != proposal["tc_baseline_sha"].lower():
+            set_error(
+                report,
+                "BLOCKED_STALE_TARGET",
+                (
+                    "The exact Teamcenter drawing changed after managed "
+                    "preflight. No write was attempted."
+                ),
+            )
+            log.write(
+                "  BLOCKED {0}: {1}".format(
+                    proposal["identifier"], report["MESSAGE"]
+                )
+            )
+            quarantine_report(report)
+            continue
+
+        logfile = clone_log_path(proposal, mode, "APPLY")
+        report["CLONE_LOG"] = logfile
+        report["CLONE_APPLY_LOG"] = logfile
+        report["WRITE_ATTEMPTED"] = "YES"
+        writes_attempted += 1
+        try:
+            import_one(api, proposal["drawing"], logfile, False, log)
+
+            _, post_sha = retrieve_exact_associated_drawing(
+                session,
+                file_management,
+                proposal,
+                target_evidence_root(work_root, proposal),
+                "POSTIMPORT",
+                "POST_IMPORT_EXPORT_PDI_CODE",
+                "POST_IMPORT_EXPORT_FILE",
+            )
+            report["POST_IMPORT_TC_SHA256"] = post_sha
+            post_checkout = inspect_target_checkout(
+                session, proposal["identifier"], log
+            )
+            review_required = classify_post_import(
+                proposal,
+                prewrite_sha,
+                post_sha,
+                post_checkout,
+                log,
+            )
+            if report["RESULT"] == "FAILED_IMPORT_UNVERIFIED":
+                log.write(
+                    "  UNVERIFIED {0}: source_sha256={1}; prewrite_sha256={2}; "
+                    "post_sha256={3}".format(
+                        proposal["identifier"],
+                        proposal["preflight_sha"],
+                        prewrite_sha,
+                        post_sha,
+                    )
+                )
+                mark_remaining_after_stopped_write(
+                    proposals, index + 1, False
+                )
+                break
+            if review_required:
+                log.write(
+                    "  REVIEW REQUIRED {0}: source_sha256={1}; "
+                    "prewrite_sha256={2}; post_sha256={3}; result={4}".format(
+                        proposal["identifier"],
+                        proposal["preflight_sha"],
+                        prewrite_sha,
+                        post_sha,
+                        report["RESULT"],
+                    )
+                )
+                mark_remaining_after_stopped_write(
+                    proposals, index + 1, True
+                )
+                break
+            log.write(
+                "  VERIFIED {0}: sha256={1}; checkout=CHECKED_IN".format(
+                    proposal["identifier"], post_sha
+                )
+            )
+            if receipt_path:
+                try:
+                    record_verified_receipt(
+                        receipt_path,
+                        receipts,
+                        proposal,
+                        post_sha,
+                        timestamp,
+                    )
+                    report["RECEIPT_STATUS"] = "RECORDED"
+                except Exception as receipt_error:
+                    report["RECEIPT_STATUS"] = "WRITE_FAILED: {0}".format(
+                        error_text(receipt_error)
+                    )
+                    log.write(
+                        "  WARNING receipt was not saved for {0}: {1}".format(
+                            proposal["identifier"], error_text(receipt_error)
+                        )
+                    )
+            else:
+                report["RECEIPT_STATUS"] = "DISABLED"
+        except Exception as exc:
+            report["POST_IMPORT_VERIFICATION"] = "FAILED"
+            set_error(
+                report,
+                "FAILED_IMPORT_UNVERIFIED",
+                (
+                    "A write was attempted, but UF Clone or exact-target "
+                    "post-import verification failed."
+                ),
+                exc,
+            )
+            report["DISPOSITION"] = "FAILED_AFTER_WRITE"
+            log.write("  FAILED or unverified apply: {0}".format(error_text(exc)))
+            log.write(traceback.format_exc())
+            mark_remaining_after_stopped_write(proposals, index + 1, False)
             break
 
     return reports
@@ -893,18 +2261,54 @@ def has_failure(reports, mode):
     failure_prefixes = (
         "ERROR_",
         "FAILED_",
+        "BLOCKED_",
         "BATCH_ABORTED_",
         "BATCH_STOPPED_",
     )
     for report in reports:
         result = report.get("RESULT", "")
         if result.startswith(failure_prefixes):
-            if mode == "APPLY_APPROVED":
+            if is_apply_mode(mode):
                 if result == "ERROR_APPROVAL_VALUE" or upper(report.get("APPROVED")) == "YES":
                     return True
                 continue
             return True
     return False
+
+
+def has_review_required(reports):
+    review_results = (
+        "MANUAL_CHECKIN_REQUIRED",
+        "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE",
+    )
+    return any(report.get("RESULT", "") in review_results for report in reports)
+
+
+def final_run_status(reports, mode):
+    if has_failure(reports, mode):
+        return "FAILED"
+    if has_review_required(reports):
+        return "REVIEW_REQUIRED"
+    if mode == "DRY_RUN":
+        return "SUCCESS"
+    quarantined = any(
+        report.get("DISPOSITION") == "QUARANTINED" for report in reports
+    )
+    completed = any(
+        report.get("RESULT")
+        in (
+            "IMPORT_VERIFIED",
+            "IMPORT_VERIFIED_MANAGED_TRANSFORM",
+            "SKIPPED_ALREADY_IMPORTED",
+            "SKIPPED_ALREADY_CURRENT",
+            "SKIPPED_UNCHANGED",
+        )
+        and upper(report.get("APPROVED")) == "YES"
+        for report in reports
+    )
+    if quarantined:
+        return "COMPLETED_WITH_QUARANTINE" if completed else "FAILED"
+    return "SUCCESS"
 
 
 def main():
@@ -913,20 +2317,71 @@ def main():
     log = Log(session)
     current_mode = configured_mode()
     input_path = configured_input_path()
+    receipt_path = configured_receipt_path(input_path)
     timestamp = stamp()
+    work_root = os.path.join(
+        os.path.dirname(input_path) if input_path else io_root(),
+        "J16_EVIDENCE_{0}".format(timestamp),
+    )
+    evidence_zip = work_root + ".zip"
 
     log.write("=" * 72)
     log.write("J16 TEAMCENTER X STANDALONE DRAWING IMPORT")
     log.write("Build: {0} | Mode: {1}".format(BUILD, current_mode))
     log.write("Runtime target: NX X 2506 only")
+    log.write("Checkout rule: every existing checkout blocks that row")
+    log.write("Verification: GetAssociatedFiles + DownloadAssociatedFiles")
+    log.write(
+        "Persistence rule: post payload must differ from prewrite; managed byte "
+        "transformations are accepted only for the exact CHECKED_IN target"
+    )
+    if current_mode == "APPLY_ONE_APPROVED":
+        log.write(
+            "PRODUCTION CONTROL: generic target; fresh session; exactly one "
+            "approved row; maximum one write"
+        )
+        log.write(
+            "One-run authorization: APPROVED=YES plus ENGINEER; supplied "
+            "approval hashes are optional assertions"
+        )
+    elif current_mode == "APPLY_APPROVED":
+        log.write(
+            "BULK PRODUCTION CONTROL: fresh session; row-local defects are "
+            "quarantined; maximum approved rows={0}".format(
+                env("NX_J16_MAX_APPROVED_WRITES")
+                or DEFAULT_MAX_APPROVED_WRITES
+            )
+        )
+        log.write(
+            "One-run authorization: APPROVED=YES plus ENGINEER; internal "
+            "managed and UF Clone preflight runs automatically"
+        )
+    else:
+        log.write(
+            "DRY_RUN output supplies APPROVED_LOCAL_SHA256 and "
+            "APPROVED_TC_BASELINE_SHA256 for controlled apply"
+        )
+        log.write("DRY_RUN is optional diagnostics and never writes Teamcenter")
     log.write("Input: {0}".format(input_path))
+    log.write("Evidence: {0}".format(work_root))
+    log.write("Evidence ZIP: {0}".format(evidence_zip))
+    log.write("Verified receipt: {0}".format(receipt_path))
     log.write("=" * 72)
 
     report_path = ""
+    reports = []
+    log_path = ""
+    file_management = None
+    receipts = {}
     try:
         if current_mode not in VALID_MODES:
             raise RuntimeError(
-                "USER_MODE/NX_J16_MODE must be DRY_RUN or APPLY_APPROVED."
+                "USER_MODE/NX_J16_MODE must be DRY_RUN, APPLY_ONE_APPROVED, "
+                "or APPLY_APPROVED."
+            )
+        if current_mode == "APPLY_APPROVED" and not BATCH_APPLY_ENABLED:
+            raise RuntimeError(
+                "APPLY_APPROVED batch mode is disabled in this build."
             )
         if not os.path.isfile(input_path):
             raise RuntimeError("Import CSV not found: {0}".format(input_path))
@@ -936,7 +2391,24 @@ def main():
             raise RuntimeError("Import CSV contains no data rows: {0}".format(input_path))
 
         api = resolve_clone_api(ufs, log)
-        reports = execute(api, rows, input_path, timestamp, current_mode, log)
+        _, file_management = new_file_management(session)
+        os.makedirs(work_root, exist_ok=True)
+        receipts, receipt_warning = load_receipts(receipt_path)
+        if receipt_warning:
+            log.write("WARNING: {0}".format(receipt_warning))
+        reports = execute(
+            session,
+            file_management,
+            api,
+            rows,
+            input_path,
+            timestamp,
+            current_mode,
+            log,
+            work_root,
+            receipt_path,
+            receipts,
+        )
 
         report_path = os.path.join(
             os.path.dirname(input_path),
@@ -948,14 +2420,28 @@ def main():
         for result, count in sorted(summary_counts(reports).items()):
             log.write("  {0}: {1}".format(result, count))
 
-        if has_failure(reports, current_mode):
+        status = final_run_status(reports, current_mode)
+        if status == "FAILED":
             log.write("FINAL STATUS: FAILED")
             raise RuntimeError(
                 "J16 completed with one or more failed safety/import rows. "
                 "Review: {0}".format(report_path)
             )
 
-        log.write("FINAL STATUS: SUCCESS")
+        if status == "REVIEW_REQUIRED":
+            log.write("FINAL STATUS: REVIEW_REQUIRED")
+            log.write(
+                "Do not rerun the import. Manually verify drawing content, "
+                "checkout state, unchanged 3D master, and managed object count."
+            )
+        elif status == "COMPLETED_WITH_QUARANTINE":
+            log.write("FINAL STATUS: COMPLETED_WITH_QUARANTINE")
+            log.write(
+                "Verified rows completed. Quarantined targets were not written; "
+                "use their captured evidence for Teamcenter data correction."
+            )
+        else:
+            log.write("FINAL STATUS: SUCCESS")
 
     except Exception as exc:
         if "FINAL STATUS: FAILED" not in log.lines:
@@ -965,6 +2451,7 @@ def main():
         raise
 
     finally:
+        dispose(file_management)
         try:
             log_dir = os.path.dirname(input_path) if input_path else io_root()
             if not log_dir:
@@ -974,8 +2461,30 @@ def main():
                 log_dir, "J16_RUN_{0}_{1}.log".format(current_mode, timestamp)
             )
             write_log(log_path, log.lines)
-        except Exception:
-            pass
+            clone_logs = []
+            for report in reports:
+                clone_logs.extend(
+                    [
+                        report.get("CLONE_PREFLIGHT_LOG", ""),
+                        report.get("CLONE_APPLY_LOG", ""),
+                    ]
+                )
+            zip_artifacts(
+                evidence_zip,
+                work_root,
+                [report_path, log_path] + clone_logs,
+            )
+        except Exception as exc:
+            log.write(
+                "WARNING: automatic evidence ZIP failed: {0}".format(
+                    error_text(exc)
+                )
+            )
+            try:
+                if log_path:
+                    write_log(log_path, log.lines)
+            except Exception:
+                pass
 
     return report_path
 

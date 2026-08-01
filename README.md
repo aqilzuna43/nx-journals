@@ -48,6 +48,9 @@ shared helpers from `from_git\utils`.
 | 12 | `from_git/journals/12_diagnose_pdf_watermark_symbols.py` | Compares PDF watermark, text, and NX catalog-symbol rendering settings |
 | 13 | `from_git/journals/13_test_teamcenter_part_name.py` | Disposable Teamcenter Item Name rename test |
 | 14 | `from_git/journals/14_bulk_part_name_updater.py` | Approved bulk Teamcenter Item Name update |
+| 15 | `from_git/journals/15_tc_offline_drawing_workflow.py` | Exports native drawing packages for controlled offline editing |
+| 16 | `from_git/journals/16_tc_offline_drawing_import.py` | Checkout-gated replacement of an existing drawing specification |
+| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Verified creation of a missing drawing specification beneath an existing 3D revision |
 
 ## Key Runtime Notes
 
@@ -60,6 +63,40 @@ shared helpers from `from_git\utils`.
   - Input CSV files: `%USERPROFILE%\Desktop`
   - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
 - To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
+
+## Journal 17 - Create a New Drawing Specification
+
+Use J17 when a local NX drawing must become a new `/specification/` dataset
+beneath an existing Teamcenter 3D Item/Revision. Use J16 instead when replacing
+an existing drawing specification.
+
+Start a fresh NX X 2506 managed session with no parts loaded. Copy
+`from_git/templates/NX_TC_NEW_DRAWING_SPECIFICATION_TEMPLATE.csv` to the
+configured I/O folder as `NX_TC_NEW_DRAWING_SPECIFICATION.csv` and complete one
+row per missing specification:
+
+```csv
+PART_NUMBER,REVISION,DWG_INDEX,SOURCE_DRAWING_FILE,APPROVED,ENGINEER
+264MN021262A01,A,3,C:\drawings\local_drawing.prt,YES,AQIL
+```
+
+This example creates exactly
+`@DB/264MN021262A01/A/specification/264MN021262A01-A-dwg3`. The parent
+`@DB/264MN021262A01/A` must already exist and be checked in; the exact `dwg3`
+specification must not already exist.
+
+Run `from_git/journals/17_tc_master_drawing_import.py` once. The production
+default is `APPLY_APPROVED`; managed checks and UF Clone dry run happen inside
+the same run. J17 stages the proven Teamcenter AutoTranslate specification
+name, keeps every reference `UseExisting`, and gives `Overwrite` only to the
+exact staged specification. It verifies the exact new target and requires the
+3D master SHA-256 to remain unchanged.
+
+Require `SPECIFICATION_CREATED_VERIFIED` or
+`SPECIFICATION_CREATED_VERIFIED_MANAGED_TRANSFORM`. If the result is
+`MANUAL_CHECKIN_REQUIRED`, do not rerun J17: verify the new specification and
+manually check it in only when the checkout belongs to you. J17 never checks in
+automatically.
 
 ## Journal 04 + 05 - Business Attribute Update
 
