@@ -1,0 +1,1292 @@
+Journal 07 - CSV-driven PDF + STEP export
+Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6
+Journal source: C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py
+Input CSV: C:\Users\my62022696\Desktop\NX_EXPORT_SCOPE.csv
+Drawing resolver: @DB/<part>/<rev>/specification/<part>-<rev>-dwg<n> via session.Parts.OpenDisplay
+Managed-mode flag: False (informational only; @DB opens are always attempted)
+PDF export timestamp: EXPORTED: 2026-07-31 20:27 MYT
+Input rows: 26; unique requests: 26; ignored: 0; invalid: 0
+[1/26] 264MN020818A01 / A
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg1
+    Opened: 264MN020818A01/A;1-PRT-PDU-BMU-INSULATOR (specification: 264MN020818A01-A-dwg1) (specification: 264MN020818A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN020818A01/A/specification/264MN020818A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 12.665 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN020818A01/A;1-PRT-PDU-BMU-INSULATOR (specification: 264MN020818A01-A-dwg1) (specification: 264MN020818A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[2/26] 264MN021119A01 / A
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg1
+    Opened: 264MN021119A01/A;1-PRT-PDU-BUSBAR L-FUSE SIDE B COPPER2 (specification: 264MN021119A01-A-dwg1) (specification: 264MN021119A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN021119A01/A/specification/264MN021119A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.298 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN021119A01/A;1-PRT-PDU-BUSBAR L-FUSE SIDE B COPPER2 (specification: 264MN021119A01-A-dwg1) (specification: 264MN021119A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[3/26] 264MN021174A01 / A
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg1
+    Opened: 264MN021174A01/A;1-PRT-PDU-FUSE SERVICE WINDOW BOTTOM (specification: 264MN021174A01-A-dwg1) (specification: 264MN021174A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg1
+    Drawing sheets: 2
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN021174A01/A/specification/264MN021174A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 11.411 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 2 sheet(s) from 264MN021174A01/A;1-PRT-PDU-FUSE SERVICE WINDOW BOTTOM (specification: 264MN021174A01-A-dwg1) (specification: 264MN021174A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[4/26] 264MN021895A01 / A
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg1
+    Opened: 264MN021895A01/A;1-PRT-PDU-DCDC COVER (specification: 264MN021895A01-A-dwg1) (specification: 264MN021895A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN021895A01/A/specification/264MN021895A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.062 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN021895A01/A;1-PRT-PDU-DCDC COVER (specification: 264MN021895A01-A-dwg1) (specification: 264MN021895A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[5/26] 264MN024578A01 / A
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg1
+    Opened: 264MN024578A01/A;1-PRT-PDU-ENCLOSURE (specification: 264MN024578A01-A-dwg1) (specification: 264MN024578A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg1
+    Drawing sheets: 9
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024578A01/A/specification/264MN024578A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 13.859 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 9 sheet(s) from 264MN024578A01/A;1-PRT-PDU-ENCLOSURE (specification: 264MN024578A01-A-dwg1) (specification: 264MN024578A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[6/26] 264MN024631A01 / A
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg1
+    Opened: 264MN024631A01/A;1-PRT -PDU-PRECHARGE CONTACTOR BRACKET (specification: 264MN024631A01-A-dwg1) (specification: 264MN024631A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg1
+    Drawing sheets: 2
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN024631A01/A/specification/264MN024631A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 11.669 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 2 sheet(s) from 264MN024631A01/A;1-PRT -PDU-PRECHARGE CONTACTOR BRACKET (specification: 264MN024631A01-A-dwg1) (specification: 264MN024631A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[7/26] 264MN025677A01 / A
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg1
+    Opened: 264MN025677A01/A;1-PRT-PDU-THERMAL PAD HEATSINK3 (specification: 264MN025677A01-A-dwg1) (specification: 264MN025677A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025677A01/A/specification/264MN025677A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.741 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025677A01/A;1-PRT-PDU-THERMAL PAD HEATSINK3 (specification: 264MN025677A01-A-dwg1) (specification: 264MN025677A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[8/26] 264MN025681A01 / A
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg1
+    Opened: 264MN025681A01/A;1-PRT-PDU-THERMAL PAD FUSE SIDE B (specification: 264MN025681A01-A-dwg1) (specification: 264MN025681A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025681A01/A/specification/264MN025681A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.356 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025681A01/A;1-PRT-PDU-THERMAL PAD FUSE SIDE B (specification: 264MN025681A01-A-dwg1) (specification: 264MN025681A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[9/26] 264MN025682A01 / A
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg1
+    Opened: 264MN025682A01/A;1-PRT-PDU-THERMAL PAD FUSE SIDE A (specification: 264MN025682A01-A-dwg1) (specification: 264MN025682A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025682A01/A/specification/264MN025682A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.954 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025682A01/A;1-PRT-PDU-THERMAL PAD FUSE SIDE A (specification: 264MN025682A01-A-dwg1) (specification: 264MN025682A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[10/26] 264MN025684A01 / A
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg1
+    Opened: 264MN025684A01/A;1-PRT-PDU-THERMAL PAD SIDE A1 (specification: 264MN025684A01-A-dwg1) (specification: 264MN025684A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025684A01/A/specification/264MN025684A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.674 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025684A01/A;1-PRT-PDU-THERMAL PAD SIDE A1 (specification: 264MN025684A01-A-dwg1) (specification: 264MN025684A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[11/26] 264MN025689A01 / A
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg1
+    Opened: 264MN025689A01/A;1-PRT-PDU-THERMAL PAD SIDE A2 (specification: 264MN025689A01-A-dwg1) (specification: 264MN025689A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025689A01/A/specification/264MN025689A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.163 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025689A01/A;1-PRT-PDU-THERMAL PAD SIDE A2 (specification: 264MN025689A01-A-dwg1) (specification: 264MN025689A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[12/26] 264MN025693A01 / A
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg1
+    Opened: 264MN025693A01/A;1-PRT-PDU-THERMAL PAD SIDE A3 (specification: 264MN025693A01-A-dwg1) (specification: 264MN025693A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025693A01/A/specification/264MN025693A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.360 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025693A01/A;1-PRT-PDU-THERMAL PAD SIDE A3 (specification: 264MN025693A01-A-dwg1) (specification: 264MN025693A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[13/26] 264MN025694A01 / A
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg1
+    Opened: 264MN025694A01/A;1-PRT-PDU-THERMAL PAD SIDE A4 (specification: 264MN025694A01-A-dwg1) (specification: 264MN025694A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025694A01/A/specification/264MN025694A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.022 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025694A01/A;1-PRT-PDU-THERMAL PAD SIDE A4 (specification: 264MN025694A01-A-dwg1) (specification: 264MN025694A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[14/26] 264MN025695A01 / A
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg1
+    Opened: 264MN025695A01/A;1-PRT-PDU-THERMAL PAD SIDE A5 (specification: 264MN025695A01-A-dwg1) (specification: 264MN025695A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025695A01/A/specification/264MN025695A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.996 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025695A01/A;1-PRT-PDU-THERMAL PAD SIDE A5 (specification: 264MN025695A01-A-dwg1) (specification: 264MN025695A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[15/26] 264MN025696A01 / A
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg1
+    Opened: 264MN025696A01/A;1-PRT-PDU-THERMAL PAD SIDE A6 (specification: 264MN025696A01-A-dwg1) (specification: 264MN025696A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025696A01/A/specification/264MN025696A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.057 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025696A01/A;1-PRT-PDU-THERMAL PAD SIDE A6 (specification: 264MN025696A01-A-dwg1) (specification: 264MN025696A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[16/26] 264MN025697A01 / A
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg1
+    Opened: 264MN025697A01/A;1-PRT-PDU-THERMAL PAD SIDE A7 (specification: 264MN025697A01-A-dwg1) (specification: 264MN025697A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025697A01/A/specification/264MN025697A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.060 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025697A01/A;1-PRT-PDU-THERMAL PAD SIDE A7 (specification: 264MN025697A01-A-dwg1) (specification: 264MN025697A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[17/26] 264MN025698A01 / A
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg1
+    Opened: 264MN025698A01/A;1-PRT-PDU-THERMAL PAD SIDE A8 (specification: 264MN025698A01-A-dwg1) (specification: 264MN025698A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025698A01/A/specification/264MN025698A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.415 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025698A01/A;1-PRT-PDU-THERMAL PAD SIDE A8 (specification: 264MN025698A01-A-dwg1) (specification: 264MN025698A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[18/26] 264MN025699A01 / A
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg1
+    Opened: 264MN025699A01/A;1-PRT-PDU-THERMAL PAD SIDE A9 (specification: 264MN025699A01-A-dwg1) (specification: 264MN025699A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025699A01/A/specification/264MN025699A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.534 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025699A01/A;1-PRT-PDU-THERMAL PAD SIDE A9 (specification: 264MN025699A01-A-dwg1) (specification: 264MN025699A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[19/26] 264MN025715A01 / A
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg1
+    Opened: 264MN025715A01/A;1-PRT-PDU-CONTACTOR SIDE A THERMAL PAD (specification: 264MN025715A01-A-dwg1) (specification: 264MN025715A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025715A01/A/specification/264MN025715A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.899 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025715A01/A;1-PRT-PDU-CONTACTOR SIDE A THERMAL PAD (specification: 264MN025715A01-A-dwg1) (specification: 264MN025715A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[20/26] 264MN025716A01 / A
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg1
+    Opened: 264MN025716A01/A;1-PRT-PDU-CONTACTOR SIDE B THERMAL PAD (specification: 264MN025716A01-A-dwg1) (specification: 264MN025716A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025716A01/A/specification/264MN025716A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.963 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025716A01/A;1-PRT-PDU-CONTACTOR SIDE B THERMAL PAD (specification: 264MN025716A01-A-dwg1) (specification: 264MN025716A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[21/26] 264MN025717A01 / A
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg1
+    Opened: 264MN025717A01/A;1-PRT-PDU-RESISTOR THERMAL PAD (specification: 264MN025717A01-A-dwg1) (specification: 264MN025717A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN025717A01/A/specification/264MN025717A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.347 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN025717A01/A;1-PRT-PDU-RESISTOR THERMAL PAD (specification: 264MN025717A01-A-dwg1) (specification: 264MN025717A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[22/26] 264MN026061A01 / A
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg1
+    Opened: 264MN026061A01/A;1-PRT-PDU-DCDC THERMAL PAD (specification: 264MN026061A01-A-dwg1) (specification: 264MN026061A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN026061A01/A/specification/264MN026061A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.794 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN026061A01/A;1-PRT-PDU-DCDC THERMAL PAD (specification: 264MN026061A01-A-dwg1) (specification: 264MN026061A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[23/26] 264MN026085A01 / A
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg1
+    Opened: 264MN026085A01/A;1-PRT-PDU-DCDC THERMAL PAD2 (specification: 264MN026085A01-A-dwg1) (specification: 264MN026085A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN026085A01/A/specification/264MN026085A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.000 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN026085A01/A;1-PRT-PDU-DCDC THERMAL PAD2 (specification: 264MN026085A01-A-dwg1) (specification: 264MN026085A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[24/26] 264MN026086A01 / A
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg1
+    Opened: 264MN026086A01/A;1-PRT-PDU-SIDE A CONTACTOR INSULATION BARRIER (specification: 264MN026086A01-A-dwg1) (specification: 264MN026086A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN026086A01/A/specification/264MN026086A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 9.880 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN026086A01/A;1-PRT-PDU-SIDE A CONTACTOR INSULATION BARRIER (specification: 264MN026086A01-A-dwg1) (specification: 264MN026086A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[25/26] 264MN026247A01 / A
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg1
+    Opened: 264MN026247A01/A;1-PRT-PDU-RESISTOR INSULATION SHEET (specification: 264MN026247A01-A-dwg1) (specification: 264MN026247A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg1
+    Drawing sheets: 1
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN026247A01/A/specification/264MN026247A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.342 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 1 sheet(s) from 264MN026247A01/A;1-PRT-PDU-RESISTOR INSULATION SHEET (specification: 264MN026247A01-A-dwg1) (specification: 264MN026247A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+[26/26] 264MN028282A01 / A
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg1
+    Opened: 264MN028282A01/A;1-PRT-PDU-TOP PLATE SEALING GASKET 1 (specification: 264MN028282A01-A-dwg1) (specification: 264MN028282A01-A-dwg1) [journal-opened]
+    JournalIdentifier: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg1
+    Drawing sheets: 2
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg2
+    Not opened: Failed to find dataset
+  No drawing opened for DWG2.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg3
+    Not opened: Failed to find dataset
+  No drawing opened for DWG3.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg4
+    Not opened: Failed to find dataset
+  No drawing opened for DWG4.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg5
+    Not opened: Failed to find dataset
+  No drawing opened for DWG5.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg6
+    Not opened: Failed to find dataset
+  No drawing opened for DWG6.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg7
+    Not opened: Failed to find dataset
+  No drawing opened for DWG7.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg8
+    Not opened: Failed to find dataset
+  No drawing opened for DWG8.
+  Attempt drawing open: @DB/264MN028282A01/A/specification/264MN028282A01-A-dwg9
+    Not opened: Failed to find dataset
+  No drawing opened for DWG9.
+  PDF drawing resolution/load: 10.145 s
+  PDF watermark: DRAFT_A (revision-only fallback)
+  WARNING: WAE_VERSION is blank or unavailable; PDF exported with revision-only watermark DRAFT_A.
+  Exporting DWG1: 2 sheet(s) from 264MN028282A01/A;1-PRT-PDU-TOP PLATE SEALING GASKET 1 (specification: 264MN028282A01-A-dwg1) (specification: 264MN028282A01-A-dwg1)
+Traceback (most recent call last):
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1553, in export_pdfs_for_instruction
+    pdf_metrics = export_drawing_pdf(
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1400, in export_drawing_pdf
+    raise export_error
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1331, in export_drawing_pdf
+    create_timestamp_notes(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1227, in create_timestamp_notes
+    create_pdf_timestamp_note(
+  File "C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\07_datapack_pdf_step_export.py", line 1192, in create_pdf_timestamp_note
+    NXOpen.Annotations.OriginBuilder.AlignmentPosition.BottomRight
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: module 'NXOpen' has no attribute 'Annotations'
+  PDF: FAILED (0 file(s))
+  STEP: NOT_REQUESTED
+Export complete
+Success: 0
+Partial: 0
+No drawing: 0
+Not found: 0
+Failed: 26
+PDF files: 0
+STEP files: 0
+Result report: C:\Users\my62022696\Desktop\NX_BULK_EXPORT\20260731_202729\REPORTS\EXPORT_RESULT_20260731_202729.csv
+

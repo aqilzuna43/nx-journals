@@ -223,6 +223,43 @@ APPROVED=YES
 ENGINEER=<nonblank>
 ```
 
+### Standalone verified import
+
+J16 is the standalone import path. Its committed defaults are deliberately
+configured for the validated one-run production workflow:
+
+```python
+USER_IMPORT_CSV = r""
+USER_MODE = "APPLY_APPROVED"
+```
+
+For each approved row, J16 performs the managed checks and UF Clone dry run
+inside the same execution before any write. It opens the exact
+`/specification/` and corresponding `@DB/<part>/<revision>` 3D master, requires
+both to be `CHECKED_IN`, and downloads their exact associated native files for
+baseline hashes. A checkout or ambiguous identity blocks only that row.
+
+Immediately before apply, J16 rechecks checkout and native hashes. UF Clone
+must discover the exact local drawing and its 3D master. Every object defaults
+to `UseExisting`; only the discovered local drawing receives `Overwrite`.
+
+After apply, J16 reopens the exact specification, requires at least one drawing
+sheet, downloads the managed drawing again, and proves the 3D master remained
+byte-identical. Teamcenter may rewrite the managed drawing bytes, so either an
+exact source hash or a changed managed payload is accepted when all identity,
+checkout, sheet, and 3D-preservation checks pass. An exception-free UF Clone
+return alone is never success.
+
+Run J19 before the first controlled apply:
+
+```text
+from_git/journals/19_test_teamcenter_drawing_import_contract.py
+```
+
+J19 is read-only against Teamcenter. It records the exact opened identifier,
+checkout owner, attached-file download evidence, named-reference/export probe
+results, SHA-256 values, and a UF Clone dry-run log.
+
 ## 8. First acceptance test
 
 Use only one drawing until the workflow is proven on the actual Teamcenter X tenant.
@@ -244,8 +281,9 @@ Verify:
 [ ] 3D/reference .prt files are read-only
 [ ] Drawing opens locally with references resolved
 [ ] Drawing can be saved locally
+[ ] J19 reports PROBE_COMPLETE and the expected checkout owner/state
 [ ] IMPORT_DRY_RUN returns DRY_RUN_OK
-[ ] IMPORT_APPLY updates the existing Teamcenter drawing only
+[ ] J16 APPLY_APPROVED returns IMPORT_VERIFIED
 [ ] Managed 3D master remains unchanged
 [ ] No unexpected Item/Revision/UGMASTER/drawing dataset is created
 [ ] Drawing associativity remains correct after reopening from Teamcenter
