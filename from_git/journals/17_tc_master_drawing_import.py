@@ -1,23 +1,22 @@
-"""J17 - create a separate Teamcenter drawing master from a local NX drawing.
+"""J17 - create a new drawing specification beneath an existing 3D master.
 
 NX X 2506 managed mode only.
 
-J17 imports a locally created NX drawing as the master file of a NEW,
-SEPARATE drawing Item/Revision. It does not attach a specification to the
-existing 3D Item/Revision (J16 owns that workflow), and it never intentionally
-overwrites an existing Teamcenter destination.
+J17 imports a locally created NX drawing as a NEW /specification/ dataset under
+an existing 3D Item/Revision. J16 owns replacement of an existing drawing
+specification; J17 refuses to overwrite one.
 
 Production contract:
 - APPROVED=YES plus ENGINEER authorizes one automatic preflight-and-apply run.
-- The destination Item/Revision must not be openable before the write.
-- The declared 3D Item/Revision must exist, be CHECKED_IN, be discovered by UF
+- The exact destination /specification/ must not be openable before the write.
+- The parent 3D Item/Revision must exist, be CHECKED_IN, be discovered by UF
   Clone, and remain UseExisting.
 - Every discovered object defaults to UseExisting. Only the staged local
-  drawing receives the UF Clone Overwrite action used by AutoTranslate to
-  create its new managed master.
+  encoded specification drawing receives the UF Clone Overwrite action used by
+  AutoTranslate to create its new managed dataset.
 - Immediately before apply, J17 repeats destination, source-file, and 3D
   payload checks.
-- After apply, the exact new drawing master must open, contain drawing sheets,
+- After apply, the exact new drawing specification must open, contain sheets,
   expose one native .prt, and the preserved 3D native SHA-256 must be unchanged.
 - J17 never checks in, saves, revises, deletes, or force-unlocks an object.
 
@@ -41,25 +40,24 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS
 # ============================================================================
-USER_IMPORT_CSV = r"C:\Users\my62022696\Desktop\J17 Test\NX_TC_MASTER_DRAWING_IMPORT.csv"  # blank => <I/O root>\NX_TC_MASTER_DRAWING_IMPORT.csv
+USER_IMPORT_CSV = r""  # blank => <I/O root>\NX_TC_NEW_DRAWING_SPECIFICATION.csv
 USER_MODE = "APPLY_APPROVED"  # production default; DRY_RUN remains diagnostic
 # Optional environment overrides:
-#   NX_TC_MASTER_DRAWING_IMPORT_FILE=<full CSV path>
+#   NX_TC_NEW_DRAWING_SPECIFICATION_FILE=<full CSV path>
 #   NX_J17_MODE=DRY_RUN or APPLY_APPROVED
 #   NX_J17_MAX_APPROVED_WRITES=1..100 (default 25)
 # ============================================================================
 
-BUILD = "J17-TCX-MASTER-DRAWING-CREATE-NX2506-V2-VERIFIED"
-DEFAULT_INPUT = "NX_TC_MASTER_DRAWING_IMPORT.csv"
+BUILD = "J17-TCX-NEW-DRAWING-SPECIFICATION-NX2506-V3"
+DEFAULT_INPUT = "NX_TC_NEW_DRAWING_SPECIFICATION.csv"
 VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
 DEFAULT_MAX_APPROVED_WRITES = 25
 
 REQUIRED_COLUMNS = (
-    "MASTER_PART_NUMBER",
-    "MASTER_REVISION",
+    "PART_NUMBER",
+    "REVISION",
+    "DWG_INDEX",
     "SOURCE_DRAWING_FILE",
-    "PRESERVE_3D_PART_NUMBER",
-    "PRESERVE_3D_REVISION",
     "APPROVED",
     "ENGINEER",
 )
@@ -68,12 +66,13 @@ REPORT_COLUMNS = (
     "RUN_TIMESTAMP",
     "MODE",
     "CSV_ROW",
-    "MASTER_PART_NUMBER",
-    "MASTER_REVISION",
-    "MASTER_IDENTIFIER",
+    "PART_NUMBER",
+    "REVISION",
+    "DWG_INDEX",
+    "DRAWING_IDENTIFIER",
     "SOURCE_DRAWING_FILE",
     "SOURCE_SHA256",
-    "STAGED_MASTER_FILE",
+    "STAGED_SPECIFICATION_FILE",
     "STAGED_SHA256",
     "PRESERVE_3D_PART_NUMBER",
     "PRESERVE_3D_REVISION",
@@ -95,11 +94,12 @@ REPORT_COLUMNS = (
     "TARGET_RECHECK_STATE",
     "TARGET_RECHECK_DETAIL",
     "DEFAULT_IMPORT_ACTION",
-    "MASTER_DRAWING_ACTION",
+    "DRAWING_SPECIFICATION_ACTION",
     "PRESERVE_3D_ACTION",
     "PRESERVE_3D_DISCOVERED",
     "PRESERVE_3D_DISCOVERED_NAME",
     "DISCOVERED_PARTS",
+    "NAMING_FAILURE_EVIDENCE",
     "CLONE_PREFLIGHT",
     "CLONE_PREFLIGHT_LOG",
     "CLONE_APPLY_LOG",
@@ -166,6 +166,7 @@ def load_j16():
         "pdm_file_name",
         "locate_downloaded_files",
         "release_pdm_files",
+        "managed_native_name",
     )
     missing = [name for name in required if not hasattr(module, name)]
     if missing:
@@ -187,7 +188,9 @@ def configured_mode():
 
 
 def configured_input_path():
-    value = J16.env("NX_TC_MASTER_DRAWING_IMPORT_FILE") or clean(USER_IMPORT_CSV)
+    value = J16.env("NX_TC_NEW_DRAWING_SPECIFICATION_FILE") or clean(
+        USER_IMPORT_CSV
+    )
     if value:
         return os.path.abspath(os.path.expanduser(value))
     return os.path.join(J16.io_root(), DEFAULT_INPUT)
@@ -210,9 +213,25 @@ def master_id(part_number, revision):
     return "@DB/{0}/{1}".format(part_number, revision)
 
 
-def expected_master_native(part_number, revision):
-    """AutoTranslate name for importing a local drawing as a master part."""
-    return "{0}_{1}_m.prt".format(part_number, revision)
+def dataset_name(part_number, revision, drawing_index):
+    return "{0}-{1}-dwg{2}".format(part_number, revision, drawing_index)
+
+
+def drawing_id(part_number, revision, drawing_index):
+    return "@DB/{0}/{1}/specification/{2}".format(
+        part_number,
+        revision,
+        dataset_name(part_number, revision, drawing_index),
+    )
+
+
+def expected_specification_import_native(part_number, revision, drawing_index):
+    """Proven UF Clone AutoTranslate encoding for a specification dataset."""
+    return "{0}_{1}_s_{2}.prt".format(
+        part_number,
+        revision,
+        dataset_name(part_number, revision, drawing_index),
+    )
 
 
 def resolve_local_path(csv_path, value):
@@ -265,21 +284,18 @@ def approval_state(row):
 
 
 def parse_row(row):
-    target_pn = clean(row.get("MASTER_PART_NUMBER"))
-    target_rev = clean(row.get("MASTER_REVISION"))
-    model_pn = clean(row.get("PRESERVE_3D_PART_NUMBER"))
-    model_rev = clean(row.get("PRESERVE_3D_REVISION"))
-    if not target_pn or not target_rev:
-        raise RuntimeError("MASTER_PART_NUMBER and MASTER_REVISION are required.")
-    if not model_pn or not model_rev:
-        raise RuntimeError(
-            "PRESERVE_3D_PART_NUMBER and PRESERVE_3D_REVISION are required."
-        )
-    if upper(target_pn) == upper(model_pn) and upper(target_rev) == upper(model_rev):
-        raise RuntimeError(
-            "The new drawing master cannot use the preserved 3D Item/Revision ID."
-        )
-    return target_pn, target_rev, model_pn, model_rev
+    part_number = clean(row.get("PART_NUMBER"))
+    revision = clean(row.get("REVISION"))
+    raw_index = clean(row.get("DWG_INDEX"))
+    if not part_number or not revision or not raw_index:
+        raise RuntimeError("PART_NUMBER, REVISION, and DWG_INDEX are required.")
+    try:
+        drawing_index = int(raw_index)
+    except Exception:
+        raise RuntimeError("DWG_INDEX must be an integer from 1 through 99.")
+    if drawing_index < 1 or drawing_index > 99:
+        raise RuntimeError("DWG_INDEX must be an integer from 1 through 99.")
+    return part_number, revision, drawing_index
 
 
 def base_report(row, timestamp, mode):
@@ -288,13 +304,12 @@ def base_report(row, timestamp, mode):
         RUN_TIMESTAMP=timestamp,
         MODE=mode,
         CSV_ROW=row.get("_CSV_ROW", ""),
-        MASTER_PART_NUMBER=row.get("MASTER_PART_NUMBER", ""),
-        MASTER_REVISION=row.get("MASTER_REVISION", ""),
+        PART_NUMBER=row.get("PART_NUMBER", ""),
+        REVISION=row.get("REVISION", ""),
+        DWG_INDEX=row.get("DWG_INDEX", ""),
         SOURCE_DRAWING_FILE=row.get("SOURCE_DRAWING_FILE", ""),
-        PRESERVE_3D_PART_NUMBER=row.get("PRESERVE_3D_PART_NUMBER", ""),
-        PRESERVE_3D_REVISION=row.get("PRESERVE_3D_REVISION", ""),
         DEFAULT_IMPORT_ACTION="UseExisting",
-        MASTER_DRAWING_ACTION="Overwrite",
+        DRAWING_SPECIFICATION_ACTION="Overwrite",
         PRESERVE_3D_ACTION="UseExisting",
         PRESERVE_3D_DISCOVERED="NO",
         CLONE_PREFLIGHT="NOT_RUN",
@@ -324,13 +339,20 @@ def quarantine(report, result, message, error=None):
     report["QUARANTINE_REASON"] = report["MESSAGE"]
 
 
-def stage_copy(source, root, part_number, revision):
+def stage_copy(source, root, part_number, revision, drawing_index):
     folder = os.path.join(
         root,
-        J16.safe_folder_name("{0}_{1}".format(part_number, revision)),
+        J16.safe_folder_name(
+            "{0}_{1}_DWG{2}".format(part_number, revision, drawing_index)
+        ),
     )
     os.makedirs(folder, exist_ok=True)
-    target = os.path.join(folder, expected_master_native(part_number, revision))
+    target = os.path.join(
+        folder,
+        expected_specification_import_native(
+            part_number, revision, drawing_index
+        ),
+    )
     shutil.copy2(source, target)
     return target
 
@@ -339,8 +361,8 @@ def duplicate_target_keys(rows):
     keys = []
     for row in rows:
         try:
-            target_pn, target_rev, _, _ = parse_row(row)
-            keys.append((upper(target_pn), upper(target_rev)))
+            part_number, revision, drawing_index = parse_row(row)
+            keys.append((upper(part_number), upper(revision), drawing_index))
         except Exception:
             pass
     counts = Counter(keys)
@@ -380,10 +402,10 @@ def local_preflight(rows, csv_path, stage_root, timestamp, mode):
             continue
 
         try:
-            target_pn, target_rev, model_pn, model_rev = parse_row(row)
-            if (upper(target_pn), upper(target_rev)) in duplicates:
+            part_number, revision, drawing_index = parse_row(row)
+            if (upper(part_number), upper(revision), drawing_index) in duplicates:
                 raise RuntimeError(
-                    "Duplicate MASTER_PART_NUMBER/MASTER_REVISION destination."
+                    "Duplicate PART_NUMBER/REVISION/DWG_INDEX destination."
                 )
             source = resolve_local_path(csv_path, row.get("SOURCE_DRAWING_FILE"))
             if not source or not os.path.isfile(source):
@@ -393,43 +415,56 @@ def local_preflight(rows, csv_path, stage_root, timestamp, mode):
             if not source.lower().endswith(".prt"):
                 raise RuntimeError("SOURCE_DRAWING_FILE must be an NX .prt file.")
 
-            identifier = master_id(target_pn, target_rev)
-            supplied_identifier = clean(row.get("MASTER_IDENTIFIER"))
+            identifier = drawing_id(part_number, revision, drawing_index)
+            supplied_identifier = clean(row.get("DRAWING_IDENTIFIER"))
             if supplied_identifier and upper(supplied_identifier).replace(
                 "\\", "/"
             ) != upper(identifier).replace("\\", "/"):
                 raise RuntimeError(
-                    "Optional MASTER_IDENTIFIER does not match the requested destination."
+                    "Optional DRAWING_IDENTIFIER does not match the requested specification."
                 )
 
-            staged = stage_copy(source, stage_root, target_pn, target_rev)
+            staged = stage_copy(
+                source,
+                stage_root,
+                part_number,
+                revision,
+                drawing_index,
+            )
             source_sha = J16.sha256(source)
             staged_sha = J16.sha256(staged)
             if source_sha.lower() != staged_sha.lower():
                 raise RuntimeError("Staged drawing is not byte-identical to source.")
 
-            model_identifier = master_id(model_pn, model_rev)
+            model_identifier = master_id(part_number, revision)
             report.update(
-                MASTER_IDENTIFIER=identifier,
+                PART_NUMBER=part_number,
+                REVISION=revision,
+                DWG_INDEX=drawing_index,
+                DRAWING_IDENTIFIER=identifier,
                 SOURCE_DRAWING_FILE=source,
                 SOURCE_SHA256=source_sha,
-                STAGED_MASTER_FILE=staged,
+                STAGED_SPECIFICATION_FILE=staged,
                 STAGED_SHA256=staged_sha,
+                PRESERVE_3D_PART_NUMBER=part_number,
+                PRESERVE_3D_REVISION=revision,
                 PRESERVE_3D_IDENTIFIER=model_identifier,
                 RESULT="LOCAL_PREFLIGHT_OK",
                 MESSAGE=(
-                    "Local drawing was staged for a new, separate drawing master."
+                    "Local drawing was staged with the proven encoded name for "
+                    "a new specification beneath the existing 3D revision."
                 ),
             )
             proposals.append(
                 {
                     "row": row,
                     "report": report,
-                    "part_number": target_pn,
-                    "revision": target_rev,
+                    "part_number": part_number,
+                    "revision": revision,
+                    "drawing_index": drawing_index,
                     "identifier": identifier,
-                    "model_part_number": model_pn,
-                    "model_revision": model_rev,
+                    "model_part_number": part_number,
+                    "model_revision": revision,
                     "model_identifier": model_identifier,
                     "source": source,
                     "source_sha": source_sha,
@@ -590,7 +625,14 @@ def open_exact_for_retrieval(session, identifier, log):
     return part, load_status, opened_here
 
 
-def retrieve_single_native(session, file_management, identifier, evidence_root, log):
+def retrieve_single_native(
+    session,
+    file_management,
+    identifier,
+    evidence_root,
+    log,
+    expected_basename="",
+):
     """Download exactly one native .prt attached to an exact Item/Revision."""
     os.makedirs(evidence_root, exist_ok=True)
     part = None
@@ -617,10 +659,18 @@ def retrieve_single_native(session, file_management, identifier, evidence_root, 
             for value, name in zip(pdm_files, names)
             if os.path.basename(name).lower().endswith(".prt")
         ]
+        if expected_basename:
+            native_pairs = [
+                (value, name)
+                for value, name in native_pairs
+                if os.path.basename(name).lower()
+                == os.path.basename(expected_basename).lower()
+            ]
         if len(native_pairs) != 1:
             raise RuntimeError(
-                "Expected exactly one attached native .prt on {0}; found {1}. "
-                "Associated files: {2}".format(
+                "Expected exactly one attached native {0} on {1}; found {2}. "
+                "Associated files: {3}".format(
+                    expected_basename or ".prt",
                     identifier,
                     len(native_pairs),
                     " | ".join(name or "<unreadable>" for name in names)
@@ -687,30 +737,61 @@ def model_tokens(part_number, revision):
     stem = "{0}_{1}".format(part_number, revision).lower()
     return (
         master_id(part_number, revision).lower(),
-        "{0}/{1}".format(part_number, revision).lower(),
         stem,
         stem + ".prt",
     )
 
 
 def find_model_references(parts, staged, part_number, revision):
-    tokens = model_tokens(part_number, revision)
-    return [
-        part
-        for part in parts
-        if not J16.same_part(part, staged)
-        and any(token in normalized(part) for token in tokens)
+    canonical, stem, native = model_tokens(part_number, revision)
+    matches = []
+    for part in parts:
+        if J16.same_part(part, staged):
+            continue
+        value = normalized(part).rstrip("/")
+        leaf = os.path.basename(value)
+        if value == canonical or leaf in (stem, native):
+            matches.append(part)
+    return matches
+
+
+def naming_failure_evidence(value):
+    """Capture NX binding output without assuming one runtime result shape."""
+    details = [
+        "type={0}".format(type(value).__name__),
+        "raw={0}".format(repr(value)),
     ]
+    try:
+        names = [
+            name
+            for name in dir(value)
+            if not name.startswith("_")
+            and any(
+                token in name.lower()
+                for token in ("error", "fail", "name", "part", "status")
+            )
+        ]
+    except Exception:
+        names = []
+    for name in names:
+        try:
+            member = getattr(value, name)
+            if not callable(member):
+                details.append("{0}={1}".format(name, repr(member)))
+        except Exception:
+            pass
+    return " | ".join(details)[:4000]
 
 
 def clone_log_path(proposal, mode, phase):
     return os.path.join(
         os.path.dirname(proposal["staged"]),
-        "J17_{0}_{1}_{2}_{3}.clone".format(
+        "J17_{0}_{1}_{2}_{3}_DWG{4}.clone".format(
             phase,
             mode,
             proposal["part_number"],
             proposal["revision"],
+            proposal["drawing_index"],
         ),
     )
 
@@ -787,10 +868,16 @@ def import_one(api, proposal, logfile, dry_run, log):
             clone.GenerateReport()
         except Exception:
             pass
-        J16.perform_clone(clone, failures)
+        try:
+            J16.perform_clone(clone, failures)
+        except Exception:
+            proposal["report"]["NAMING_FAILURE_EVIDENCE"] = (
+                naming_failure_evidence(failures)
+            )
+            raise
         log.write(
             "  UF Clone completed: discovered={0}; default=UseExisting; "
-            "new drawing master=Overwrite; preserved 3D=UseExisting; dry_run={1}"
+            "new drawing specification=Overwrite; 3D master=UseExisting; dry_run={1}"
             .format(len(discovered_parts), dry_run)
         )
         return discovered_parts
@@ -803,7 +890,11 @@ def evidence_path(work_root, proposal, phase):
     return os.path.join(
         work_root,
         J16.safe_folder_name(
-            "{0}_{1}".format(proposal["part_number"], proposal["revision"])
+            "{0}_{1}_DWG{2}".format(
+                proposal["part_number"],
+                proposal["revision"],
+                proposal["drawing_index"],
+            )
         ),
         phase,
     )
@@ -834,7 +925,7 @@ def managed_preflight(session, file_management, api, proposals, mode, work_root,
                     report,
                     "QUARANTINED_TARGET_ALREADY_EXISTS",
                     "The exact destination is already present or its identity is "
-                    "ambiguous. J17 creates only new drawing masters and will not "
+                    "ambiguous. J17 creates only missing specifications and will not "
                     "overwrite it. Detail: {0}".format(target.get("detail", "")),
                 )
                 continue
@@ -887,7 +978,7 @@ def mark_later_stopped(proposals, start, review_required=False):
             set_result(
                 report,
                 "REVIEW_NOT_ATTEMPTED_AFTER_PRIOR_WRITE",
-                "A prior new drawing master requires manual check-in/review; no "
+                "A prior new drawing specification requires manual check-in/review; no "
                 "write was attempted for this row.",
                 "STOPPED",
             )
@@ -906,7 +997,7 @@ def prewrite_checks(session, file_management, proposal, work_root, log):
     if J16.sha256(proposal["source"]).lower() != proposal["source_sha"].lower():
         raise RuntimeError("SOURCE_DRAWING_FILE changed after local preflight.")
     if J16.sha256(proposal["staged"]).lower() != proposal["staged_sha"].lower():
-        raise RuntimeError("Staged master drawing changed after local preflight.")
+        raise RuntimeError("Staged specification drawing changed after local preflight.")
 
     model = inspect_exact_part(session, proposal["model_identifier"], log)
     record_model_inspection(report, model, recheck=True)
@@ -946,7 +1037,7 @@ def verify_after_import(session, file_management, proposal, work_root, log):
     )
     if target.get("state") != "EXISTS":
         raise RuntimeError(
-            "The exact new drawing-master Item/Revision could not be opened after "
+            "The exact new drawing specification could not be opened after "
             "UF Clone: {0}".format(target.get("detail", ""))
         )
     if target.get("drawing_sheet_count", -1) < 1:
@@ -958,8 +1049,13 @@ def verify_after_import(session, file_management, proposal, work_root, log):
         session,
         file_management,
         proposal["identifier"],
-        evidence_path(work_root, proposal, "NEW_DRAWING_MASTER_POSTIMPORT"),
+        evidence_path(work_root, proposal, "NEW_DRAWING_SPECIFICATION_POSTIMPORT"),
         log,
+        J16.managed_native_name(
+            proposal["part_number"],
+            proposal["revision"],
+            proposal["drawing_index"],
+        ),
     )
     report.update(
         POST_IMPORT_ASSOCIATED_FILES=imported["associated_files"],
@@ -993,7 +1089,7 @@ def verify_after_import(session, file_management, proposal, work_root, log):
         set_result(
             report,
             "MANUAL_CHECKIN_REQUIRED",
-            "The exact new drawing master, drawing sheets, native payload, and "
+            "The exact new drawing specification, drawing sheets, native payload, and "
             "unchanged 3D were verified, but the new object remains checked out "
             "by {0}. Verify it and check it in manually; J17 will not check in."
             .format(checkout_owner or "<owner unavailable>"),
@@ -1002,22 +1098,22 @@ def verify_after_import(session, file_management, proposal, work_root, log):
         return True
     if checkout_state != "CHECKED_IN":
         raise RuntimeError(
-            "The new drawing master exists, but post-import checkout state is "
+            "The new drawing specification exists, but post-import checkout state is "
             "unknown: {0}".format(target.get("checkout_raw", "") or "<none>")
         )
 
     if imported["sha256"].lower() == proposal["source_sha"].lower():
         report["POST_IMPORT_VERIFICATION"] = "VERIFIED_EXACT_SOURCE_SHA256"
-        result = "IMPORT_CREATED_VERIFIED"
+        result = "SPECIFICATION_CREATED_VERIFIED"
         message = (
-            "New exact CHECKED_IN drawing master was created with source-matching "
+            "New exact CHECKED_IN drawing specification was created with source-matching "
             "native SHA-256; preserved 3D remained byte-identical."
         )
     else:
         report["POST_IMPORT_VERIFICATION"] = "VERIFIED_MANAGED_TRANSFORM"
-        result = "IMPORT_CREATED_VERIFIED_MANAGED_TRANSFORM"
+        result = "SPECIFICATION_CREATED_VERIFIED_MANAGED_TRANSFORM"
         message = (
-            "New exact CHECKED_IN drawing master was created, drawing sheets and "
+            "New exact CHECKED_IN drawing specification was created, drawing sheets and "
             "one managed native payload were proven, and preserved 3D remained "
             "byte-identical. Teamcenter rewrote the managed native payload, as "
             "validated by the J16 production contract."
@@ -1176,8 +1272,8 @@ def final_run_status(reports, mode):
     completed = any(
         report.get("RESULT")
         in (
-            "IMPORT_CREATED_VERIFIED",
-            "IMPORT_CREATED_VERIFIED_MANAGED_TRANSFORM",
+            "SPECIFICATION_CREATED_VERIFIED",
+            "SPECIFICATION_CREATED_VERIFIED_MANAGED_TRANSFORM",
             "DRY_RUN_OK",
         )
         for report in approved
@@ -1195,7 +1291,9 @@ def main():
     input_path = configured_input_path()
     timestamp = J16.stamp()
     output_dir = os.path.dirname(input_path) if input_path else J16.io_root()
-    stage_root = os.path.join(output_dir, "J17_MASTER_DRAWING_STAGE_" + timestamp)
+    stage_root = os.path.join(
+        output_dir, "J17_NEW_DRAWING_SPECIFICATION_STAGE_" + timestamp
+    )
     work_root = os.path.join(output_dir, "J17_EVIDENCE_" + timestamp)
     evidence_zip = work_root + ".zip"
     report_path = ""
@@ -1204,10 +1302,10 @@ def main():
     file_management = None
 
     log.write("=" * 72)
-    log.write("J17 CREATE SEPARATE TEAMCENTER DRAWING MASTER")
+    log.write("J17 CREATE NEW DRAWING SPECIFICATION UNDER EXISTING 3D MASTER")
     log.write("Build: {0} | Mode: {1}".format(BUILD, mode))
     log.write("Runtime target: NX X 2506 managed mode only")
-    log.write("Destination rule: must not already exist; J17 never overwrites it")
+    log.write("Destination rule: exact /specification/ must not exist; never overwrite")
     log.write("Reference rule: exact 3D must stay CHECKED_IN and UseExisting")
     log.write("Production: internal managed checks plus UF Clone dry run are automatic")
     log.write("Input: {0}".format(input_path))
@@ -1258,7 +1356,7 @@ def main():
             )
         if status == "REVIEW_REQUIRED":
             log.write(
-                "Do not rerun. Verify the new drawing master and check it in "
+                "Do not rerun. Verify the new drawing specification and check it in "
                 "manually only when the checkout belongs to you."
             )
         return report_path

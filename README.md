@@ -50,7 +50,7 @@ shared helpers from `from_git\utils`.
 | 14 | `from_git/journals/14_bulk_part_name_updater.py` | Approved bulk Teamcenter Item Name update |
 | 15 | `from_git/journals/15_tc_offline_drawing_workflow.py` | Exports native drawing packages for controlled offline editing |
 | 16 | `from_git/journals/16_tc_offline_drawing_import.py` | Checkout-gated drawing import with exact-target re-export verification |
-| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Verified creation of a separate Teamcenter drawing master while preserving its 3D reference |
+| 17 | `from_git/journals/17_tc_master_drawing_import.py` | Verified creation of a missing drawing specification beneath an existing 3D revision |
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 
@@ -66,41 +66,42 @@ shared helpers from `from_git\utils`.
   - Generated reports/STEP/PDF files: `%USERPROFILE%\Desktop`
 - To use a shared or custom location, set `NX_JOURNALS_IO_DIR` before launching NX.
 
-## Journal 17 - Create a Separate Drawing Master
+## Journal 17 - Create a New Drawing Specification
 
-Use J17 when a local NX drawing must become the master file of a new, separate
-Teamcenter drawing Item/Revision. Use J16 instead when replacing an existing
-`/specification/` drawing under a 3D Item/Revision.
+Use J17 when a local NX drawing must become a new `/specification/` dataset
+beneath an existing Teamcenter 3D Item/Revision. Use J16 instead when replacing
+an existing drawing specification.
 
 Start a fresh NX X 2506 managed session with no parts loaded. Copy
-`from_git/templates/NX_TC_MASTER_DRAWING_IMPORT_TEMPLATE.csv` to the configured
-I/O folder and complete one row per new drawing master:
+`from_git/templates/NX_TC_NEW_DRAWING_SPECIFICATION_TEMPLATE.csv` to the
+configured I/O folder and complete one row per missing specification:
 
 ```csv
-MASTER_PART_NUMBER,MASTER_REVISION,SOURCE_DRAWING_FILE,PRESERVE_3D_PART_NUMBER,PRESERVE_3D_REVISION,APPROVED,ENGINEER
-NEW_DRAWING_ITEM,A,C:\drawings\local_drawing.prt,EXISTING_3D_ITEM,A,YES,AQIL
+PART_NUMBER,REVISION,DWG_INDEX,SOURCE_DRAWING_FILE,APPROVED,ENGINEER
+264MN021262A01,A,3,C:\drawings\local_drawing.prt,YES,AQIL
 ```
 
-`MASTER_PART_NUMBER/MASTER_REVISION` is the new drawing Item/Revision to create.
-It must differ from, and must not already exist as, the preserved 3D target.
-`PRESERVE_3D_PART_NUMBER/PRESERVE_3D_REVISION` identifies the existing model
-referenced by the local drawing.
+The example creates exactly
+`@DB/264MN021262A01/A/specification/264MN021262A01-A-dwg3`. The parent
+`@DB/264MN021262A01/A` must already exist and be checked in; the exact `dwg3`
+specification must not already exist.
 
 Run `from_git/journals/17_tc_master_drawing_import.py` once. Its production
 default is `APPLY_APPROVED`; the managed checks and UF Clone dry run happen
-inside that same run. J17 quarantines existing or ambiguous destinations,
-checked-out 3D references, stale local files, and other prewrite failures with
-zero writes. Every discovered reference defaults to `UseExisting`; only the
-staged local drawing receives `Overwrite` for creation of its new managed
-master.
+inside that same run. J17 stages the drawing with the proven Teamcenter
+AutoTranslate specification encoding, quarantines existing or ambiguous
+destinations, checked-out 3D masters, stale local files, and other prewrite
+failures with zero writes. Every discovered reference defaults to
+`UseExisting`; only the exact staged specification receives `Overwrite` for
+creation of its new managed dataset.
 
-Require `IMPORT_CREATED_VERIFIED` or
-`IMPORT_CREATED_VERIFIED_MANAGED_TRANSFORM` in the result CSV. The report must
-also show `PRESERVE_3D_UNCHANGED=YES`, the exact new master identifier, at least
-one drawing sheet, one attached native `.prt`, and a post-import `CHECKED_IN`
-state. If the result is `MANUAL_CHECKIN_REQUIRED`, do not rerun J17: verify the
-new drawing and manually check it in only when the checkout belongs to you.
-J17 never checks in automatically.
+Require `SPECIFICATION_CREATED_VERIFIED` or
+`SPECIFICATION_CREATED_VERIFIED_MANAGED_TRANSFORM` in the result CSV. The
+report must also show `PRESERVE_3D_UNCHANGED=YES`, the exact new specification
+identifier, at least one drawing sheet, the expected managed native `.prt`, and
+a post-import `CHECKED_IN` state. If the result is `MANUAL_CHECKIN_REQUIRED`,
+do not rerun J17: verify the new specification and manually check it in only
+when the checkout belongs to you. J17 never checks in automatically.
 
 ## Journal 04 + 05 - Business Attribute Update
 

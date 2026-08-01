@@ -71,14 +71,13 @@ class MasterDrawingCreateTests(unittest.TestCase):
             handle.write(b"local-drawing-master-content")
         return path
 
-    def make_row(self, source, target="DRAWING100", model="MODEL100"):
+    def make_row(self, source, part_number="MODEL100", drawing_index=3):
         return {
             "_CSV_ROW": 2,
-            "MASTER_PART_NUMBER": target,
-            "MASTER_REVISION": "A",
+            "PART_NUMBER": part_number,
+            "REVISION": "A",
+            "DWG_INDEX": str(drawing_index),
             "SOURCE_DRAWING_FILE": source,
-            "PRESERVE_3D_PART_NUMBER": model,
-            "PRESERVE_3D_REVISION": "A",
             "APPROVED": "YES",
             "ENGINEER": "TESTER",
         }
@@ -175,12 +174,12 @@ class MasterDrawingCreateTests(unittest.TestCase):
         post_sha = post_sha or source_sha
         model_calls = {"count": 0}
 
-        def retrieve(_session, _fm, identifier, _root, _log):
+        def retrieve(_session, _fm, identifier, _root, _log, *_rest):
             if identifier == model_id:
                 model_calls["count"] += 1
                 return self.retrieval(self.MODEL_SHA, "MODEL100_A.prt")
             self.assertEqual(target_id, identifier)
-            return self.retrieval(post_sha, "DRAWING100_A.prt")
+            return self.retrieval(post_sha, "MODEL100_A_dwg3.prt")
 
         return retrieve
 
@@ -201,7 +200,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
         self.assertNotIn("TARGET_SUCCESS_TERMS", source)
         self.assertNotIn("classify_log", source)
 
-    def test_local_preflight_stages_autotranslate_master_name(self):
+    def test_local_preflight_stages_proven_specification_name(self):
         with tempfile.TemporaryDirectory() as folder:
             source = self.make_source(folder)
             stage = os.path.join(folder, "stage")
@@ -215,27 +214,32 @@ class MasterDrawingCreateTests(unittest.TestCase):
             )
         self.assertEqual("LOCAL_PREFLIGHT_OK", reports[0]["RESULT"])
         self.assertEqual(
-            "DRAWING100_A_m.prt", os.path.basename(proposals[0]["staged"])
+            "MODEL100_A_s_MODEL100-A-dwg3.prt",
+            os.path.basename(proposals[0]["staged"]),
         )
         self.assertEqual(
             reports[0]["SOURCE_SHA256"], reports[0]["STAGED_SHA256"]
         )
+        self.assertEqual(
+            "@DB/MODEL100/A/specification/MODEL100-A-dwg3",
+            proposals[0]["identifier"],
+        )
+        self.assertEqual("@DB/MODEL100/A", proposals[0]["model_identifier"])
 
-    def test_target_equal_to_preserved_model_is_rejected(self):
+    def test_invalid_drawing_index_is_rejected(self):
         row = {
-            "MASTER_PART_NUMBER": "SAME100",
-            "MASTER_REVISION": "A",
-            "PRESERVE_3D_PART_NUMBER": "SAME100",
-            "PRESERVE_3D_REVISION": "A",
+            "PART_NUMBER": "MODEL100",
+            "REVISION": "A",
+            "DWG_INDEX": "zero",
         }
-        with self.assertRaisesRegex(RuntimeError, "cannot use"):
+        with self.assertRaisesRegex(RuntimeError, "must be an integer"):
             self.journal.parse_row(row)
 
     def test_existing_destination_is_quarantined_with_zero_clone_calls(self):
         with tempfile.TemporaryDirectory() as folder:
             source = self.make_source(folder)
             row = self.make_row(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
 
             def inspect(_session, identifier, _log):
@@ -301,7 +305,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
             source = self.make_source(folder)
             row = self.make_row(source)
             source_sha = self.journal.J16.sha256(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
             reports, import_mock = self.run_execute(
                 folder,
@@ -312,7 +316,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
                 ),
             )
         report = reports[0]
-        self.assertEqual("IMPORT_CREATED_VERIFIED", report["RESULT"])
+        self.assertEqual("SPECIFICATION_CREATED_VERIFIED", report["RESULT"])
         self.assertEqual("YES", report["WRITE_ATTEMPTED"])
         self.assertEqual("YES", report["PRESERVE_3D_UNCHANGED"])
         self.assertEqual("2", str(report["POST_IMPORT_DRAWING_SHEET_COUNT"]))
@@ -325,7 +329,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
             source = self.make_source(folder)
             row = self.make_row(source)
             source_sha = self.journal.J16.sha256(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
             reports, _ = self.run_execute(
                 folder,
@@ -336,7 +340,8 @@ class MasterDrawingCreateTests(unittest.TestCase):
                 ),
             )
         self.assertEqual(
-            "IMPORT_CREATED_VERIFIED_MANAGED_TRANSFORM", reports[0]["RESULT"]
+            "SPECIFICATION_CREATED_VERIFIED_MANAGED_TRANSFORM",
+            reports[0]["RESULT"],
         )
         self.assertEqual(
             "VERIFIED_MANAGED_TRANSFORM",
@@ -348,7 +353,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
             source = self.make_source(folder)
             row = self.make_row(source)
             source_sha = self.journal.J16.sha256(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
 
             def mutate_after_dry(_api, _proposal, _logfile, dry_run, _log):
@@ -371,7 +376,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             source = self.make_source(folder)
             row = self.make_row(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
             target_calls = {"count": 0}
 
@@ -398,16 +403,16 @@ class MasterDrawingCreateTests(unittest.TestCase):
             source = self.make_source(folder)
             row = self.make_row(source)
             source_sha = self.journal.J16.sha256(source)
-            target_id = self.journal.master_id("DRAWING100", "A")
+            target_id = self.journal.drawing_id("MODEL100", "A", 3)
             model_id = self.journal.master_id("MODEL100", "A")
             model_calls = {"count": 0}
 
-            def retrieve(_session, _fm, identifier, _root, _log):
+            def retrieve(_session, _fm, identifier, _root, _log, *_rest):
                 if identifier == model_id:
                     model_calls["count"] += 1
                     digest = self.MODEL_SHA if model_calls["count"] < 3 else "b" * 64
                     return self.retrieval(digest, "MODEL100_A.prt")
-                return self.retrieval(source_sha, "DRAWING100_A.prt")
+                return self.retrieval(source_sha, "MODEL100_A_dwg3.prt")
 
             reports, _ = self.run_execute(
                 folder,
@@ -424,19 +429,22 @@ class MasterDrawingCreateTests(unittest.TestCase):
             source1 = self.make_source(folder, "one.prt")
             source2 = self.make_source(folder, "two.prt")
             rows = [
-                self.make_row(source1, "DRAWING100"),
-                self.make_row(source2, "DRAWING200"),
+                self.make_row(source1, "MODEL100", 3),
+                self.make_row(source2, "MODEL200", 4),
             ]
             target_ids = {
-                self.journal.master_id("DRAWING100", "A"),
-                self.journal.master_id("DRAWING200", "A"),
+                self.journal.drawing_id("MODEL100", "A", 3),
+                self.journal.drawing_id("MODEL200", "A", 4),
             }
-            model_id = self.journal.master_id("MODEL100", "A")
+            model_ids = {
+                self.journal.master_id("MODEL100", "A"),
+                self.journal.master_id("MODEL200", "A"),
+            }
             target_counts = {identifier: 0 for identifier in target_ids}
 
             def inspect(_session, identifier, _log):
-                if identifier == model_id:
-                    return self.exact_part(model_id)
+                if identifier in model_ids:
+                    return self.exact_part(identifier)
                 target_counts[identifier] += 1
                 if target_counts[identifier] <= 2:
                     return self.not_openable()
@@ -447,10 +455,17 @@ class MasterDrawingCreateTests(unittest.TestCase):
                     sheets=2,
                 )
 
-            def retrieve(_session, _fm, identifier, _root, _log):
-                if identifier == model_id:
-                    return self.retrieval(self.MODEL_SHA, "MODEL100_A.prt")
-                return self.retrieval("c" * 64, "DRAWING_A.prt")
+            def retrieve(_session, _fm, identifier, _root, _log, *_rest):
+                if identifier in model_ids:
+                    return self.retrieval(
+                        self.MODEL_SHA,
+                        identifier.split("/")[2] + "_A.prt",
+                    )
+                suffix = "dwg3" if "MODEL100" in identifier else "dwg4"
+                model = "MODEL100" if "MODEL100" in identifier else "MODEL200"
+                return self.retrieval(
+                    "c" * 64, "{0}_A_{1}.prt".format(model, suffix)
+                )
 
             reports, import_mock = self.run_execute(
                 folder, rows, inspect, retrieve
@@ -463,7 +478,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
         self.assertEqual(3, import_mock.call_count)
 
     def test_clone_defaults_references_to_use_existing(self):
-        staged = os.path.abspath("DRAWING100_A_m.prt")
+        staged = os.path.abspath("MODEL100_A_s_MODEL100-A-dwg3.prt")
         proposal = {
             "staged": staged,
             "model_part_number": "MODEL100",
@@ -505,6 +520,23 @@ class MasterDrawingCreateTests(unittest.TestCase):
             set_action.call_args_list,
         )
 
+    def test_old_drawing_identity_cannot_satisfy_exact_3d_discovery(self):
+        staged = os.path.abspath("MODEL100_A_s_MODEL100-A-dwg3.prt")
+        parts = [staged, "MODEL100_A_dwg1.prt"]
+        self.assertEqual(
+            [],
+            self.journal.find_model_references(
+                parts, staged, "MODEL100", "A"
+            ),
+        )
+        parts.append(os.path.abspath("MODEL100_A.prt"))
+        self.assertEqual(
+            [os.path.abspath("MODEL100_A.prt")],
+            self.journal.find_model_references(
+                parts, staged, "MODEL100", "A"
+            ),
+        )
+
     def test_single_native_retrieval_uses_exact_open_and_restores_cwd(self):
         with tempfile.TemporaryDirectory() as folder:
             identifier = "@DB/MODEL100/A"
@@ -539,6 +571,7 @@ class MasterDrawingCreateTests(unittest.TestCase):
                 identifier,
                 os.path.join(folder, "evidence"),
                 FakeLog(),
+                "MODEL100_A.prt",
             )
 
         self.assertEqual(original_cwd, os.getcwd())
@@ -643,6 +676,8 @@ class MasterDrawingCreateTests(unittest.TestCase):
         self.assertIn("api[\"overwrite\"]", source)
         self.assertIn("PRESERVE_3D_UNCHANGED", source)
         self.assertIn("QUARANTINED_TARGET_ALREADY_EXISTS", source)
+        self.assertIn("_s_{2}.prt", source)
+        self.assertNotIn("_m.prt", source)
 
 
 if __name__ == "__main__":
