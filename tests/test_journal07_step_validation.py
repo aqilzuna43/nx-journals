@@ -1,3 +1,4 @@
+import datetime
 import importlib.util
 import inspect
 import sys
@@ -15,7 +16,11 @@ JOURNAL = (
 
 
 def load_journal():
-    sys.modules.setdefault("NXOpen", types.ModuleType("NXOpen"))
+    nxopen = sys.modules.setdefault("NXOpen", types.ModuleType("NXOpen"))
+    annotations = sys.modules.setdefault(
+        "NXOpen.Annotations", types.ModuleType("NXOpen.Annotations")
+    )
+    nxopen.Annotations = annotations
     spec = importlib.util.spec_from_file_location("journal07", JOURNAL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -33,6 +38,10 @@ class StepValidationTests(unittest.TestCase):
         path.write_text(content, encoding="utf-8")
         self.addCleanup(folder.cleanup)
         return path
+
+    def test_annotations_submodule_is_explicitly_imported(self):
+        source_lines = JOURNAL.read_text(encoding="utf-8").splitlines()
+        self.assertIn("import NXOpen.Annotations", source_lines)
 
     def test_header_only_step_has_no_body_geometry(self):
         path = self.write_step(
@@ -79,6 +88,37 @@ class PdfGroupingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.journal = load_journal()
+
+    def run_pdf_export(
+        self,
+        drawing_part,
+        sheets,
+        output_path="combined.pdf",
+        watermark="DRAFT_A.2",
+        timestamp_text="EXPORTED: 2026-07-31 00:13 MYT",
+    ):
+        self.journal.NXOpen.Session = types.SimpleNamespace(
+            MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
+        )
+        session = types.SimpleNamespace(
+            SetUndoMark=mock.Mock(return_value="undo-mark"),
+        )
+        with mock.patch.object(
+            self.journal,
+            "create_timestamp_notes",
+        ) as note_creator, mock.patch.object(
+            self.journal,
+            "undo_timestamp_notes",
+        ) as note_cleanup:
+            result = self.journal.export_drawing_pdf(
+                session,
+                drawing_part,
+                sheets,
+                output_path,
+                watermark,
+                timestamp_text,
+            )
+        return result, session, note_creator, note_cleanup
 
     def test_single_drawing_uses_plain_part_revision_name(self):
         self.assertEqual(
@@ -202,13 +242,221 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-POLYLINES-V4",
+            "J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
                 "07_datapack_pdf_step_export.py"
             )
         )
+
+    def test_export_timestamp_uses_one_explicit_myt_datetime(self):
+        run_datetime = datetime.datetime(
+            2026,
+            7,
+            31,
+            0,
+            13,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=8)),
+        )
+
+        self.assertEqual(
+            self.journal.build_export_timestamp_text(run_datetime),
+            "EXPORTED: 2026-07-31 00:13 MYT",
+        )
+
+    def test_sheet_units_accept_nx2506_numeric_values(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace()
+
+        self.assertTrue(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=1)
+            )
+        )
+        self.assertFalse(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=2)
+            )
+        )
+
+    def test_sheet_units_accept_both_nx_sheet_enum_class_names(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace(
+            DrawingSheet=types.SimpleNamespace(
+                Unit=types.SimpleNamespace(
+                    UnitInches="legacy-inches",
+                    UnitMillimeters="legacy-millimeters",
+                )
+            ),
+            DraftingDrawingSheet=types.SimpleNamespace(
+                Unit=types.SimpleNamespace(
+                    Inches="drafting-inches",
+                    Millimeters="drafting-millimeters",
+                )
+            ),
+        )
+
+        self.assertTrue(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units="legacy-inches")
+            )
+        )
+        self.assertFalse(
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units="drafting-millimeters")
+            )
+        )
+
+    def test_sheet_units_still_reject_unknown_numeric_value(self):
+        self.journal.NXOpen.Drawings = types.SimpleNamespace()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Unsupported or unavailable drawing-sheet units: 3",
+        ):
+            self.journal.sheet_uses_inches(
+                types.SimpleNamespace(Units=3)
+            )
+
+    def test_timestamp_note_placement_handles_metric_and_inch_sheets(self):
+        class TextBlock:
+            def __init__(self):
+                self.value = None
+
+            def SetText(self, value):
+                self.value = value
+
+        class NoteBuilder:
+            def __init__(self):
+                self.Origin = types.SimpleNamespace(
+                    Anchor=None,
+                    OriginPoint=None,
+                )
+                self.Style = types.SimpleNamespace(
+                    LetteringStyle=types.SimpleNamespace(
+                        GeneralTextSize=None,
+                        GeneralTextLineWidth=None,
+                        HorizontalTextJustification=None,
+                    )
+                )
+                self.Text = types.SimpleNamespace(TextBlock=TextBlock())
+                self.destroyed = False
+
+            def Commit(self):
+                return object()
+
+            def Destroy(self):
+                self.destroyed = True
+
+        metric_builder = NoteBuilder()
+        inch_builder = NoteBuilder()
+        builders = iter((metric_builder, inch_builder))
+        drawing = types.SimpleNamespace(
+            Annotations=types.SimpleNamespace(
+                CreateDraftingNoteBuilder=lambda _note: next(builders)
+            )
+        )
+        metric_sheet = types.SimpleNamespace(
+            Units="Millimeters",
+            Length=1000.0,
+            Height=500.0,
+            Open=mock.Mock(),
+        )
+        inch_sheet = types.SimpleNamespace(
+            Units="Inches",
+            Length=10.0,
+            Height=8.0,
+            Open=mock.Mock(),
+        )
+        self.journal.NXOpen.Drawings = types.SimpleNamespace(
+            DrawingSheet=types.SimpleNamespace(
+                Unit=types.SimpleNamespace(
+                    Inches="Inches",
+                    Millimeters="Millimeters",
+                )
+            )
+        )
+        self.journal.NXOpen.Annotations = types.SimpleNamespace(
+            OriginBuilder=types.SimpleNamespace(
+                AlignmentPosition=types.SimpleNamespace(
+                    BottomRight="BottomRight"
+                )
+            ),
+            LineWidth=types.SimpleNamespace(Normal="Normal"),
+            TextJustification=types.SimpleNamespace(Right="Right"),
+        )
+        self.journal.NXOpen.Point3d = lambda x, y, z: types.SimpleNamespace(
+            X=x,
+            Y=y,
+            Z=z,
+        )
+
+        self.journal.create_pdf_timestamp_note(
+            drawing,
+            metric_sheet,
+            "EXPORTED: 2026-07-31 00:13 MYT",
+        )
+        self.journal.create_pdf_timestamp_note(
+            drawing,
+            inch_sheet,
+            "EXPORTED: 2026-07-31 00:13 MYT",
+        )
+
+        self.assertAlmostEqual(metric_builder.Origin.OriginPoint.X, 992.0)
+        self.assertAlmostEqual(metric_builder.Origin.OriginPoint.Y, 5.0)
+        self.assertAlmostEqual(
+            metric_builder.Style.LetteringStyle.GeneralTextSize,
+            2.5,
+        )
+        self.assertAlmostEqual(
+            inch_builder.Origin.OriginPoint.X,
+            10.0 - (8.0 / 25.4),
+        )
+        self.assertAlmostEqual(
+            inch_builder.Origin.OriginPoint.Y,
+            5.0 / 25.4,
+        )
+        self.assertAlmostEqual(
+            inch_builder.Style.LetteringStyle.GeneralTextSize,
+            2.5 / 25.4,
+        )
+        self.assertEqual(
+            metric_builder.Origin.Anchor,
+            "BottomRight",
+        )
+        self.assertEqual(
+            metric_builder.Style.LetteringStyle.GeneralTextLineWidth,
+            "Normal",
+        )
+        self.assertEqual(
+            metric_builder.Style.LetteringStyle.HorizontalTextJustification,
+            "Right",
+        )
+        self.assertTrue(metric_builder.destroyed)
+        self.assertTrue(inch_builder.destroyed)
+
+    def test_timestamp_notes_are_created_per_sheet_with_one_update(self):
+        sheets = [object(), object(), object()]
+        update_manager = types.SimpleNamespace(
+            DoUpdate=mock.Mock(return_value=0)
+        )
+        session = types.SimpleNamespace(UpdateManager=update_manager)
+
+        with mock.patch.object(
+            self.journal,
+            "create_pdf_timestamp_note",
+            side_effect=[object(), object(), object()],
+        ) as creator:
+            notes = self.journal.create_timestamp_notes(
+                session,
+                object(),
+                sheets,
+                "EXPORTED: 2026-07-31 00:13 MYT",
+                "undo-mark",
+            )
+
+        self.assertEqual(len(notes), 3)
+        self.assertEqual(creator.call_count, 3)
+        update_manager.DoUpdate.assert_called_once_with("undo-mark")
 
     def test_drawing_open_uses_open_display(self):
         class Status:
@@ -370,11 +618,9 @@ class PdfGroupingTests(unittest.TestCase):
             OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
         )
 
-        self.journal.export_drawing_pdf(
+        metrics, session, note_creator, note_cleanup = self.run_pdf_export(
             drawing_part,
             sheets,
-            "combined.pdf",
-            "DRAFT_A.2",
         )
 
         self.assertIs(builder.SourceBuilder.sheets, sheets)
@@ -389,6 +635,10 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(sheets[0].open_count, 1)
         self.assertEqual(sheets[1].open_count, 0)
         self.assertEqual(sheets[2].open_count, 0)
+        self.assertEqual(metrics["pdf_commit_seconds"] >= 0.0, True)
+        note_creator.assert_called_once()
+        note_cleanup.assert_called_once()
+        session.SetUndoMark.assert_called_once()
 
     def test_pdf_export_fails_when_nx_rejects_required_watermark(self):
         class Sheet:
@@ -428,11 +678,9 @@ class PdfGroupingTests(unittest.TestCase):
             RuntimeError,
             "could not apply required watermark DRAFT_A.2",
         ):
-            self.journal.export_drawing_pdf(
+            self.run_pdf_export(
                 drawing_part,
                 [Sheet()],
-                "combined.pdf",
-                "DRAFT_A.2",
             )
 
         self.assertEqual(builder.destroy_count, 1)
@@ -475,11 +723,9 @@ class PdfGroupingTests(unittest.TestCase):
             RuntimeError,
             "could not apply required watermark DRAFT_A.2",
         ):
-            self.journal.export_drawing_pdf(
+            self.run_pdf_export(
                 drawing_part,
                 [Sheet()],
-                "combined.pdf",
-                "DRAFT_A.2",
             )
 
         self.assertEqual(builder.destroy_count, 1)
@@ -522,14 +768,188 @@ class PdfGroupingTests(unittest.TestCase):
             RuntimeError,
             "could not apply required polyline text output",
         ):
-            self.journal.export_drawing_pdf(
+            self.run_pdf_export(
                 drawing_part,
                 [Sheet()],
-                "combined.pdf",
-                "DRAFT_A.2",
             )
 
         self.assertEqual(builder.destroy_count, 1)
+
+    def test_cleanup_failure_is_a_batch_halting_error(self):
+        original_sheet = types.SimpleNamespace(Open=mock.Mock())
+        session = types.SimpleNamespace(
+            UndoToMark=mock.Mock(side_effect=RuntimeError("undo unavailable")),
+            DeleteUndoMark=mock.Mock(),
+        )
+        drawing = types.SimpleNamespace(IsModified=False)
+
+        with self.assertRaisesRegex(
+            self.journal.TimestampCleanupError,
+            "discard unsaved drawing changes",
+        ):
+            self.journal.undo_timestamp_notes(
+                session,
+                "undo-mark",
+                "temporary timestamp",
+                drawing,
+                False,
+                original_sheet,
+            )
+
+        original_sheet.Open.assert_called_once()
+        session.DeleteUndoMark.assert_called_once()
+
+    def test_pdf_export_reports_cleanup_failure_even_after_commit(self):
+        class Builder:
+            def __init__(self):
+                self.SourceBuilder = types.SimpleNamespace(
+                    SetSheets=lambda _sheets: None
+                )
+
+            def Commit(self):
+                pass
+
+            def Destroy(self):
+                pass
+
+        drawing = types.SimpleNamespace(
+            PlotManager=types.SimpleNamespace(
+                CreatePrintPdfbuilder=lambda: Builder()
+            )
+        )
+        self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
+            ActionOption=types.SimpleNamespace(Native="Native"),
+            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+        )
+        self.journal.NXOpen.Session = types.SimpleNamespace(
+            MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
+        )
+        session = types.SimpleNamespace(
+            SetUndoMark=mock.Mock(return_value="undo-mark"),
+        )
+        sheet = types.SimpleNamespace(Open=mock.Mock())
+
+        with mock.patch.object(
+            self.journal,
+            "create_timestamp_notes",
+        ), mock.patch.object(
+            self.journal,
+            "undo_timestamp_notes",
+            side_effect=self.journal.TimestampCleanupError(
+                "cleanup could not be proven"
+            ),
+        ):
+            with self.assertRaisesRegex(
+                self.journal.TimestampCleanupError,
+                "cleanup could not be proven",
+            ):
+                self.journal.export_drawing_pdf(
+                    session,
+                    drawing,
+                    [sheet],
+                    "combined.pdf",
+                    "DRAFT_A.2",
+                    "EXPORTED: 2026-07-31 00:13 MYT",
+                )
+
+    def test_pdf_builder_failure_still_undoes_timestamp_notes(self):
+        class Builder:
+            def __init__(self):
+                self.SourceBuilder = types.SimpleNamespace(
+                    SetSheets=lambda _sheets: None
+                )
+
+            def Commit(self):
+                raise RuntimeError("PDF commit failed")
+
+            def Destroy(self):
+                pass
+
+        drawing = types.SimpleNamespace(
+            PlotManager=types.SimpleNamespace(
+                CreatePrintPdfbuilder=lambda: Builder()
+            )
+        )
+        self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
+            ActionOption=types.SimpleNamespace(Native="Native"),
+            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+        )
+        self.journal.NXOpen.Session = types.SimpleNamespace(
+            MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
+        )
+        session = types.SimpleNamespace(
+            SetUndoMark=mock.Mock(return_value="undo-mark"),
+        )
+        sheet = types.SimpleNamespace(Open=mock.Mock())
+
+        with mock.patch.object(
+            self.journal,
+            "create_timestamp_notes",
+        ), mock.patch.object(
+            self.journal,
+            "undo_timestamp_notes",
+        ) as cleanup:
+            with self.assertRaisesRegex(RuntimeError, "PDF commit failed"):
+                self.journal.export_drawing_pdf(
+                    session,
+                    drawing,
+                    [sheet],
+                    "combined.pdf",
+                    "DRAFT_A.2",
+                    "EXPORTED: 2026-07-31 00:13 MYT",
+                )
+
+        cleanup.assert_called_once()
+
+    def test_halted_pdf_batch_still_runs_independent_step_export(self):
+        instruction = {
+            "part_number": "264MN000001A01",
+            "revision": "A",
+            "pdf_requested": True,
+            "step_requested": True,
+            "warnings": [],
+        }
+        state = {
+            "halted": True,
+            "reason": "timestamp cleanup failed",
+        }
+        step_result = {
+            "result": "SUCCESS",
+            "path": "part.stp",
+            "message": "",
+            "size": 42,
+        }
+
+        with mock.patch.object(
+            self.journal,
+            "export_pdfs_for_instruction",
+            side_effect=AssertionError("PDF export must remain halted"),
+        ), mock.patch.object(
+            self.journal,
+            "export_step_for_instruction",
+            return_value=step_result,
+        ) as step_exporter, mock.patch.object(
+            self.journal,
+            "restore_parts",
+        ):
+            result = self.journal.process_instruction(
+                types.SimpleNamespace(),
+                instruction,
+                {"pdf": "PDF", "step": "STEP"},
+                "20260731_001300",
+                "EXPORTED: 2026-07-31 00:13 MYT",
+                state,
+                object(),
+                object(),
+                [],
+            )
+
+        self.assertEqual(
+            result["PDF_RESULT"],
+            "FAILED_TIMESTAMP_CLEANUP",
+        )
+        self.assertEqual(result["STEP_RESULT"], "SUCCESS")
+        step_exporter.assert_called_once()
 
     def run_grouped_export(self, candidates, wae_version="2"):
         session = types.SimpleNamespace()
@@ -546,8 +966,22 @@ class PdfGroupingTests(unittest.TestCase):
             else None
         )
 
-        def create_pdf(_part, _sheets, output_path, _watermark):
+        def create_pdf(
+            _session,
+            _part,
+            _sheets,
+            output_path,
+            _watermark,
+            _timestamp_text,
+        ):
             Path(output_path).write_bytes(b"%PDF-test")
+            return {
+                "timestamp_prepare_seconds": 0.01,
+                "pdf_commit_seconds": 1.0,
+                "timestamp_cleanup_seconds": 0.01,
+                "pdf_total_seconds": 1.02,
+                "timestamp_overhead_percent": 2.0,
+            }
 
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
@@ -575,6 +1009,7 @@ class PdfGroupingTests(unittest.TestCase):
                 folder.name,
                 "264MN020016A01",
                 "A",
+                "EXPORTED: 2026-07-31 00:13 MYT",
                 original_display,
                 original_work,
                 logs,
@@ -610,8 +1045,12 @@ class PdfGroupingTests(unittest.TestCase):
             )
         )
         self.assertEqual(exporter.call_count, 1)
-        self.assertEqual(exporter.call_args.args[1], sheets)
-        self.assertEqual(exporter.call_args.args[3], "DRAFT_A.2")
+        self.assertEqual(exporter.call_args.args[2], sheets)
+        self.assertEqual(exporter.call_args.args[4], "DRAFT_A.2")
+        self.assertEqual(
+            exporter.call_args.args[5],
+            "EXPORTED: 2026-07-31 00:13 MYT",
+        )
 
     def test_missing_wae_warning_is_reported_without_failing_pdf(self):
         candidate = {
@@ -631,7 +1070,7 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(result["result"], "SUCCESS")
         self.assertEqual(result["watermark"], "DRAFT_A")
         self.assertIn("WAE_VERSION is blank or unavailable", result["message"])
-        self.assertEqual(exporter.call_args.args[3], "DRAFT_A")
+        self.assertEqual(exporter.call_args.args[4], "DRAFT_A")
 
     def test_two_drawings_return_two_suffixed_pdf_paths(self):
         candidates = [
