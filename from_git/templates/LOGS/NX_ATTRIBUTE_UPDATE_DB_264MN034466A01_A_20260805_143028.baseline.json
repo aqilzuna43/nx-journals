@@ -1,0 +1,2727 @@
+{
+  "schema_version": 1,
+  "audit_run_id": "DB_264MN034466A01_A_20260805_143028",
+  "generated_at": "2026-08-05T14:30:28.626617",
+  "source_journal": "04_assembly_attribute_audit.py",
+  "root_identifier": "@DB/264MN034466A01/A",
+  "csv_filename": "NX_ATTRIBUTE_UPDATE_DB_264MN034466A01_A_20260805_143028.csv",
+  "identity_columns": [
+    {
+      "csv_column": "Item Number",
+      "logical_name": "part_number",
+      "category": "Cad0Design",
+      "attribute": "DB_PART_NO",
+      "type": "String"
+    },
+    {
+      "csv_column": "Part Description",
+      "logical_name": "part_name",
+      "category": "Cad0Design",
+      "attribute": "DB_PART_NAME",
+      "type": "String"
+    },
+    {
+      "csv_column": "Item Rev",
+      "logical_name": "revision",
+      "category": "Cad0DesignRevision",
+      "attribute": "DB_PART_REV",
+      "type": "String"
+    }
+  ],
+  "business_columns": [
+    {
+      "csv_column": "UOM",
+      "logical_name": "uom",
+      "category": "WAEItem",
+      "attribute": "Unit_Of_Measure",
+      "type": "String"
+    },
+    {
+      "csv_column": "Mfr. Name",
+      "logical_name": "manufacturer",
+      "category": "WAEItem",
+      "attribute": "MFG",
+      "type": "String"
+    },
+    {
+      "csv_column": "Mfr. Part Number",
+      "logical_name": "manufacturer_part_number",
+      "category": "WAEItem",
+      "attribute": "MPN",
+      "type": "String"
+    },
+    {
+      "csv_column": "Reference Notes",
+      "logical_name": "stocking_type",
+      "category": "WAEItem",
+      "attribute": "Stocking_Type",
+      "type": "String"
+    },
+    {
+      "csv_column": "WAE_VERSION",
+      "logical_name": "wae_version",
+      "category": "WAEItem",
+      "attribute": "WAE_VERSION",
+      "type": "String"
+    },
+    {
+      "csv_column": "NX_FINISH",
+      "logical_name": "finish",
+      "category": "WAEItem",
+      "attribute": "NX_FINISH",
+      "type": "String"
+    },
+    {
+      "csv_column": "COMPONENT_CLASS",
+      "logical_name": "component_class",
+      "category": "WAEItem",
+      "attribute": "COMPONENT_CLASS",
+      "type": "String"
+    },
+    {
+      "csv_column": "LIFED",
+      "logical_name": "shelf_life_limited",
+      "category": "WAEItem",
+      "attribute": "LIFED",
+      "type": "String"
+    },
+    {
+      "csv_column": "SERIAL_NUMBERED_PART",
+      "logical_name": "traceability",
+      "category": "WAEItem",
+      "attribute": "SERIAL_NUMBERED_PART",
+      "type": "String"
+    },
+    {
+      "csv_column": "Temperature_Sensitive",
+      "logical_name": "temperature_sensitive",
+      "category": "WAEItem",
+      "attribute": "Temperature_Sensitive",
+      "type": "String"
+    },
+    {
+      "csv_column": "Hazardous",
+      "logical_name": "hazardous",
+      "category": "WAEItem",
+      "attribute": "WAE_Hazardous",
+      "type": "String"
+    },
+    {
+      "csv_column": "COMMODITYTYPE",
+      "logical_name": "commodity_type",
+      "category": "WAEItem",
+      "attribute": "COMMODITYTYPE",
+      "type": "String"
+    },
+    {
+      "csv_column": "Commodity_Code",
+      "logical_name": "commodity_code",
+      "category": "WAEItem",
+      "attribute": "Commodity_Code",
+      "type": "String"
+    },
+    {
+      "csv_column": "Serviceable_item_flag",
+      "logical_name": "serviceable_item",
+      "category": "WAEItem",
+      "attribute": "Serviceable_item_flag",
+      "type": "String"
+    },
+    {
+      "csv_column": "Export_Control_Number",
+      "logical_name": "export_control_number",
+      "category": "WAEItem",
+      "attribute": "Export_Control_Number",
+      "type": "String"
+    },
+    {
+      "csv_column": "Country_of_Origin",
+      "logical_name": "country_of_origin",
+      "category": "WAEItem",
+      "attribute": "Country_of_Origin",
+      "type": "String"
+    }
+  ],
+  "traversal_diagnostics": [],
+  "parts": [
+    {
+      "part_number": "264MN034466A01",
+      "part_name": "ASSY-CIB-DOOR",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034466A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034466A01",
+          "normalized_value": "264MN034466A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "ASSY-CIB-DOOR",
+          "normalized_value": "ASSY-CIB-DOOR",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021288A01",
+          "normalized_value": "264MN021288A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "BUY",
+          "normalized_value": "BUY",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "RAL7043",
+          "normalized_value": "RAL7043",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "UNSET",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034453A01",
+      "part_name": "STD-CIB-CLINCH NUT M6",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034453A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034453A01",
+          "normalized_value": "264MN034453A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "STD-CIB-CLINCH NUT M6",
+          "normalized_value": "STD-CIB-CLINCH NUT M6",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "PEM",
+          "normalized_value": "PEM",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "SP-M6-2",
+          "normalized_value": "SP-M6-2",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034470A01",
+      "part_name": "ASSY-CIB-DOOR WELDING",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034470A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034470A01",
+          "normalized_value": "264MN034470A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "ASSY-CIB-DOOR WELDING",
+          "normalized_value": "ASSY-CIB-DOOR WELDING",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021472A01",
+          "normalized_value": "264MN021472A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "UNSET",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "UNSET",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034473A01",
+      "part_name": "PRT-CIB-L BRACKET-DOOR SPACER-TOP BOTTOM",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034473A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034473A01",
+          "normalized_value": "264MN034473A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-L BRACKET-DOOR SPACER-TOP BOTTOM",
+          "normalized_value": "PRT-CIB-L BRACKET-DOOR SPACER-TOP BOTTOM",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021281A01",
+          "normalized_value": "264MN021281A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034469A01",
+      "part_name": "PRT-CIB-L BRACKET-DOOR SPACER-SIDE",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034469A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034469A01",
+          "normalized_value": "264MN034469A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-L BRACKET-DOOR SPACER-SIDE",
+          "normalized_value": "PRT-CIB-L BRACKET-DOOR SPACER-SIDE",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021285A01",
+          "normalized_value": "264MN021285A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034471A01",
+      "part_name": "PRT-CIB-PAD LOCK BRACKET 2",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034471A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034471A01",
+          "normalized_value": "264MN034471A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-PAD LOCK BRACKET 2",
+          "normalized_value": "PRT-CIB-PAD LOCK BRACKET 2",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN033054A01",
+          "normalized_value": "264MN033054A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "POPULATED",
+          "raw_value": "1",
+          "normalized_value": "1",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034464A01",
+      "part_name": "PRT-CIB-DOOR PLATE-CUT",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034464A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034464A01",
+          "normalized_value": "264MN034464A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-DOOR PLATE-CUT",
+          "normalized_value": "PRT-CIB-DOOR PLATE-CUT",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021476A01",
+          "normalized_value": "264MN021476A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "POPULATED",
+          "raw_value": "2",
+          "normalized_value": "2",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034467A01",
+      "part_name": "PRT-CIB-DOOR",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034467A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034467A01",
+          "normalized_value": "264MN034467A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-DOOR",
+          "normalized_value": "PRT-CIB-DOOR",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021474A01",
+          "normalized_value": "264MN021474A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "C",
+          "normalized_value": "C",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "N",
+          "normalized_value": "N",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034468A01",
+      "part_name": "STD-CIB-SEAL ACTUATOR DOOR HOLDER",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034468A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034468A01",
+          "normalized_value": "264MN034468A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "STD-CIB-SEAL ACTUATOR DOOR HOLDER",
+          "normalized_value": "STD-CIB-SEAL ACTUATOR DOOR HOLDER",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021385A01",
+          "normalized_value": "264MN021385A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034463A01",
+      "part_name": "PRT-CIB-DOOR ACTUATOR HOLDER",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034463A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034463A01",
+          "normalized_value": "264MN034463A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "PRT-CIB-DOOR ACTUATOR HOLDER",
+          "normalized_value": "PRT-CIB-DOOR ACTUATOR HOLDER",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "FABRICATOR",
+          "normalized_value": "FABRICATOR",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN021289A01",
+          "normalized_value": "264MN021289A01",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "REF",
+          "normalized_value": "REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "POPULATED",
+          "raw_value": "N/A",
+          "normalized_value": "N/A",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "LIFED": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    },
+    {
+      "part_number": "264MN034472A01",
+      "part_name": "STD-CIB-HEX HEAD FLANGE SCREWS, M5X12, DIN 6921",
+      "revision": "A",
+      "model_identifier": "@DB/264MN034472A01/A",
+      "pull_status": "READY",
+      "pull_message": "",
+      "identity": {
+        "Item Number": {
+          "status": "POPULATED",
+          "raw_value": "264MN034472A01",
+          "normalized_value": "264MN034472A01",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Part Description": {
+          "status": "POPULATED",
+          "raw_value": "STD-CIB-HEX HEAD FLANGE SCREWS, M5X12, DIN 6921",
+          "normalized_value": "STD-CIB-HEX HEAD FLANGE SCREWS, M5X12, DIN 6921",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "Item Rev": {
+          "status": "POPULATED",
+          "raw_value": "A",
+          "normalized_value": "A",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        }
+      },
+      "business_values": {
+        "UOM": {
+          "status": "POPULATED",
+          "raw_value": "ea",
+          "normalized_value": "EA",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Name": {
+          "status": "POPULATED",
+          "raw_value": "BOSSARD",
+          "normalized_value": "BOSSARD",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Mfr. Part Number": {
+          "status": "POPULATED",
+          "raw_value": "9031586",
+          "normalized_value": "9031586",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Reference Notes": {
+          "status": "POPULATED",
+          "raw_value": "BUY/REF",
+          "normalized_value": "BUY/REF",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "WAE_VERSION": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "NX_FINISH": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMPONENT_CLASS": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "LIFED": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "SERIAL_NUMBERED_PART": {
+          "status": "POPULATED",
+          "raw_value": "BATCH",
+          "normalized_value": "BATCH",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Temperature_Sensitive": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Hazardous": {
+          "status": "MISSING",
+          "raw_value": "",
+          "normalized_value": "",
+          "type": "String",
+          "flags": {},
+          "message": ""
+        },
+        "COMMODITYTYPE": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Commodity_Code": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Serviceable_item_flag": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Export_Control_Number": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        },
+        "Country_of_Origin": {
+          "status": "POPULATED",
+          "raw_value": "TBC",
+          "normalized_value": "TBC",
+          "type": "String",
+          "flags": {
+            "locked": false,
+            "owned_by_system": false,
+            "pdm_based": false,
+            "not_saved": false
+          },
+          "message": ""
+        }
+      }
+    }
+  ]
+}
