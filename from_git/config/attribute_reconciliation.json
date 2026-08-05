@@ -396,7 +396,7 @@
       "required_for_certification": true,
       "required_on": ["MODEL"],
       "comparison": "TRIMMED_CASE_INSENSITIVE",
-      "allowed_values": ["MAKE", "BUY", "REF"],
+      "allowed_values": ["MAKE", "BUY", "REF", "BUY/REF"],
       "writable": true,
       "write_targets": ["MODEL"],
       "bom_column": "Stocking_Type"

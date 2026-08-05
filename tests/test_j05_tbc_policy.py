@@ -35,3 +35,7 @@ def test_tbc_does_not_weaken_other_controlled_fields():
         "stocking_type",
     ):
         assert "TBC" not in rules[logical_name].get("allowed_values", [])
+
+
+def test_combined_buy_reference_stocking_type_is_allowed():
+    assert "BUY/REF" in _rules()["stocking_type"]["allowed_values"]
