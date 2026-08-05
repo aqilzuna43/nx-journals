@@ -36,6 +36,9 @@ CONTROL_COLUMNS = [
     "PULL_MESSAGE",
 ]
 VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
+COMPATIBILITY_ALLOWED_VALUES = {
+    "stocking_type": ("BUY/REF",),
+}
 REPORT_COLUMNS = [
     "RUN_TIMESTAMP",
     "MODE",
@@ -526,7 +529,10 @@ def _validate_expected(value, rule, config):
             int(value)
         except ValueError:
             return "Expected value is not a valid integer."
-    allowed = rule.get("allowed_values")
+    allowed = list(rule.get("allowed_values") or [])
+    allowed.extend(
+        COMPATIBILITY_ALLOWED_VALUES.get(rule.get("logical_name"), ())
+    )
     if allowed:
         expected = _normalize_for_rule(value, rule, config)
         allowed_normalized = [
@@ -876,7 +882,30 @@ def prepare_updates(
                 )
                 reports.append(report)
                 continue
-            if _text(actual.get("raw", "")) != _text(baseline_value):
+            actual_value = actual.get("raw", "")
+            actual_normalized = _normalize_for_rule(
+                actual_value, rule, config
+            )
+            expected_normalized = _normalize_for_rule(
+                expected, rule, config
+            )
+            baseline_normalized = _normalize_for_rule(
+                baseline_value, rule, config
+            )
+            if actual_normalized == expected_normalized:
+                report.update(
+                    ACTION="ALREADY_AT_EXPECTED_VALUE",
+                    REREAD_VALUE=_text(actual_value),
+                    VERIFICATION_RESULT="ALREADY_MATCHED",
+                    SAVE_RESULT="NOT_REQUIRED",
+                    MESSAGE=(
+                        "Current NX value already matches the approved value; "
+                        "no write or checkout is required."
+                    ),
+                )
+                reports.append(report)
+                continue
+            if actual_normalized != baseline_normalized:
                 report.update(
                     ACTION="STALE_BASELINE_VALUE",
                     MESSAGE=(
@@ -933,6 +962,7 @@ def _hard_preflight_error(report):
         and action not in (
             "PROPOSED_UPDATE",
             "NO_CHANGE",
+            "ALREADY_AT_EXPECTED_VALUE",
         )
     )
 

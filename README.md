@@ -119,6 +119,9 @@ USER_MODE = "DRY_RUN"
 6. When clean, change `USER_MODE` to `"APPLY_APPROVED"` and run again.
 
 J05 checks out affected Teamcenter parts, writes and verifies the approved attributes, saves them, and leaves them checked out. It never checks parts in automatically. Part Number, Part Name, and Revision are not changed by J05.
+`NO_CHANGE` and `ALREADY_AT_EXPECTED_VALUE` are successful informational
+results. A true `STALE_BASELINE_VALUE` still blocks an overwrite when the live
+value matches neither the J04 baseline nor the approved replacement.
 
 ## Journal 14 - Teamcenter Part Name Update
 

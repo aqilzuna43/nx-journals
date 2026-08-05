@@ -57,6 +57,9 @@ paste the edited J04 CSV path into `USER_UPDATE_CSV` and leave
 automation. An approved row authorizes every changed business field on that
 row; identity, material, mass, dimensions, lifecycle, and quantity cannot be
 changed. J05 rejects blank replacements and stale baselines.
+`NO_CHANGE` is informational. Reruns also treat a live value that already
+matches the approved replacement as `ALREADY_AT_EXPECTED_VALUE`, without a
+checkout or write. Only a live third value remains stale.
 
 J05 explicitly checks out all affected Teamcenter prototypes before writing,
 aborts without attribute changes if any checkout fails, rereads each write,

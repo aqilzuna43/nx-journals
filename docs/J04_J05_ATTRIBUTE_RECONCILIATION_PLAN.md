@@ -84,6 +84,11 @@ Journal 05 rejects:
 - ambiguous loaded prototypes or current NX values different from the J04
   baseline.
 
+`NO_CHANGE` is informational. If a live value already matches its approved
+replacement, J05 reports `ALREADY_AT_EXPECTED_VALUE` and requires no checkout
+or write. A stale error is reserved for a live value that matches neither the
+baseline nor the approved replacement.
+
 `TBC` and `N/A` are accepted for unrestricted text fields. They remain invalid
 where an attribute has a controlled domain such as Y/N, UOM, component class,
 traceability, stocking type, or commodity type.

@@ -618,6 +618,35 @@ class J05Tests(unittest.TestCase):
         self.assertEqual("STALE_BASELINE_VALUE", reports[0]["ACTION"])
         self.assertFalse(proposals)
 
+    def test_current_value_already_expected_is_idempotent_success(self):
+        reports, proposals = self.prepare(target=self.target("NEW"))
+
+        self.assertEqual(
+            "ALREADY_AT_EXPECTED_VALUE", reports[0]["ACTION"]
+        )
+        self.assertEqual("ALREADY_MATCHED", reports[0]["VERIFICATION_RESULT"])
+        self.assertEqual("NOT_REQUIRED", reports[0]["SAVE_RESULT"])
+        self.assertFalse(proposals)
+        self.assertFalse(self.j05._hard_preflight_error(reports[0]))
+
+    def test_normalized_current_baseline_difference_is_not_stale(self):
+        reports, proposals = self.prepare(target=self.target(" old "))
+
+        self.assertEqual("PROPOSED_UPDATE", reports[0]["ACTION"])
+        self.assertEqual(1, len(proposals))
+
+    def test_buy_reference_compatibility_survives_older_config_copy(self):
+        rule = {
+            "logical_name": "stocking_type",
+            "type": "String",
+            "comparison": "TRIMMED_CASE_INSENSITIVE",
+            "allowed_values": ["MAKE", "BUY", "REF"],
+        }
+
+        self.assertEqual(
+            "", self.j05._validate_expected("BUY/REF", rule, self.config)
+        )
+
     def test_baseline_mapping_must_match_deployed_contract(self):
         baseline = self.baseline()
         baseline["business_columns"][0]["attribute"] = "WRONG"
