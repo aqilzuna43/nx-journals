@@ -80,16 +80,16 @@ part-number/revision pairs and writes a timestamped `NX_BULK_EXPORT` run with
 one combined multipage PDF per drawing, AP214 STEP files, a UTF-8-BOM result
 CSV, and a text log.
 
-Every J07 PDF page receives the native NX watermark
+Every J07 PDF page receives a temporary raster-image watermark
 `DRAFT_<revision>.<WAE_VERSION>`. The value is read from the already-loaded
 model first and then the drawing. Missing `WAE_VERSION` produces a
 revision-only watermark such as `DRAFT_A` plus a report warning; filenames do
-not change. PDF text is converted to polylines so NX catalog symbols remain
-visible; the resulting PDF text is not searchable or selectable. Every page
-also receives the same run-level `EXPORTED: YYYY-MM-DD HH:MM MYT` footer.
-J07 creates the footer as a temporary drafting note, exports one combined PDF,
-then undoes the notes. Timing for drawing resolution, note preparation, PDF
-commit, and cleanup is written to the log.
+not change. Drawing words, numbers, and the run-level
+`EXPORTED: YYYY-MM-DD HH:MM MYT` footer remain searchable/selectable PDF text.
+The large draft watermark is image-only and does not enter the PDF text layer.
+J07 creates the watermark image and footer note temporarily, exports one
+combined PDF, then undoes both overlays. Timing for drawing resolution, overlay
+preparation, PDF commit, and cleanup is written to the log.
 
 J18 measures every face of each direct traditional solid body in the active
 work part, including hidden bodies. It ignores sheet and convergent bodies and
@@ -113,7 +113,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6
+Journal build: J07-NX2506-SEARCHABLE-TEXT-RASTER-WATERMARK-V7
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

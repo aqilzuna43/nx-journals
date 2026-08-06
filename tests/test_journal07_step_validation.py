@@ -20,7 +20,9 @@ def load_journal():
     annotations = sys.modules.setdefault(
         "NXOpen.Annotations", types.ModuleType("NXOpen.Annotations")
     )
+    uf = sys.modules.setdefault("NXOpen.UF", types.ModuleType("NXOpen.UF"))
     nxopen.Annotations = annotations
+    nxopen.UF = uf
     spec = importlib.util.spec_from_file_location("journal07", JOURNAL)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -42,6 +44,7 @@ class StepValidationTests(unittest.TestCase):
     def test_annotations_submodule_is_explicitly_imported(self):
         source_lines = JOURNAL.read_text(encoding="utf-8").splitlines()
         self.assertIn("import NXOpen.Annotations", source_lines)
+        self.assertIn("import NXOpen.UF", source_lines)
 
     def test_header_only_step_has_no_body_geometry(self):
         path = self.write_step(
@@ -105,6 +108,17 @@ class PdfGroupingTests(unittest.TestCase):
         )
         with mock.patch.object(
             self.journal,
+            "create_temporary_watermark_path",
+            return_value="owned-watermark.png",
+        ), mock.patch.object(
+            self.journal,
+            "create_watermark_png",
+            return_value=(640, 360),
+        ) as png_creator, mock.patch.object(
+            self.journal,
+            "create_watermark_images",
+        ) as image_creator, mock.patch.object(
+            self.journal,
             "create_timestamp_notes",
         ) as note_creator, mock.patch.object(
             self.journal,
@@ -118,7 +132,14 @@ class PdfGroupingTests(unittest.TestCase):
                 watermark,
                 timestamp_text,
             )
-        return result, session, note_creator, note_cleanup
+        return (
+            result,
+            session,
+            png_creator,
+            image_creator,
+            note_creator,
+            note_cleanup,
+        )
 
     def test_single_drawing_uses_plain_part_revision_name(self):
         self.assertEqual(
@@ -242,7 +263,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-POLYLINES-TIMESTAMP-UNITS-V6",
+            "J07-NX2506-SEARCHABLE-TEXT-RASTER-WATERMARK-V7",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
@@ -263,6 +284,93 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(
             self.journal.build_export_timestamp_text(run_datetime),
             "EXPORTED: 2026-07-31 00:13 MYT",
+        )
+
+    def test_watermark_png_is_raster_only_without_embedded_text(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "watermark.png"
+            width, height = self.journal.create_watermark_png(
+                str(path),
+                "DRAFT_A.2",
+            )
+            payload = path.read_bytes()
+
+        self.assertGreater(width, 0)
+        self.assertGreater(height, 0)
+        self.assertTrue(payload.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertNotIn(b"DRAFT_A.2", payload)
+
+    def test_watermark_png_rejects_characters_it_cannot_render_exactly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "watermark.png"
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "unsupported character.*'/'",
+            ):
+                self.journal.create_watermark_png(
+                    str(path),
+                    "DRAFT_A/2",
+                )
+            self.assertFalse(path.exists())
+
+    def test_temporary_watermark_paths_are_unique_and_owned(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output_path = str(Path(folder) / "drawing.pdf")
+            first = self.journal.create_temporary_watermark_path(output_path)
+            second = self.journal.create_temporary_watermark_path(output_path)
+            try:
+                self.assertNotEqual(first, second)
+                self.assertTrue(Path(first).exists())
+                self.assertTrue(Path(second).exists())
+                self.assertEqual(Path(first).parent, Path(folder))
+                self.assertEqual(Path(second).parent, Path(folder))
+            finally:
+                Path(first).unlink(missing_ok=True)
+                Path(second).unlink(missing_ok=True)
+
+    def test_watermark_image_is_centered_and_sized_per_sheet(self):
+        drf = types.SimpleNamespace(
+            CreateImageFromFile=mock.Mock(return_value=99),
+            SetImageAlignPosition=mock.Mock(),
+            SetImageAspectRatioLock=mock.Mock(),
+            SetImageWidth=mock.Mock(),
+            SetImageHeight=mock.Mock(),
+        )
+        uf_session = types.SimpleNamespace(Drf=drf)
+        sheet = types.SimpleNamespace(
+            Tag=42,
+            Name="SHEET 1",
+            Length=1000.0,
+            Height=500.0,
+            Open=mock.Mock(),
+        )
+        self.journal.NXOpen.UF.UFDrf = types.SimpleNamespace(
+            AlignPosition=types.SimpleNamespace(AlignMidCenter="MidCenter")
+        )
+
+        image = self.journal.create_pdf_watermark_image(
+            uf_session,
+            sheet,
+            "watermark.png",
+            (640, 360),
+        )
+
+        self.assertEqual(image, 99)
+        sheet.Open.assert_called_once()
+        drf.CreateImageFromFile.assert_called_once_with(
+            "watermark.png",
+            42,
+            [500.0, 250.0, 0.0],
+        )
+        drf.SetImageAlignPosition.assert_called_once_with(99, "MidCenter")
+        width = drf.SetImageWidth.call_args.args[1]
+        height = drf.SetImageHeight.call_args.args[1]
+        self.assertLessEqual(width, 720.0)
+        self.assertLessEqual(height, 210.0)
+        self.assertAlmostEqual(width / height, 640.0 / 360.0)
+        self.assertEqual(
+            drf.SetImageAspectRatioLock.call_args_list,
+            [mock.call(99, False), mock.call(99, True)],
         )
 
     def test_sheet_units_accept_nx2506_numeric_values(self):
@@ -615,32 +723,48 @@ class PdfGroupingTests(unittest.TestCase):
         sheets = [Sheet(), Sheet(), Sheet()]
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
 
-        metrics, session, note_creator, note_cleanup = self.run_pdf_export(
-            drawing_part,
-            sheets,
+        (
+            metrics,
+            session,
+            png_creator,
+            image_creator,
+            note_creator,
+            note_cleanup,
+        ) = self.run_pdf_export(
+            drawing_part, sheets
         )
 
         self.assertIs(builder.SourceBuilder.sheets, sheets)
         self.assertEqual(builder.Filename, "combined.pdf")
         self.assertFalse(builder.Append)
-        self.assertTrue(builder.AddWatermark)
-        self.assertEqual(builder.Watermark, "DRAFT_A.2")
-        self.assertEqual(builder.OutputText, "Polylines")
-        self.assertFalse(hasattr(builder, "CustomSymbolsInForeground"))
+        self.assertFalse(builder.AddWatermark)
+        self.assertFalse(hasattr(builder, "Watermark"))
+        self.assertTrue(builder.RasterImages)
+        self.assertTrue(builder.CustomSymbolsInForeground)
+        self.assertEqual(builder.OutputText, "Text")
         self.assertEqual(builder.commit_count, 1)
         self.assertEqual(builder.destroy_count, 1)
         self.assertEqual(sheets[0].open_count, 1)
         self.assertEqual(sheets[1].open_count, 0)
         self.assertEqual(sheets[2].open_count, 0)
         self.assertEqual(metrics["pdf_commit_seconds"] >= 0.0, True)
+        png_creator.assert_called_once_with(
+            "owned-watermark.png",
+            "DRAFT_A.2",
+        )
+        image_creator.assert_called_once_with(
+            sheets,
+            "owned-watermark.png",
+            (640, 360),
+        )
         note_creator.assert_called_once()
         note_cleanup.assert_called_once()
         session.SetUndoMark.assert_called_once()
 
-    def test_pdf_export_fails_when_nx_rejects_required_watermark(self):
+    def test_pdf_export_fails_when_nx_rejects_raster_images(self):
         class Sheet:
             def Open(self):
                 pass
@@ -653,8 +777,8 @@ class PdfGroupingTests(unittest.TestCase):
                 self.destroy_count = 0
 
             def __setattr__(self, name, value):
-                if name == "Watermark":
-                    raise RuntimeError("watermark API unavailable")
+                if name == "RasterImages":
+                    raise RuntimeError("raster images unavailable")
                 object.__setattr__(self, name, value)
 
             def Commit(self):
@@ -671,12 +795,12 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "could not apply required watermark DRAFT_A.2",
+            "could not enable the required raster watermark",
         ):
             self.run_pdf_export(
                 drawing_part,
@@ -685,7 +809,7 @@ class PdfGroupingTests(unittest.TestCase):
 
         self.assertEqual(builder.destroy_count, 1)
 
-    def test_pdf_export_fails_when_nx_rejects_watermark_enable(self):
+    def test_pdf_export_fails_when_nx_cannot_disable_native_watermark(self):
         class Sheet:
             def Open(self):
                 pass
@@ -699,7 +823,7 @@ class PdfGroupingTests(unittest.TestCase):
 
             def __setattr__(self, name, value):
                 if name == "AddWatermark":
-                    raise RuntimeError("watermark enable unavailable")
+                    raise RuntimeError("watermark disable unavailable")
                 object.__setattr__(self, name, value)
 
             def Commit(self):
@@ -716,12 +840,12 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "could not apply required watermark DRAFT_A.2",
+            "could not enable the required raster watermark",
         ):
             self.run_pdf_export(
                 drawing_part,
@@ -730,7 +854,7 @@ class PdfGroupingTests(unittest.TestCase):
 
         self.assertEqual(builder.destroy_count, 1)
 
-    def test_pdf_export_fails_when_nx_rejects_polyline_text_output(self):
+    def test_pdf_export_fails_when_nx_rejects_searchable_text_output(self):
         class Sheet:
             def Open(self):
                 pass
@@ -744,7 +868,7 @@ class PdfGroupingTests(unittest.TestCase):
 
             def __setattr__(self, name, value):
                 if name == "OutputText":
-                    raise RuntimeError("polyline output unavailable")
+                    raise RuntimeError("text output unavailable")
                 object.__setattr__(self, name, value)
 
             def Commit(self):
@@ -761,12 +885,12 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "could not apply required polyline text output",
+            "could not apply required searchable text output",
         ):
             self.run_pdf_export(
                 drawing_part,
@@ -819,7 +943,7 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
         self.journal.NXOpen.Session = types.SimpleNamespace(
             MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
@@ -830,6 +954,17 @@ class PdfGroupingTests(unittest.TestCase):
         sheet = types.SimpleNamespace(Open=mock.Mock())
 
         with mock.patch.object(
+            self.journal,
+            "create_temporary_watermark_path",
+            return_value="owned-watermark.png",
+        ), mock.patch.object(
+            self.journal,
+            "create_watermark_png",
+            return_value=(640, 360),
+        ), mock.patch.object(
+            self.journal,
+            "create_watermark_images",
+        ), mock.patch.object(
             self.journal,
             "create_timestamp_notes",
         ), mock.patch.object(
@@ -872,7 +1007,7 @@ class PdfGroupingTests(unittest.TestCase):
         )
         self.journal.NXOpen.PrintPDFBuilder = types.SimpleNamespace(
             ActionOption=types.SimpleNamespace(Native="Native"),
-            OutputTextOption=types.SimpleNamespace(Polylines="Polylines"),
+            OutputTextOption=types.SimpleNamespace(Text="Text"),
         )
         self.journal.NXOpen.Session = types.SimpleNamespace(
             MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
@@ -883,6 +1018,17 @@ class PdfGroupingTests(unittest.TestCase):
         sheet = types.SimpleNamespace(Open=mock.Mock())
 
         with mock.patch.object(
+            self.journal,
+            "create_temporary_watermark_path",
+            return_value="owned-watermark.png",
+        ), mock.patch.object(
+            self.journal,
+            "create_watermark_png",
+            return_value=(640, 360),
+        ), mock.patch.object(
+            self.journal,
+            "create_watermark_images",
+        ), mock.patch.object(
             self.journal,
             "create_timestamp_notes",
         ), mock.patch.object(
