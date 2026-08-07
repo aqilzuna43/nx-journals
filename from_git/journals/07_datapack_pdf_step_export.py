@@ -8,9 +8,9 @@ For PDF:
 - Reuse matching drawing specifications already loaded in the NX session.
 - Otherwise try Teamcenter non-master drawing specifications dwg1..dwg9.
 - Make each drawing the active display part before exporting every sheet.
-- Add DRAFT_<revision>.<WAE_VERSION> as a temporary raster image on every page.
+- Apply DRAFT_<revision>.<WAE_VERSION> using the native NX PDF watermark.
 - Add one temporary bottom-right EXPORTED timestamp note to every sheet.
-- Undo every temporary watermark image and timestamp note after PDF export.
+- Undo every temporary timestamp note immediately after PDF export.
 - Keep drawing text as PDF text so words and numbers are searchable.
 
 For STEP:
@@ -24,18 +24,13 @@ Run via: NX > Tools > Journal > Play
 
 import csv
 import datetime
-import math
 import os
 import re
-import struct
-import tempfile
 import time
 import traceback
-import zlib
 
 import NXOpen
 import NXOpen.Annotations
-import NXOpen.UF
 
 
 # ---------------------------------------------------------------------------
@@ -44,17 +39,12 @@ import NXOpen.UF
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-SEARCHABLE-TEXT-RASTER-WATERMARK-V7"
+JOURNAL_BUILD_ID = "J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
 PDF_DRAFT_PREFIX = "DRAFT"
 WAE_VERSION_ATTRIBUTE = "WAE_VERSION"
-PDF_WATERMARK_PAGE_WIDTH_RATIO = 0.72
-PDF_WATERMARK_MAX_PAGE_HEIGHT_RATIO = 0.42
-PDF_WATERMARK_ROTATION_DEGREES = 25.0
-PDF_WATERMARK_PIXEL_SCALE = 12
-PDF_WATERMARK_RGBA = (128, 128, 128, 76)
 PDF_TIMESTAMP_TEXT_HEIGHT_MM = 2.5
 PDF_TIMESTAMP_RIGHT_MARGIN_MM = 8.0
 PDF_TIMESTAMP_BOTTOM_MARGIN_MM = 5.0
@@ -130,7 +120,7 @@ _DRAWING_SUFFIX_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 class TimestampCleanupError(RuntimeError):
-    """The temporary PDF overlays could not be proven removed."""
+    """The temporary PDF timestamp could not be proven removed."""
 
 
 def normalize_text(value):
@@ -1104,227 +1094,6 @@ def resolve_pdf_watermark(session, number, revision, candidates):
     return watermark, "revision-only fallback", warning
 
 
-_PDF_WATERMARK_GLYPHS = {
-    "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
-    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
-    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
-    "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
-    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
-    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
-    "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
-    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
-    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
-    "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
-    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
-    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
-    "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
-    "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
-    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
-    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
-    "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
-    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
-    "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
-    "J": ("00001", "00001", "00001", "00001", "10001", "10001", "01110"),
-    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
-    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
-    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
-    "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
-    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
-    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
-    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
-    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
-    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
-    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
-    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
-    "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
-    "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
-    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
-    "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
-    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
-    "_": ("00000", "00000", "00000", "00000", "00000", "00000", "11111"),
-    ".": ("00000", "00000", "00000", "00000", "00000", "00110", "00110"),
-    "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
-    "?": ("01110", "10001", "00001", "00010", "00100", "00000", "00100"),
-}
-
-
-def _png_chunk(chunk_type, payload):
-    body = chunk_type + payload
-    return (
-        struct.pack(">I", len(payload))
-        + body
-        + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
-    )
-
-
-def _render_watermark_rgba(text, scale=PDF_WATERMARK_PIXEL_SCALE):
-    value = normalize_text(text).upper()
-    if not value:
-        raise RuntimeError("A raster PDF watermark value is required.")
-    unsupported = sorted(
-        {character for character in value if character not in _PDF_WATERMARK_GLYPHS}
-    )
-    if unsupported:
-        raise RuntimeError(
-            "Raster PDF watermark contains unsupported character(s): {0}. "
-            "The watermark was not changed or exported.".format(
-                ", ".join(repr(character) for character in unsupported)
-            )
-        )
-
-    glyph_width = 5
-    glyph_height = 7
-    spacing = 1
-    padding = scale * 2
-    source_width = (
-        padding * 2
-        + scale * ((glyph_width + spacing) * len(value) - spacing)
-    )
-    source_height = padding * 2 + scale * glyph_height
-    source = bytearray(source_width * source_height * 4)
-    color = bytes(PDF_WATERMARK_RGBA)
-
-    for index, character in enumerate(value):
-        glyph = _PDF_WATERMARK_GLYPHS[character]
-        glyph_x = padding + index * (glyph_width + spacing) * scale
-        for row_index, row in enumerate(glyph):
-            for column_index, enabled in enumerate(row):
-                if enabled != "1":
-                    continue
-                x_start = glyph_x + column_index * scale
-                y_start = padding + row_index * scale
-                for y in range(y_start, y_start + scale):
-                    row_offset = y * source_width * 4
-                    for x in range(x_start, x_start + scale):
-                        offset = row_offset + x * 4
-                        source[offset : offset + 4] = color
-
-    radians = math.radians(PDF_WATERMARK_ROTATION_DEGREES)
-    cosine = math.cos(radians)
-    sine = math.sin(radians)
-    target_width = int(
-        math.ceil(abs(source_width * cosine) + abs(source_height * sine))
-    )
-    target_height = int(
-        math.ceil(abs(source_width * sine) + abs(source_height * cosine))
-    )
-    target = bytearray(target_width * target_height * 4)
-    source_center_x = (source_width - 1) / 2.0
-    source_center_y = (source_height - 1) / 2.0
-    target_center_x = (target_width - 1) / 2.0
-    target_center_y = (target_height - 1) / 2.0
-
-    for target_y in range(target_height):
-        dy = target_y - target_center_y
-        for target_x in range(target_width):
-            dx = target_x - target_center_x
-            source_x = int(round(cosine * dx + sine * dy + source_center_x))
-            source_y = int(round(-sine * dx + cosine * dy + source_center_y))
-            if 0 <= source_x < source_width and 0 <= source_y < source_height:
-                source_offset = (source_y * source_width + source_x) * 4
-                if source[source_offset + 3]:
-                    target_offset = (target_y * target_width + target_x) * 4
-                    target[target_offset : target_offset + 4] = source[
-                        source_offset : source_offset + 4
-                    ]
-
-    return target_width, target_height, target
-
-
-def create_watermark_png(path, text):
-    width, height, pixels = _render_watermark_rgba(text)
-    scanlines = bytearray()
-    stride = width * 4
-    for row_index in range(height):
-        scanlines.append(0)
-        row_start = row_index * stride
-        scanlines.extend(pixels[row_start : row_start + stride])
-
-    signature = b"\x89PNG\r\n\x1a\n"
-    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
-    png = (
-        signature
-        + _png_chunk(b"IHDR", header)
-        + _png_chunk(b"IDAT", zlib.compress(bytes(scanlines), 9))
-        + _png_chunk(b"IEND", b"")
-    )
-    with open(path, "wb") as handle:
-        handle.write(png)
-    return width, height
-
-
-def create_temporary_watermark_path(output_path):
-    output_folder = os.path.dirname(os.path.abspath(output_path))
-    file_descriptor, path = tempfile.mkstemp(
-        prefix=".j07-watermark-",
-        suffix=".png",
-        dir=output_folder,
-    )
-    os.close(file_descriptor)
-    return path
-
-
-def watermark_size_on_sheet(sheet, pixel_width, pixel_height):
-    sheet_width = float(sheet.Length)
-    sheet_height = float(sheet.Height)
-    image_ratio = float(pixel_width) / float(pixel_height)
-    width = sheet_width * PDF_WATERMARK_PAGE_WIDTH_RATIO
-    height = width / image_ratio
-    maximum_height = sheet_height * PDF_WATERMARK_MAX_PAGE_HEIGHT_RATIO
-    if height > maximum_height:
-        height = maximum_height
-        width = height * image_ratio
-    return width, height
-
-
-def create_pdf_watermark_image(uf_session, sheet, image_path, pixel_size):
-    sheet.Open()
-    pixel_width, pixel_height = pixel_size
-    width, height = watermark_size_on_sheet(
-        sheet,
-        pixel_width,
-        pixel_height,
-    )
-    origin = [float(sheet.Length) / 2.0, float(sheet.Height) / 2.0, 0.0]
-    try:
-        image = uf_session.Drf.CreateImageFromFile(
-            image_path,
-            sheet.Tag,
-            origin,
-        )
-        if image is None or int(image) == 0:
-            raise RuntimeError("NX returned a null drafting-image tag.")
-        uf_session.Drf.SetImageAlignPosition(
-            image,
-            NXOpen.UF.UFDrf.AlignPosition.AlignMidCenter,
-        )
-        uf_session.Drf.SetImageAspectRatioLock(image, False)
-        uf_session.Drf.SetImageWidth(image, width)
-        uf_session.Drf.SetImageHeight(image, height)
-        uf_session.Drf.SetImageAspectRatioLock(image, True)
-        return image
-    except Exception as error:
-        raise RuntimeError(
-            "NX could not create the raster PDF watermark on sheet {0}: {1}".format(
-                getattr(sheet, "Name", getattr(sheet, "Tag", "<unknown>")),
-                error,
-            )
-        )
-
-
-def create_watermark_images(sheets, image_path, pixel_size):
-    uf_session = NXOpen.UF.UFSession.GetUFSession()
-    return [
-        create_pdf_watermark_image(
-            uf_session,
-            sheet,
-            image_path,
-            pixel_size,
-        )
-        for sheet in sheets
-    ]
-
-
 def sheet_uses_inches(sheet):
     units = getattr(sheet, "Units", None)
 
@@ -1520,7 +1289,7 @@ def undo_timestamp_notes(
 
     if errors:
         raise TimestampCleanupError(
-            "Temporary PDF overlay cleanup could not be proven; "
+            "Temporary PDF timestamp cleanup could not be proven; "
             "discard unsaved drawing changes before continuing: {0}".format(
                 " | ".join(errors)
             )
@@ -1551,26 +1320,15 @@ def export_drawing_pdf(
     total_started = time.perf_counter()
     original_sheet = current_drawing_sheet(drawing_part)
     initially_modified = part_modified_state(drawing_part)
-    undo_mark_name = "J07 temporary PDF export overlays"
+    undo_mark_name = "J07 temporary PDF export timestamp"
     undo_mark = session.SetUndoMark(
         NXOpen.Session.MarkVisibility.Invisible,
         undo_mark_name,
     )
     export_error = None
-    watermark_image_path = None
 
     try:
         prepare_started = time.perf_counter()
-        watermark_image_path = create_temporary_watermark_path(output_path)
-        watermark_pixel_size = create_watermark_png(
-            watermark_image_path,
-            watermark,
-        )
-        create_watermark_images(
-            sheets,
-            watermark_image_path,
-            watermark_pixel_size,
-        )
         create_timestamp_notes(
             session,
             drawing_part,
@@ -1598,13 +1356,16 @@ def export_drawing_pdf(
                     "text output: {0}".format(error)
                 )
             try:
-                builder.AddWatermark = False
-                builder.RasterImages = True
+                builder.AddWatermark = True
+                builder.Watermark = watermark
                 builder.CustomSymbolsInForeground = True
             except Exception as error:
                 raise RuntimeError(
-                    "NX PrintPDFBuilder could not enable the required raster "
-                    "watermark and foreground symbols: {0}".format(error)
+                    "NX PrintPDFBuilder could not apply required native "
+                    "watermark {0} and foreground symbols: {1}".format(
+                        watermark,
+                        error,
+                    )
                 )
             builder.SourceBuilder.SetSheets(sheets)
             commit_started = time.perf_counter()
@@ -1639,11 +1400,6 @@ def export_drawing_pdf(
                 cleanup_started
             )
             metrics["pdf_total_seconds"] = elapsed_seconds(total_started)
-            try:
-                if watermark_image_path and os.path.exists(watermark_image_path):
-                    os.remove(watermark_image_path)
-            except Exception:
-                pass
 
     if export_error is not None:
         raise export_error
@@ -1816,9 +1572,9 @@ def export_pdfs_for_instruction(
                 log_line(
                     session,
                     (
-                        "    PDF timing: overlay prepare={0:.3f} s; "
+                        "    PDF timing: timestamp prepare={0:.3f} s; "
                         "commit={1:.3f} s; cleanup={2:.3f} s; "
-                        "total={3:.3f} s; overlay overhead={4}"
+                        "total={3:.3f} s; timestamp overhead={4}"
                     ).format(
                         pdf_metrics["timestamp_prepare_seconds"],
                         pdf_metrics["pdf_commit_seconds"],
@@ -1835,7 +1591,7 @@ def export_pdfs_for_instruction(
                     log_line(
                         session,
                         (
-                            "    PERFORMANCE WARNING: overlay overhead "
+                            "    PERFORMANCE WARNING: timestamp overhead "
                             "{0:.1f}% exceeds the NX acceptance target "
                             "of {1:.1f}% for this drawing."
                         ).format(
@@ -2275,7 +2031,7 @@ def process_instruction(
         append_unique(
             messages,
             (
-                "PDF export skipped because temporary overlay cleanup "
+                "PDF export skipped because temporary timestamp cleanup "
                 "failed earlier in this run. Discard unsaved drawing "
                 "changes before retrying. Cause: {0}"
             ).format(pdf_batch_state["reason"]),
@@ -2300,7 +2056,7 @@ def process_instruction(
                 pdf_batch_state["halted"] = True
                 pdf_batch_state["reason"] = (
                     pdf_export.get("message")
-                    or "temporary overlay cleanup failed"
+                    or "temporary timestamp cleanup failed"
                 )
 
             for failure in pdf_export.get("failures", []):

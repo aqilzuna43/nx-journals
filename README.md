@@ -211,7 +211,7 @@ mark before J07 continues.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-SEARCHABLE-TEXT-RASTER-WATERMARK-V7
+Journal build: J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 
@@ -233,7 +233,7 @@ creates one combined multipage PDF per resolved drawing. PDF files use
 multiple drawing items resolve, the drawing index is appended as `_DWG<n>` to
 avoid collisions.
 
-Every Journal 07 PDF page receives a temporary raster-image draft watermark:
+Every Journal 07 PDF page receives the native NX draft watermark:
 
 ```text
 DRAFT_<DB_PART_REV>.<WAE_VERSION>
@@ -245,22 +245,20 @@ Each page also receives one small bottom-right export timestamp:
 EXPORTED: YYYY-MM-DD HH:MM MYT
 ```
 
-J07 creates the watermark as a transparent PNG drafting image and the footer as
-a native drafting note on every sheet, exports the existing combined multipage
-PDF, and undoes both temporary overlays immediately afterwards. It logs
-drawing-resolution, overlay preparation, PDF commit, and cleanup timings. An
-overlay-cleanup failure stops later PDF work but does not prevent independently
-requested STEP exports.
+J07 creates the footer as a temporary native drafting note on every sheet,
+exports the existing combined multipage PDF, and undoes the notes immediately
+afterwards. It logs drawing-resolution, timestamp preparation, PDF commit, and
+cleanup timings. A timestamp-cleanup failure stops later PDF work but does not
+prevent independently requested STEP exports.
 
 Journal 07 reads `WAE_VERSION` from the already-loaded model first and then
 from the drawing. If it is unavailable, the PDF is still exported with a
 revision-only watermark such as `DRAFT_A`, and the result report records a
 warning. PDF filenames are unchanged. Journal 07 keeps drawing text as PDF
 text, so drawing words, numbers, and the export footer are searchable and
-selectable without OCR. The large `DRAFT_<revision>.<WAE_VERSION>` overlay is
-image-only and is not added to the PDF text layer. Raster-image export and
-`CustomSymbolsInForeground` are enabled so the watermark and drawing symbols
-remain visible.
+selectable without OCR. The large `DRAFT_<revision>.<WAE_VERSION>` value uses
+the normal NX PDF watermark feature and may also be searchable.
+`CustomSymbolsInForeground` is enabled so drawing symbols remain visible.
 
 The UTF-8-BOM result CSV contains one row per valid unique request plus each
 invalid input row. Principal results are `SUCCESS`, `PARTIAL_SUCCESS`,
