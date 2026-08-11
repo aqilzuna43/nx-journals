@@ -63,7 +63,9 @@ checked out. If an engineer pre-checks out parts, only the approved targets
 should be selected; checking out the entire assembly is unnecessary. A second
 session-wide snapshot verifies every batch checkout before any attribute write.
 The Listing Window reports preflight, checkout, per-target save, and total
-timings for large runs.
+timings for large runs. Checkout gating is target-scoped: targets owned by
+another user remain unchanged with `CHECKOUT_FAILED`, while other targets that
+are positively verified as checked out and writable continue through apply.
 
 For normal NX use, edit the two clearly marked settings near the top of
 Journal 05:

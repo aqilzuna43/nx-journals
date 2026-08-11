@@ -137,7 +137,9 @@ For large assemblies, J05 takes one session-wide checkout snapshot and uses
 one batch checkout for the unique approved targets that are not already
 checked out. You may manually check out the approved target parts first; do
 not check out every part in the assembly. The Listing Window reports phase and
-per-target timings during apply.
+per-target timings during apply. A target checked out by another user is
+reported as `CHECKOUT_FAILED` and skipped; independently verified writable
+targets continue through update, verification, and save.
 
 ## Journal 14 - Teamcenter Part Name Update
 

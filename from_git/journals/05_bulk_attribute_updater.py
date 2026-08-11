@@ -1352,29 +1352,36 @@ def execute(
                 time.perf_counter() - checkout_start
             )
         )
-    if any(not result["success"] for result in checkout_results.values()):
-        for proposal in proposals:
-            result = checkout_results[_object_key(proposal["target"])]
-            proposal["report"].update(
-                ACTION=(
-                    "CHECKOUT_FAILED"
-                    if not result["success"]
-                    else "BATCH_ABORTED_CHECKOUT"
-                ),
-                SAVE_RESULT="NOT_ATTEMPTED",
-                MESSAGE=(
-                    result["message"]
-                    if not result["success"]
-                    else (
-                        "Another target failed checkout; no attributes were "
-                        "changed. This target remains checked out."
-                    )
-                ),
+    writable_proposals = []
+    blocked_target_keys = {
+        key
+        for key, result in checkout_results.items()
+        if not result["success"]
+    }
+    for proposal in proposals:
+        key = _object_key(proposal["target"])
+        if key not in blocked_target_keys:
+            writable_proposals.append(proposal)
+            continue
+        result = checkout_results[key]
+        proposal["report"].update(
+            ACTION="CHECKOUT_FAILED",
+            SAVE_RESULT="NOT_ATTEMPTED",
+            MESSAGE=result["message"],
+        )
+    if progress is not None and blocked_target_keys:
+        progress(
+            "  Checkout gate: {0} writable target(s), {1} blocked target(s); "
+            "continuing with writable targets only.".format(
+                len(checkout_results) - len(blocked_target_keys),
+                len(blocked_target_keys),
             )
+        )
+    if not writable_proposals:
         return reports, set()
     apply_start = time.perf_counter()
     unsaved = apply_groups(
-        session, proposals, config, progress=progress
+        session, writable_proposals, config, progress=progress
     )
     if progress is not None:
         progress(

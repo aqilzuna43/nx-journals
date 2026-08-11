@@ -834,6 +834,72 @@ class J05Tests(unittest.TestCase):
         self.assertFalse(unsaved)
         self.assertEqual("CHECKOUT_FAILED", reports[0]["ACTION"])
 
+    def test_blocked_target_does_not_abort_independent_writable_target(self):
+        writable = self.target()
+        blocked = FakePart("P2", attrs("P2"))
+        writable_proposal = self.proposal(writable)
+        blocked_proposal = self.proposal(blocked)
+        reports = [
+            writable_proposal["report"],
+            blocked_proposal["report"],
+        ]
+        checkout_results = {
+            self.j05._object_key(writable): {
+                "success": True,
+                "message": "Already checked out and writable.",
+            },
+            self.j05._object_key(blocked): {
+                "success": False,
+                "message": "Checkout user: another.user",
+            },
+        }
+        progress = []
+
+        with mock.patch.object(
+            self.j05,
+            "prepare_updates",
+            return_value=(
+                reports,
+                [writable_proposal, blocked_proposal],
+            ),
+        ), mock.patch.object(
+            self.j05,
+            "checkout_targets",
+            return_value=checkout_results,
+        ), mock.patch.object(
+            self.j05, "apply_groups", return_value=set()
+        ) as apply:
+            returned_reports, unsaved = self.j05.execute(
+                types.SimpleNamespace(IsManagedMode=True),
+                writable,
+                dict(self.config, save_policy="SAVE_CHANGED_PARTS"),
+                [self.row()],
+                self.baseline(),
+                "timestamp",
+                "APPLY_APPROVED",
+                progress=progress.append,
+            )
+
+        apply.assert_called_once()
+        self.assertEqual(
+            [writable_proposal], apply.call_args.args[1]
+        )
+        self.assertFalse(unsaved)
+        self.assertIs(reports, returned_reports)
+        self.assertEqual(
+            "PROPOSED_UPDATE", writable_proposal["report"]["ACTION"]
+        )
+        self.assertEqual(
+            "CHECKOUT_FAILED", blocked_proposal["report"]["ACTION"]
+        )
+        self.assertIn(
+            "another.user", blocked_proposal["report"]["MESSAGE"]
+        )
+        self.assertTrue(any(
+            "1 writable target(s), 1 blocked target(s)" in item
+            for item in progress
+        ))
+
     def test_prechecked_targets_use_one_snapshot_and_no_checkout_call(self):
         first = self.target()
         second = FakePart("P2", attrs("P2"))
