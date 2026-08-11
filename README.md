@@ -133,6 +133,12 @@ J05 checks out affected Teamcenter parts, writes and verifies the approved attri
 results. A true `STALE_BASELINE_VALUE` still blocks an overwrite when the live
 value matches neither the J04 baseline nor the approved replacement.
 
+For large assemblies, J05 takes one session-wide checkout snapshot and uses
+one batch checkout for the unique approved targets that are not already
+checked out. You may manually check out the approved target parts first; do
+not check out every part in the assembly. The Listing Window reports phase and
+per-target timings during apply.
+
 ## Journal 14 - Teamcenter Part Name Update
 
 Use J14 only for **Item Name / Part Name** changes. It does not change Part Number, Revision, description, or geometry.

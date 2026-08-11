@@ -57,6 +57,14 @@ the edited CSV and must not be edited.
 
 ## Journal 05 validation and checkout
 
+J05 deduplicates approved targets, reads checkout state once for the managed NX
+session, and performs at most one batch checkout for targets not already
+checked out. If an engineer pre-checks out parts, only the approved targets
+should be selected; checking out the entire assembly is unnecessary. A second
+session-wide snapshot verifies every batch checkout before any attribute write.
+The Listing Window reports preflight, checkout, per-target save, and total
+timings for large runs.
+
 For normal NX use, edit the two clearly marked settings near the top of
 Journal 05:
 

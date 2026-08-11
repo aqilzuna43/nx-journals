@@ -4,16 +4,22 @@ Input is the wide CSV emitted by Journal 04 plus its .baseline.json sidecar.
 DRY_RUN is always non-mutating. APPLY_APPROVED requires APPROVED=YES, a clean
 stale-value preflight, explicit Teamcenter checkout, verification, and the
 SAVE_CHANGED_PARTS configuration gate.
+
+Managed targets are deduplicated and checked with one session-wide status
+snapshot. Already checked-out targets are reused; all remaining targets are
+checked out in one batch before any attribute write begins.
 """
 
 import csv
 import json
 import os
+import time
 import traceback
 from collections import OrderedDict
 from datetime import datetime
 
 import NXOpen
+import NXOpen.PDM
 
 
 # ============================================================================
@@ -636,9 +642,12 @@ def _pdm_checkout_state(target):
         )
 
 
-def _checked_out_members(work_part):
-    assembly = getattr(work_part, "ComponentAssembly", None)
-    method = getattr(assembly, "GetCheckedoutStatusOfObjects", None)
+def _session_checkout_snapshot(session):
+    """Return one session-wide checkout snapshot or a fail-closed error."""
+    pdm_session = getattr(session, "PdmSession", None)
+    method = getattr(
+        pdm_session, "GetCheckedoutStatusOfAllObjectsInSession", None
+    )
     if not callable(method):
         return None, None, "API_UNAVAILABLE"
     try:
@@ -655,84 +664,41 @@ def _checked_out_members(work_part):
         return None, None, _exception_details(exc)
 
 
-def _checkout_state(work_part, target):
-    checked, unchecked, detail = _checked_out_members(work_part)
-    key = _object_key(target)
-    if checked is not None and key in checked:
-        return "CHECKED_OUT", detail
-    if unchecked is not None and key in unchecked:
-        return "NOT_CHECKED_OUT", detail
-    pdm_state, pdm_detail = _pdm_checkout_state(target)
-    if pdm_state is not None:
-        return pdm_state, pdm_detail
-    if pdm_detail:
-        detail = " | ".join(item for item in (detail, pdm_detail) if item)
+def _checkout_result(target, before, action="NONE"):
     read_only = _read_only(target)
-    if read_only is True:
-        return "READ_ONLY_UNKNOWN_OWNER", detail
-    if read_only is False:
-        return "WRITABLE_STATUS_UNKNOWN", detail
-    return "UNKNOWN", detail
-
-
-def _checkout_target(session, work_part, target):
-    managed = _is_teamcenter_target(session, target)
-    before, before_detail = _checkout_state(work_part, target)
-    read_only_before = _read_only(target)
-    result = {
+    return {
         "success": False,
         "before": before,
-        "action": "NONE",
+        "action": action,
         "result": "",
-        "read_only_before": read_only_before,
-        "read_only_after": read_only_before,
-        "message": before_detail,
+        "read_only_before": read_only,
+        "read_only_after": read_only,
+        "message": "",
         "exception_type": "",
         "error_code": "",
     }
-    if not managed:
-        result["action"] = "NATIVE_MODE_NO_CHECKOUT"
-        result["success"] = read_only_before is not True
-        result["result"] = "WRITABLE" if result["success"] else "READ_ONLY"
-        return result
 
-    if before == "CHECKED_OUT" and read_only_before is not True:
-        result.update(success=True, result="ALREADY_CHECKED_OUT")
-        return result
 
-    result["action"] = "EXPLICIT_CHECKOUT"
+def _batch_checkout(targets):
+    """Explicitly check out loaded targets in one managed-NX operation."""
+    if not targets:
+        return
+    pdm_part = _pdm_part(targets[0])
+    checkout = getattr(pdm_part, "CheckoutParts", None)
+    if not callable(checkout):
+        raise RuntimeError("PDMPart.CheckoutParts is unavailable.")
+    checkout_input = NXOpen.PDM.PdmPart.CheckoutInput(
+        "J05 approved business-attribute update",
+        "",
+        True,
+        True,
+        False,
+    )
+    operation_errors = None
     try:
-        pdm_part = _pdm_part(target)
-        checkout = getattr(pdm_part, "Checkout", None)
-        if not callable(checkout):
-            raise RuntimeError("PDMPart.Checkout is unavailable.")
-        checkout()
-        after, after_detail = _checkout_state(work_part, target)
-        read_only_after = _read_only(target)
-        result["read_only_after"] = read_only_after
-        result["message"] = after_detail
-        if read_only_after is True or after == "NOT_CHECKED_OUT":
-            raise RuntimeError(
-                "Part did not become checked out and writable after the "
-                "explicit checkout call."
-            )
-        result["success"] = True
-        result["result"] = (
-            "CHECKED_OUT"
-            if after == "CHECKED_OUT"
-            else "CHECKOUT_API_SUCCEEDED_WRITABLE"
-        )
-        return result
-    except Exception as exc:
-        exception_type, error_code = _exception_fields(exc)
-        result.update(
-            result="FAILED",
-            message=_exception_details(exc),
-            exception_type=exception_type,
-            error_code=error_code,
-            read_only_after=_read_only(target),
-        )
-        return result
+        operation_errors = checkout(targets, checkout_input)
+    finally:
+        _dispose(operation_errors)
 
 
 def prepare_updates(
@@ -916,21 +882,10 @@ def prepare_updates(
                 reports.append(report)
                 continue
 
-            checkout_before, checkout_message = _checkout_state(
-                work_part, target
-            )
             report.update(
                 ACTION="PROPOSED_UPDATE",
-                CHECKOUT_BEFORE=checkout_before,
                 READ_ONLY_BEFORE=_text(_read_only(target)),
-                MESSAGE=(
-                    "Approved change passed preflight."
-                    + (
-                        " Checkout detail: " + checkout_message
-                        if checkout_message
-                        else ""
-                    )
-                ),
+                MESSAGE="Approved change passed preflight.",
             )
             reports.append(report)
             proposals.append(
@@ -984,13 +939,163 @@ def _apply_checkout_results(proposals, results):
             proposal["report"]["NX_ERROR_CODE"] = result["error_code"]
 
 
-def checkout_targets(session, work_part, proposals):
+def checkout_targets(session, work_part, proposals, progress=None):
+    del work_part  # Kept in the signature for journal/test compatibility.
     targets = OrderedDict()
     for proposal in proposals:
         targets.setdefault(_object_key(proposal["target"]), proposal["target"])
+
     results = OrderedDict()
+    managed_targets = OrderedDict()
     for key, target in targets.items():
-        results[key] = _checkout_target(session, work_part, target)
+        if _is_teamcenter_target(session, target):
+            managed_targets[key] = target
+            continue
+        result = _checkout_result(target, "NATIVE_MODE")
+        result["action"] = "NATIVE_MODE_NO_CHECKOUT"
+        result["success"] = result["read_only_before"] is not True
+        result["result"] = (
+            "WRITABLE" if result["success"] else "READ_ONLY"
+        )
+        if not result["success"]:
+            result["message"] = "Native target is read-only."
+        results[key] = result
+
+    if managed_targets:
+        snapshot_start = time.perf_counter()
+        checked, unchecked, snapshot_error = _session_checkout_snapshot(
+            session
+        )
+        if progress is not None:
+            progress(
+                "  Checkout status snapshot: {0} target(s), {1:.3f} s".format(
+                    len(managed_targets), time.perf_counter() - snapshot_start
+                )
+            )
+
+        pending = OrderedDict()
+        for key, target in managed_targets.items():
+            read_only = _read_only(target)
+            before = (
+                "CHECKED_OUT"
+                if checked is not None and key in checked
+                else (
+                    "NOT_CHECKED_OUT"
+                    if unchecked is not None and key in unchecked
+                    else "UNKNOWN"
+                )
+            )
+            result = _checkout_result(target, before)
+            if snapshot_error:
+                result.update(
+                    result="FAILED",
+                    message=(
+                        "Session checkout status is unavailable: "
+                        + snapshot_error
+                    ),
+                )
+            elif before == "CHECKED_OUT" and read_only is not True:
+                result.update(
+                    success=True,
+                    result="ALREADY_CHECKED_OUT",
+                )
+            elif before == "CHECKED_OUT":
+                pdm_state, detail = _pdm_checkout_state(target)
+                result.update(
+                    result="FAILED",
+                    message=(
+                        "Target is checked out but remains read-only."
+                        + (" " + detail if detail else "")
+                    ),
+                )
+                if pdm_state == "CHECKED_OUT" and not detail:
+                    result["message"] += " Checkout ownership is unavailable."
+            elif before == "NOT_CHECKED_OUT":
+                result["action"] = "BATCH_CHECKOUT"
+                pending[key] = target
+            else:
+                pdm_state, detail = _pdm_checkout_state(target)
+                result.update(
+                    result="FAILED",
+                    message=(
+                        "Target was not represented in the session checkout "
+                        "snapshot."
+                        + (" " + detail if detail else "")
+                    ),
+                )
+                if pdm_state == "CHECKED_OUT" and read_only is not True:
+                    result.update(
+                        success=True,
+                        result="ALREADY_CHECKED_OUT",
+                        message=detail,
+                    )
+            results[key] = result
+
+        if pending and not snapshot_error:
+            batch_error = None
+            batch_start = time.perf_counter()
+            if progress is not None:
+                progress(
+                    "  Batch checkout: {0} target(s)".format(len(pending))
+                )
+            try:
+                _batch_checkout(list(pending.values()))
+            except Exception as exc:
+                batch_error = exc
+
+            post_checked, _post_unchecked, post_error = (
+                _session_checkout_snapshot(session)
+            )
+            if progress is not None:
+                progress(
+                    "  Batch checkout verification: {0:.3f} s".format(
+                        time.perf_counter() - batch_start
+                    )
+                )
+
+            for key, target in pending.items():
+                result = results[key]
+                read_only_after = _read_only(target)
+                result["read_only_after"] = read_only_after
+                if (
+                    batch_error is None
+                    and not post_error
+                    and post_checked is not None
+                    and key in post_checked
+                    and read_only_after is not True
+                ):
+                    result.update(
+                        success=True,
+                        result="BATCH_CHECKOUT",
+                        message="Batch checkout verified.",
+                    )
+                    continue
+
+                details = []
+                if batch_error is not None:
+                    details.append(_exception_details(batch_error))
+                    exception_type, error_code = _exception_fields(
+                        batch_error
+                    )
+                    result["exception_type"] = exception_type
+                    result["error_code"] = error_code
+                if post_error:
+                    details.append(
+                        "Post-checkout session status unavailable: "
+                        + post_error
+                    )
+                pdm_state, pdm_detail = _pdm_checkout_state(target)
+                if pdm_detail:
+                    details.append(pdm_detail)
+                if pdm_state == "CHECKED_OUT" and read_only_after is True:
+                    details.append("Target remains read-only.")
+                result.update(
+                    success=False,
+                    result="FAILED",
+                    message=" | ".join(details)
+                    or "Batch checkout postconditions were not satisfied.",
+                )
+
     _apply_checkout_results(proposals, results)
     return results
 
@@ -1060,7 +1165,7 @@ def _save_target(target):
         _dispose(status)
 
 
-def apply_groups(session, proposals, config):
+def apply_groups(session, proposals, config, progress=None):
     grouped = OrderedDict()
     for proposal in proposals:
         grouped.setdefault(_object_key(proposal["target"]), []).append(
@@ -1068,8 +1173,19 @@ def apply_groups(session, proposals, config):
         )
     unsaved_modified = set()
     stop_saves = False
-    for group in grouped.values():
+    target_count = len(grouped)
+    for target_index, group in enumerate(grouped.values(), 1):
         target = group[0]["target"]
+        target_start = time.perf_counter()
+        if progress is not None:
+            progress(
+                "  Updating target {0}/{1}: {2} ({3} attribute(s))".format(
+                    target_index,
+                    target_count,
+                    _object_identifier(target),
+                    len(group),
+                )
+            )
         mark_name = "J05 {0}".format(_object_identifier(target))
         mark = session.SetUndoMark(
             NXOpen.Session.MarkVisibility.Invisible, mark_name
@@ -1127,6 +1243,12 @@ def apply_groups(session, proposals, config):
             except Exception:
                 pass
         if failed:
+            if progress is not None:
+                progress(
+                    "    Verification failed after {0:.3f} s".format(
+                        time.perf_counter() - target_start
+                    )
+                )
             continue
         if stop_saves:
             for proposal in group:
@@ -1135,12 +1257,20 @@ def apply_groups(session, proposals, config):
                     SAVE_RESULT="NOT_ATTEMPTED",
                     MESSAGE="A previous save failed; later saves were stopped.",
                 )
+            if progress is not None:
+                progress("    Save skipped after an earlier save failure.")
             continue
         try:
             _save_target(target)
             unsaved_modified.discard(_object_key(target))
             for proposal in group:
                 proposal["report"]["SAVE_RESULT"] = "SAVED"
+            if progress is not None:
+                progress(
+                    "    Verified and saved in {0:.3f} s".format(
+                        time.perf_counter() - target_start
+                    )
+                )
         except Exception as exc:
             stop_saves = True
             exception_type, error_code = _exception_fields(exc)
@@ -1155,6 +1285,12 @@ def apply_groups(session, proposals, config):
                         "modified: " + _exception_details(exc)
                     ),
                 )
+            if progress is not None:
+                progress(
+                    "    Save failed after {0:.3f} s".format(
+                        time.perf_counter() - target_start
+                    )
+                )
     return unsaved_modified
 
 
@@ -1166,10 +1302,24 @@ def execute(
     baseline,
     timestamp,
     mode,
+    progress=None,
 ):
+    preflight_start = time.perf_counter()
     reports, proposals = prepare_updates(
         session, work_part, config, rows, baseline, timestamp, mode
     )
+    unique_target_count = len(
+        {_object_key(proposal["target"]) for proposal in proposals}
+    )
+    if progress is not None:
+        progress(
+            "  Preflight: {0} proposed change(s) across {1} target(s), "
+            "{2:.3f} s".format(
+                len(proposals),
+                unique_target_count,
+                time.perf_counter() - preflight_start,
+            )
+        )
     if mode == "DRY_RUN" or not proposals:
         return reports, set()
     if config.get("save_policy") != "SAVE_CHANGED_PARTS":
@@ -1192,7 +1342,16 @@ def execute(
             )
         return reports, set()
 
-    checkout_results = checkout_targets(session, work_part, proposals)
+    checkout_start = time.perf_counter()
+    checkout_results = checkout_targets(
+        session, work_part, proposals, progress=progress
+    )
+    if progress is not None:
+        progress(
+            "  Checkout phase complete: {0:.3f} s".format(
+                time.perf_counter() - checkout_start
+            )
+        )
     if any(not result["success"] for result in checkout_results.values()):
         for proposal in proposals:
             result = checkout_results[_object_key(proposal["target"])]
@@ -1213,7 +1372,17 @@ def execute(
                 ),
             )
         return reports, set()
-    return reports, apply_groups(session, proposals, config)
+    apply_start = time.perf_counter()
+    unsaved = apply_groups(
+        session, proposals, config, progress=progress
+    )
+    if progress is not None:
+        progress(
+            "  Write/verify/save phase complete: {0:.3f} s".format(
+                time.perf_counter() - apply_start
+            )
+        )
+    return reports, unsaved
 
 
 def _write_csv(path, rows):
@@ -1247,6 +1416,7 @@ def _log(listing, message):
 
 
 def main(session):
+    run_start = time.perf_counter()
     work_part = getattr(getattr(session, "Parts", None), "Work", None)
     if work_part is None:
         raise RuntimeError("Open the source 3D assembly before Journal 05.")
@@ -1270,6 +1440,10 @@ def main(session):
     baseline, baseline_path = _load_baseline(input_path)
     rows = _read_csv(input_path, config)
     timestamp = datetime.now().isoformat(timespec="seconds")
+    listing = _listing_window(session)
+    _log(listing, "Journal 05 started.")
+    _log(listing, "  Mode: " + mode)
+    _log(listing, "  Input rows: {0}".format(len(rows)))
     reports, unsaved = execute(
         session,
         work_part,
@@ -1278,6 +1452,7 @@ def main(session):
         baseline,
         timestamp,
         mode,
+        progress=lambda message: _log(listing, message),
     )
     report_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_root = _io_root()
@@ -1287,13 +1462,16 @@ def main(session):
     )
     _write_csv(report_path, reports)
 
-    listing = _listing_window(session)
     _log(listing, "Journal 05 complete.")
     _log(listing, "  Mode: " + mode)
     _log(listing, "  Input: " + input_path)
     _log(listing, "  Baseline: " + baseline_path)
     _log(listing, "  Save gate: " + config["save_policy"])
     _log(listing, "  Report: " + report_path)
+    _log(
+        listing,
+        "  Total runtime: {0:.3f} s".format(time.perf_counter() - run_start),
+    )
     if unsaved:
         _log(
             listing,

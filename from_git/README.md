@@ -65,11 +65,15 @@ matches the approved replacement as `ALREADY_AT_EXPECTED_VALUE`, without a
 checkout or write. Only a live third value remains stale.
 
 J05 explicitly checks out all affected Teamcenter prototypes before writing,
-aborts without attribute changes if any checkout fails, rereads each write,
-saves successful targets, leaves successful checkouts checked out for review,
-and never performs check-in. NX X `@DB/...` identities are treated as managed
-even when `Session.IsManagedMode` incorrectly reports false. J11 remains
-available in `PROBE` and guarded `FULL_REVERSIBLE` modes for runtime diagnosis.
+using one session-wide status snapshot and one batch checkout for the unique
+approved targets that are not already checked out. It aborts without attribute
+changes if any checkout fails, rereads each write, saves successful targets,
+leaves successful checkouts checked out for review, and never performs
+check-in. For large assemblies, manually pre-check out only the approved target
+parts, not the complete assembly; J05 reuses those checkouts. NX X `@DB/...`
+identities are treated as managed even when `Session.IsManagedMode` incorrectly
+reports false. J11 remains available in `PROBE` and guarded `FULL_REVERSIBLE`
+modes for runtime diagnosis.
 
 J06 also uses the shared helpers from `utils`. It writes the active work part
 STEP file and active-part drawing PDF files to `NX_JOURNALS_IO_DIR` when set,

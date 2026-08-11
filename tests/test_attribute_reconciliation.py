@@ -132,14 +132,35 @@ MINI_CONFIG = {
 def load_j05():
     nxopen = types.ModuleType("NXOpen")
     nxopen_uf = types.ModuleType("NXOpen.UF")
+    nxopen_pdm = types.ModuleType("NXOpen.PDM")
+
+    class CheckoutInput:
+        def __init__(
+            self,
+            input_comment,
+            input_change_id,
+            allow_remote,
+            explicit_checkout,
+            include_secondary,
+        ):
+            self.InputComment = input_comment
+            self.InputChangeId = input_change_id
+            self.AllowRemote = allow_remote
+            self.ExplicitCheckOut = explicit_checkout
+            self.IncludeSecondary = include_secondary
+
+    nxopen_pdm.PdmPart = types.SimpleNamespace(CheckoutInput=CheckoutInput)
     nxopen.UF = nxopen_uf
+    nxopen.PDM = nxopen_pdm
     nxopen.Session = types.SimpleNamespace(
         MarkVisibility=types.SimpleNamespace(Invisible="Invisible")
     )
     prior_nx = sys.modules.get("NXOpen")
     prior_uf = sys.modules.get("NXOpen.UF")
+    prior_pdm = sys.modules.get("NXOpen.PDM")
     sys.modules["NXOpen"] = nxopen
     sys.modules["NXOpen.UF"] = nxopen_uf
+    sys.modules["NXOpen.PDM"] = nxopen_pdm
     try:
         spec = importlib.util.spec_from_file_location(
             "j05_under_test", ROOT / "from_git" / "journals" / "05_bulk_attribute_updater.py"
@@ -156,6 +177,10 @@ def load_j05():
             sys.modules.pop("NXOpen.UF", None)
         else:
             sys.modules["NXOpen.UF"] = prior_uf
+        if prior_pdm is None:
+            sys.modules.pop("NXOpen.PDM", None)
+        else:
+            sys.modules["NXOpen.PDM"] = prior_pdm
 
 
 def load_j04():
@@ -792,7 +817,9 @@ class J05Tests(unittest.TestCase):
             "error_code": "123",
         }
         with mock.patch.object(
-            self.j05, "_checkout_target", return_value=failed
+            self.j05,
+            "checkout_targets",
+            return_value={self.j05._object_key(target): failed},
         ), mock.patch.object(self.j05, "apply_groups") as apply:
             reports, unsaved = self.j05.execute(
                 types.SimpleNamespace(IsManagedMode=True),
@@ -806,6 +833,140 @@ class J05Tests(unittest.TestCase):
         apply.assert_not_called()
         self.assertFalse(unsaved)
         self.assertEqual("CHECKOUT_FAILED", reports[0]["ACTION"])
+
+    def test_prechecked_targets_use_one_snapshot_and_no_checkout_call(self):
+        first = self.target()
+        second = FakePart("P2", attrs("P2"))
+        second.IsReadOnly = False
+        proposals = [
+            self.proposal(first),
+            self.proposal(first),
+            self.proposal(second),
+        ]
+        checked = {
+            self.j05._object_key(first),
+            self.j05._object_key(second),
+        }
+        session = types.SimpleNamespace(IsManagedMode=True)
+
+        with mock.patch.object(
+            self.j05,
+            "_session_checkout_snapshot",
+            return_value=(checked, set(), ""),
+        ) as snapshot, mock.patch.object(
+            self.j05, "_batch_checkout"
+        ) as batch:
+            results = self.j05.checkout_targets(
+                session, first, proposals
+            )
+
+        snapshot.assert_called_once_with(session)
+        batch.assert_not_called()
+        self.assertEqual(2, len(results))
+        self.assertTrue(all(result["success"] for result in results.values()))
+        self.assertTrue(all(
+            result["result"] == "ALREADY_CHECKED_OUT"
+            for result in results.values()
+        ))
+
+    def test_mixed_targets_use_one_batch_checkout_and_post_snapshot(self):
+        prechecked = self.target()
+        pending = FakePart("P2", attrs("P2"))
+        pending.IsReadOnly = False
+        proposals = [
+            self.proposal(prechecked),
+            self.proposal(pending),
+            self.proposal(pending),
+        ]
+        prechecked_key = self.j05._object_key(prechecked)
+        pending_key = self.j05._object_key(pending)
+        session = types.SimpleNamespace(IsManagedMode=True)
+
+        with mock.patch.object(
+            self.j05,
+            "_session_checkout_snapshot",
+            side_effect=[
+                ({prechecked_key}, {pending_key}, ""),
+                ({prechecked_key, pending_key}, set(), ""),
+            ],
+        ) as snapshot, mock.patch.object(
+            self.j05, "_batch_checkout"
+        ) as batch:
+            results = self.j05.checkout_targets(
+                session, prechecked, proposals
+            )
+
+        self.assertEqual(2, snapshot.call_count)
+        batch.assert_called_once_with([pending])
+        self.assertEqual(
+            "ALREADY_CHECKED_OUT", results[prechecked_key]["result"]
+        )
+        self.assertEqual("BATCH_CHECKOUT", results[pending_key]["result"])
+        self.assertEqual(
+            "BATCH_CHECKOUT", proposals[1]["report"]["CHECKOUT_ACTION"]
+        )
+
+    def test_batch_checkout_failure_and_unavailable_snapshot_fail_closed(self):
+        target = self.target()
+        target.IsReadOnly = True
+        proposal = self.proposal(target)
+        key = self.j05._object_key(target)
+        session = types.SimpleNamespace(IsManagedMode=True)
+
+        with mock.patch.object(
+            self.j05,
+            "_session_checkout_snapshot",
+            side_effect=[(set(), {key}, ""), (set(), {key}, "")],
+        ), mock.patch.object(
+            self.j05,
+            "_batch_checkout",
+            side_effect=RuntimeError("batch checkout failed"),
+        ):
+            results = self.j05.checkout_targets(
+                session, target, [proposal]
+            )
+
+        self.assertFalse(results[key]["success"])
+        self.assertEqual("FAILED", results[key]["result"])
+        self.assertIn("batch checkout failed", results[key]["message"])
+
+        proposal = self.proposal(target)
+        with mock.patch.object(
+            self.j05,
+            "_session_checkout_snapshot",
+            return_value=(None, None, "API_UNAVAILABLE"),
+        ), mock.patch.object(self.j05, "_batch_checkout") as batch:
+            results = self.j05.checkout_targets(
+                session, target, [proposal]
+            )
+
+        batch.assert_not_called()
+        self.assertFalse(results[key]["success"])
+        self.assertIn("API_UNAVAILABLE", results[key]["message"])
+
+    def test_checked_out_but_read_only_target_is_blocked(self):
+        target = self.target()
+        target.IsReadOnly = True
+        target.PDMPart = types.SimpleNamespace(
+            GetCheckedoutStatusAndUser=lambda: (True, "another.user")
+        )
+        proposal = self.proposal(target)
+        key = self.j05._object_key(target)
+
+        with mock.patch.object(
+            self.j05,
+            "_session_checkout_snapshot",
+            return_value=({key}, set(), ""),
+        ), mock.patch.object(self.j05, "_batch_checkout") as batch:
+            results = self.j05.checkout_targets(
+                types.SimpleNamespace(IsManagedMode=True),
+                target,
+                [proposal],
+            )
+
+        batch.assert_not_called()
+        self.assertFalse(results[key]["success"])
+        self.assertIn("another.user", results[key]["message"])
 
     def proposal(self, target):
         rule = next(
@@ -850,51 +1011,66 @@ class J05Tests(unittest.TestCase):
             proposal["report"]["ACTION"],
         )
 
-    def test_successful_explicit_checkout_becomes_writable(self):
+    def test_successful_apply_reports_per_target_progress(self):
         target = self.target()
-        target.IsReadOnly = True
+        session = mock.Mock()
+        session.SetUndoMark.return_value = 7
+        proposal = self.proposal(target)
+        progress = []
+        with mock.patch.object(
+            self.j05, "_write_attribute"
+        ), mock.patch.object(
+            self.j05,
+            "_read_attribute",
+            return_value={"raw": "NEW"},
+        ), mock.patch.object(self.j05, "_save_target") as save:
+            unsaved = self.j05.apply_groups(
+                session,
+                [proposal],
+                dict(self.config, save_policy="SAVE_CHANGED_PARTS"),
+                progress=progress.append,
+            )
 
-        class Pdm:
-            def Checkout(inner_self):
-                target.IsReadOnly = False
+        save.assert_called_once_with(target)
+        self.assertFalse(unsaved)
+        self.assertTrue(any("Updating target 1/1" in item for item in progress))
+        self.assertTrue(any("Verified and saved" in item for item in progress))
 
-        target.PDMPart = Pdm()
-        result = self.j05._checkout_target(
-            types.SimpleNamespace(IsManagedMode=True),
-            target,
-            target,
-        )
-        self.assertTrue(result["success"])
-        self.assertEqual("EXPLICIT_CHECKOUT", result["action"])
-        self.assertFalse(result["read_only_after"])
+    def test_batch_checkout_uses_explicit_input_and_disposes_result(self):
+        target = self.target()
 
-    def test_db_identity_forces_checkout_when_session_flag_is_false(self):
+        class OperationErrors:
+            def __init__(inner_self):
+                inner_self.disposed = False
+
+            def Dispose(inner_self):
+                inner_self.disposed = True
+
+        operation_errors = OperationErrors()
+        calls = []
+
+        def checkout(parts, checkout_input):
+            calls.append((parts, checkout_input))
+            return operation_errors
+
+        target.PDMPart = types.SimpleNamespace(CheckoutParts=checkout)
+
+        self.j05._batch_checkout([target])
+
+        self.assertEqual([target], calls[0][0])
+        self.assertTrue(calls[0][1].ExplicitCheckOut)
+        self.assertFalse(calls[0][1].IncludeSecondary)
+        self.assertTrue(operation_errors.disposed)
+
+    def test_db_identity_is_managed_when_session_flag_is_false(self):
         target = self.target()
         target.JournalIdentifier = "@DB/P1/A"
-        target.IsReadOnly = False
 
-        class Pdm:
-            def __init__(inner_self):
-                inner_self.checkout_calls = 0
-                inner_self.checked_out = False
-
-            def GetCheckedoutStatusAndUser(inner_self):
-                return inner_self.checked_out, ""
-
-            def Checkout(inner_self):
-                inner_self.checkout_calls += 1
-                inner_self.checked_out = True
-
-        target.PDMPart = Pdm()
-        result = self.j05._checkout_target(
-            types.SimpleNamespace(IsManagedMode=False),
-            target,
-            target,
+        self.assertTrue(
+            self.j05._is_teamcenter_target(
+                types.SimpleNamespace(IsManagedMode=False), target
+            )
         )
-        self.assertTrue(result["success"])
-        self.assertEqual("EXPLICIT_CHECKOUT", result["action"])
-        self.assertEqual(1, target.PDMPart.checkout_calls)
-        self.assertEqual("CHECKED_OUT", result["result"])
 
     def test_sample_changes_are_business_writable_and_valid(self):
         expected = {
@@ -912,6 +1088,20 @@ class J05Tests(unittest.TestCase):
             self.assertEqual(
                 "", self.j05._validate_expected(value, rules[title], self.config)
             )
+
+    def test_j05_uses_session_snapshot_and_batch_checkout_only(self):
+        source = (
+            ROOT
+            / "from_git"
+            / "journals"
+            / "05_bulk_attribute_updater.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("GetCheckedoutStatusOfAllObjectsInSession", source)
+        self.assertIn("CheckoutParts", source)
+        self.assertNotIn("GetCheckedoutStatusOfObjects", source)
+        self.assertNotIn(".SaveAll(", source)
+        self.assertNotIn(".Checkin", source)
 
 
 class StaticSafetyTests(unittest.TestCase):
