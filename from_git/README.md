@@ -36,6 +36,7 @@ Available production journals:
 17_tc_master_drawing_import.py Separate master-drawing import workflow
 18_work_part_surface_area.py Active-work-part solid surface-area CSV
 19_test_teamcenter_drawing_import_contract.py Read-only J16 runtime contract probe
+20_diagnose_assembly_full_load.py Component-by-component Full Load failure diagnostic
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -96,6 +97,15 @@ work part, including hidden bodies. It ignores sheet and convergent bodies and
 writes per-body rows plus a fail-closed total in square metres under
 `NX_SURFACE_AREA`. J18 does not traverse assemblies, save NX data, or calculate
 paint weight.
+
+J20 is for assemblies that fail only when **Full Load** is requested. Run it
+while the failing top-level assembly is still partially or minimally loaded.
+It snapshots occurrence paths first, calls `LoadThisPartFully()` once per
+unique prototype, then runs a final assembly-wide `LoadFully()` verification.
+It writes a UTF-8-BOM CSV plus
+`NX_Assembly_Load_Diagnostic_Report.txt` under a timestamped
+`NX_ASSEMBLY_FULL_LOAD_DIAGNOSTIC` folder. J20 changes the in-memory load state
+but never saves, checks out, checks in, replaces, suppresses, or closes parts.
 
 J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
 duplicate part/revision requests, reports invalid input, missing parts, and

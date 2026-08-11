@@ -60,6 +60,7 @@ shared helpers from `from_git\utils`.
 | 17 | `from_git/journals/17_tc_master_drawing_import.py` | Verified creation of a missing drawing specification beneath an existing 3D revision |
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
+| 20 | `from_git/journals/20_diagnose_assembly_full_load.py` | Isolates component/prototype failures that occur only during assembly Full Load |
 
 ## Key Runtime Notes
 

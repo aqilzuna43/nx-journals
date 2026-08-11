@@ -4,6 +4,17 @@
 finding the assembly occurrence that can cause STEP export to fail with
 `IM0541: An operation was attempted on an invalid or unsuitable OM object`.
 
+If the problem occurs **only when Full Load is requested**, use the repository's
+Python J20 instead:
+
+```text
+from_git/journals/20_diagnose_assembly_full_load.py
+```
+
+J20 snapshots the assembly paths before loading, full-loads each unique
+prototype separately, and finally repeats an assembly-wide `LoadFully()` call.
+That active probe can reproduce a failure that this read-only VB journal cannot.
+
 ## Supported environment
 
 - Siemens NX X 2506
