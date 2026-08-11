@@ -5,6 +5,13 @@ Run via **NX > Tools > Journal > Play** (`Alt+F8`). The deployable runtime is
 the `from_git/` folder, supports the embedded Python runtimes in both NX
 versions, and avoids third-party Python packages.
 
+The repository also contains a standalone NXOpen VB.NET assembly-load
+troubleshooter at
+`Assembly/Diagnostic/NX_Assembly_Load_Diagnostic.vb`. Use it to identify the
+exact occurrence behind missing-file, unavailable-prototype, unloaded-part,
+and invalid OM-object STEP failures. See `Assembly/Diagnostic/README.md` for
+operation and report guidance.
+
 ## Deployment Layout
 
 Copy or pull the whole `from_git/` folder to the office PC. The folder must keep this shape:

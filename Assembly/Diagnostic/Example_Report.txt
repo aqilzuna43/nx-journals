@@ -1,0 +1,135 @@
+================================================
+NX Assembly Load Diagnostic Report
+================================================
+
+Assembly:
+264MN021888A01_A.prt
+
+Generated:
+2026-08-11 19:30:00 +08:00
+
+Assembly detected:
+YES
+
+Total components scanned:
+154
+
+Failed components:
+2
+
+Global scan errors:
+0
+
+Status summary:
+OK: 152
+MISSING_FILE: 1
+PROTOTYPE_UNAVAILABLE: 0
+UNLOADED: 0
+INVALID_OBJECT: 1
+ERROR: 0
+
+================================================
+COMPONENT DETAILS
+================================================
+
+------------------------------------------------
+Component:
+017679_A.prt
+
+Parent assembly:
+SUB_ASSY_A
+
+Assembly path:
+264MN021888A01_A.prt / SUB_ASSY_A / 017679_A.prt
+
+Level:
+3
+
+Part number / Item ID:
+017679_A
+
+Revision:
+<not available>
+
+Dataset / prototype:
+017679_A.prt
+
+File path / managed ID:
+C:\NX_DATA\017679_A.prt
+
+Managed status:
+LOCAL
+
+Load state:
+NotLoaded
+
+Reference set:
+MODEL
+
+Suppressed:
+NO
+
+Status:
+MISSING_FILE
+
+Reason:
+The referenced local part file cannot be found at the recorded path.
+
+Recommended corrective action:
+Restore the file or correct NX assembly search paths/load options, then reload the assembly.
+
+------------------------------------------------
+Component:
+264MN033047A01_A.prt
+
+Parent assembly:
+SUB_ASSY_B
+
+Assembly path:
+264MN021888A01_A.prt / SUB_ASSY_B / 264MN033047A01_A.prt
+
+Level:
+2
+
+Part number / Item ID:
+264MN033047A01
+
+Revision:
+A
+
+Dataset / prototype:
+264MN033047A01_A.prt
+
+File path / managed ID:
+@DB/264MN033047A01/A
+
+Managed status:
+MANAGED (release status not available)
+
+Load state:
+<not available>
+
+Reference set:
+MODEL
+
+Suppressed:
+NO
+
+Status:
+INVALID_OBJECT
+
+Reason:
+NX rejected an operation on this occurrence or its referenced object.
+
+Recommended corrective action:
+Open the reported assembly path, replace or repair the stale occurrence, then reopen and fully load the assembly before STEP export.
+
+Failed operation:
+Component.Prototype
+
+Exception:
+NXException 0: An operation was attempted on an invalid or unsuitable OM object
+
+================================================
+End of report
+================================================
