@@ -1,0 +1,15 @@
+Journal 05 started.
+  Mode: APPLY_APPROVED
+  Input rows: 178
+  Preflight: 677 proposed change(s) across 143 target(s), 0.130 s
+  Checkout status snapshot: 143 target(s), 5.933 s
+  Checkout phase complete: 5.938 s
+Journal 05 complete.
+  Mode: APPLY_APPROVED
+  Input: C:\Users\my62022696\Desktop\NX_ATTRIBUTE_UPDATE_DB_264MN032706A01_A_20260811_232337.csv
+  Baseline: C:\Users\my62022696\Desktop\NX_ATTRIBUTE_UPDATE_DB_264MN032706A01_A_20260811_232337.baseline.json
+  Save gate: SAVE_CHANGED_PARTS
+  Report: C:\Users\my62022696\Desktop\J05_APPLY_APPROVED_20260812_010432.csv
+  Total runtime: 6.131 s
+Journal 05 never checks Teamcenter parts in automatically.
+
