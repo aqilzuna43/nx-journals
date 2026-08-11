@@ -47,9 +47,11 @@ The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 Other journals still use shared helpers from `utils`, so keep the full folder
 together.
 
-J04 reads unique 3D master prototypes only. It produces one editable
-`NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json` sidecar. It does
-not inspect drawings, require drawing scope, certify a BOM, or modify NX.
+J04 reads unique 3D master prototypes from the active assembly state only.
+Suppressed occurrences and their complete subtrees are excluded. It produces
+one editable `NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json`
+sidecar. It does not inspect drawings, require drawing scope, certify a BOM,
+or modify NX.
 
 For normal NX use, open J05 and edit only the two user settings near its top:
 paste the edited J04 CSV path into `USER_UPDATE_CSV` and leave

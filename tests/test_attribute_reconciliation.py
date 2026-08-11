@@ -465,6 +465,65 @@ class J04Tests(unittest.TestCase):
         self.assertEqual("B", records[0]["row"]["Item Rev"])
         self.assertEqual("READY", records[0]["row"]["PULL_STATUS"])
 
+    def test_pull_includes_only_active_unsuppressed_occurrences(self):
+        root = FakePart("ROOT", attrs("ROOT"))
+        active = FakePart("ACTIVE", attrs("ACTIVE"))
+        suppressed_only = FakePart("SUPPRESSED", attrs("SUPPRESSED"))
+        suppressed_descendant = FakePart("DESCENDANT", attrs("DESCENDANT"))
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [
+                FakeComponent("ACTIVE", active),
+                FakeComponent("ACTIVE-SUPPRESSED-DUPLICATE", active, suppressed=True),
+                FakeComponent("SUPPRESSED", suppressed_only, suppressed=True),
+                FakeComponent(
+                    "SUPPRESSED-SUBASSEMBLY",
+                    FakePart("SUB", attrs("SUB")),
+                    [FakeComponent("DESCENDANT", suppressed_descendant)],
+                    suppressed=True,
+                ),
+            ],
+        )
+
+        records, diagnostics = self.j04.build_pull_records(
+            root, self.config, "RUN3"
+        )
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(
+            ["ROOT", "ACTIVE"],
+            [record["row"]["Item Number"] for record in records],
+        )
+
+    def test_pull_excludes_occurrence_when_suppression_state_is_unreadable(self):
+        class UnreadableSuppressionComponent(FakeComponent):
+            @property
+            def IsSuppressed(self):
+                raise RuntimeError("suppression unavailable")
+
+            @IsSuppressed.setter
+            def IsSuppressed(self, value):
+                pass
+
+        root = FakePart("ROOT", attrs("ROOT"))
+        uncertain = FakePart("UNCERTAIN", attrs("UNCERTAIN"))
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [UnreadableSuppressionComponent("UNCERTAIN", uncertain)],
+        )
+
+        records, diagnostics = self.j04.build_pull_records(
+            root, self.config, "RUN4"
+        )
+
+        self.assertEqual(
+            ["ROOT"],
+            [record["row"]["Item Number"] for record in records],
+        )
+        self.assertEqual("SUPPRESSION_STATE_UNAVAILABLE", diagnostics[0]["code"])
+
 
 class J05Tests(unittest.TestCase):
     @classmethod

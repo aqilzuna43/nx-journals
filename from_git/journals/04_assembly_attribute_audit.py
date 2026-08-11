@@ -288,11 +288,12 @@ def _children(component):
         return []
 
 
-def _is_suppressed(component):
+def _suppression_state(component):
+    """Return suppression state and an error; unreadable is not active."""
     try:
-        return bool(component.IsSuppressed)
-    except Exception:
-        return False
+        return bool(component.IsSuppressed), ""
+    except Exception as exc:
+        return None, _exception_details(exc)
 
 
 def collect_unique_prototypes(work_part):
@@ -314,7 +315,21 @@ def collect_unique_prototypes(work_part):
     stack = list(reversed(_children(root_component)))
     while stack:
         component = stack.pop()
-        if _is_suppressed(component):
+        suppressed, suppression_error = _suppression_state(component)
+        if suppression_error:
+            diagnostics.append(
+                {
+                    "code": "SUPPRESSION_STATE_UNAVAILABLE",
+                    "message": (
+                        "Component excluded because its active suppression "
+                        "state could not be read: {0}".format(
+                            suppression_error
+                        )
+                    ),
+                }
+            )
+            continue
+        if suppressed:
             continue
         prototype = getattr(component, "Prototype", None)
         if prototype is None:
