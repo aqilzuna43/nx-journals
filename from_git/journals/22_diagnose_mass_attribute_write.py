@@ -327,7 +327,7 @@ def test_classic_compute(work_part, bodies):
 
 
 def test_native_builder(work_part):
-    """Test B: CreateMassPropertiesBuilder + UpdateOnSave + UpdateNow + Commit."""
+    """Test B: native mass-properties builder (roll-up on the assembly root)."""
     builder = None
     findings = []
     try:
@@ -337,7 +337,14 @@ def test_native_builder(work_part):
                 {"test": "B_native_builder", "status": "NO_PROPERTIES_MANAGER"}
             )
             return findings
-        builder = properties_manager.CreateMassPropertiesBuilder([work_part])
+        root_component = getattr(
+            getattr(work_part, "ComponentAssembly", None),
+            "RootComponent",
+            None,
+        )
+        objects = [root_component] if root_component is not None else [work_part]
+        measured = "root_component" if root_component is not None else "work_part"
+        builder = properties_manager.CreateMassPropertiesBuilder(objects)
         builder.Accuracy = MEASUREMENT_ACCURACY
         options = getattr(builder, "UpdateOptions", None)
         yes = getattr(options, "Yes", None) if options is not None else None
@@ -364,6 +371,7 @@ def test_native_builder(work_part):
                 "test": "B_native_builder",
                 "status": "OK" if builder_ok else "PARTIAL",
                 "update_on_save_set": update_on_save_ok,
+                "measured": measured,
                 "message": " | ".join(messages),
             }
         )
@@ -468,6 +476,25 @@ def run(session, run_datetime=None):
         findings.append(
             {"test": "save", "status": "FAILED", "message": error_text(error)}
         )
+
+    # After save, did NX's native update actually write the reserved roll-up
+    # attributes?  This is the key read-back proof.
+    try:
+        rollup_mass = work_part.GetRealAttribute(ROLLUP_MASS_ATTRIBUTE)
+    except Exception:
+        rollup_mass = None
+    try:
+        rollup_area = work_part.GetRealAttribute(ROLLUP_AREA_ATTRIBUTE)
+    except Exception:
+        rollup_area = None
+    findings.append(
+        {
+            "test": "B_native_read_back",
+            "status": "POPULATED" if rollup_mass is not None else "BLANK",
+            "NX_MassPropRollupMass_kg": rollup_mass,
+            "NX_MassPropRollupArea_mm2": rollup_area,
+        }
+    )
 
     after = dump_attributes(work_part)
     report = build_report(

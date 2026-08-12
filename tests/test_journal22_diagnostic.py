@@ -265,6 +265,11 @@ class FakePart:
     def GetUserAttributes(self, iterator=None):
         return list(self.attribute_infos)
 
+    def GetRealAttribute(self, title):
+        if title not in self.real_attributes:
+            raise KeyError("No such attribute: " + title)
+        return self.real_attributes[title]
+
     def Save(self, *args):
         if self.save_error:
             raise RuntimeError("save failed")
