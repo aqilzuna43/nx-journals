@@ -25,6 +25,190 @@ the Listing Window (useful once, to confirm option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
+
+FEEDBACK LOG
+========================================================================
+J21 ASSEMBLY MASS & SURFACE AREA ATTRIBUTE UPDATER
+Build: J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3
+Mode: PROBE
+Mechanism: NX native mass-properties update (Roll Up + Update On Save)
+Attributes (standard NX, Rolled-Up Mass Properties): NX_MassPropRollupMass (kg), NX_MassPropRollupArea (mm^2)
+========================================================================
+PropertiesManager members:
+  CreateAssembliesGeneralPropertiesBuilder
+  CreateAssembliesParameterPropertiesBuilder
+  CreateAttributePropertiesBuilder
+  CreateAttributeTemplatesBuilder
+  CreateFeatureGeneralPropertiesBuilder
+  CreateGeneralCAMPropertiesBuilder
+  CreateMassPropertiesBuilder
+  CreateObjectGeneralPropertiesBuilder
+  CreatePreviewPropertiesBuilder
+  MassCollection
+MeasureManager members:
+  Angle3ptElement
+  AngleElement
+  BboxPropertiesElement
+  BodyElement
+  CenterlinePropertiesElement
+  Circle3ptElement
+  CleanupAssociativeGeometry
+  ClearPartTransientModification
+  CreateAngleAnnotation
+  CreateAngleAnnotationOnPosition
+  CreateDimensionAnnotation
+  CreateDimensionAnnotationOnPosition
+  CreateMeasureAngleBuilder
+  CreateMeasureBodyBuilder
+  CreateMeasureDistanceBuilder
+  CreateMeasureFaceBuilder
+  CreateMeasureMasterBuilder
+  CreateMeasurePrefsBuilder
+  CreateNoteAnnotation
+  CreateNoteAnnotationOnPosition
+  CreateRoutingMeasureDistanceBuilder
+  CurvePropertiesElement
+  DistanceDeltaValue
+  DistanceElement
+  DistanceElementWithUnits
+  EditAngle
+  EditAngle3ptElement
+  EditAngleElement
+  EditBboxPropertiesElement
+  EditBodyElement
+  EditCenterlinePropertiesElement
+  EditCircle3ptElement
+  EditCurvePropertiesElement
+  EditDistance
+  EditDistanceElement
+  EditDistanceElementWithUnits
+  EditEmbeddedAngle
+  EditEmbeddedAngle3pt
+  EditEmbeddedBboxProperties
+  EditEmbeddedCenterlineProperties
+  EditEmbeddedCircle3pt
+  EditEmbeddedCurveProperties
+  EditEmbeddedDistance
+  EditEmbeddedDistanceDelta
+  EditEmbeddedExtremeArea
+  EditEmbeddedExtremePoint
+  EditEmbeddedFaceProperties
+  EditEmbeddedPoint
+  EditEmbeddedPointWithUnit
+  EditEmbeddedPolarAngle
+  EditEmbeddedPolarArea
+  EditEmbeddedPolarRadius
+  EditEmbeddedProjectedDistance
+  EditEmbeddedProjectedDistanceDelta
+  EditEulerAnglesElement
+  EditExtremeAreaElement
+  EditExtremePoint
+  EditExtremePointElement
+  EditFaceProperties
+  EditFacePropertiesElement
+  EditLength
+  EditMassProperties
+  EditPoint
+  EditPointElement
+  EditPointElementWithUnit
+  EditPolarAngle
+  EditPolarAngleElement
+  EditPolarArea
+  EditPolarAreaElement
+  EditPolarRadius
+  EditPolarRadiusElement
+  EditProjectedDistanceElement
+  EditProjectedDistanceElementWithUnits
+  EditRectangularExtreme
+  EditScDistance
+  EditSectionInertiaElement
+  EmbeddedAngle
+  EmbeddedAngle3pt
+  EmbeddedBboxProperties
+  EmbeddedCenterlineProperties
+  EmbeddedCircle3pt
+  EmbeddedCurveProperties
+  EmbeddedDistance
+  EmbeddedDistanceDelta
+  EmbeddedExtremeArea
+  EmbeddedExtremePoint
+  EmbeddedFaceProperties
+  EmbeddedPoint
+  EmbeddedPointWithUnit
+  EmbeddedPolarAngle
+  EmbeddedPolarArea
+  EmbeddedPolarRadius
+  EmbeddedProjectedDistance
+  EmbeddedProjectedDistanceDelta
+  EndpointType
+  EulerAnglesElement
+  ExtremeAreaElement
+  ExtremeAreaType
+  ExtremePoint
+  ExtremePointElement
+  ExtremeType
+  FacePropertiesElement
+  GetIsMeasureAnnotation
+  GetSelectionIntent
+  InitializeAngle
+  InitializeDistance
+  InitializeExtremePoint
+  InitializeFaceProperties
+  InitializeLength
+  InitializeMassProperties
+  InitializePoint
+  InitializePolarAngle
+  InitializePolarArea
+  InitializePolarRadius
+  InitializeRectangularExtreme
+  MasterMeasurement
+  MeasureType
+  NewAngle
+  NewDistance
+  NewFaceProperties
+  NewLength
+  NewMassProperties
+  NewPoint
+  NewPointsOnCurvesLength
+  NewPolarAngle
+  NewPolarArea
+  NewPolarRadius
+  NewRectangularExtreme
+  NewRoutingPathLength
+  NewScDistance
+  PointElement
+  PointElementWithUnit
+  PolarAngleElement
+  PolarAreaElement
+  PolarRadiusElement
+  ProjectedDistanceElement
+  ProjectedDistanceElementWithUnits
+  ProjectionType
+  RadialMeasureType
+  SectionInertiaElement
+  SectionType
+  SetPartTransientModification
+  SetSelectionIntent
+  ShowMeasureAnnotation
+MassPropertiesBuilder via PropertiesManager:
+  Accuracy
+  Commit
+  Destroy
+  GetCommittedObjects
+  GetObject
+  LoadPartialComponents
+  Null
+  PreviewBuilder
+  SelectedObjects
+  ShowResults
+  Tag
+  UpdateNow
+  UpdateOnSave
+  UpdateOptions
+  Validate
+MassPropertiesBuilder.UpdateOptions: unavailable (NX enum MassPropertiesBuilder.UpdateOptions.__members__ is unavailable on this build.)
+MassPropertiesBuilder.MeasurementType: unavailable (NX enum MassPropertiesBuilder.MeasurementType.__members__ is unavailable on this build.)
+Send this probe output to confirm the exact NX 2506 MassPropertiesBuilder option names.
 """
 
 import csv
@@ -36,7 +220,7 @@ import NXOpen
 
 
 BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+WRITE_MODE = "PROBE"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
