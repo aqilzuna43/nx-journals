@@ -25,16 +25,6 @@ the Listing Window (useful once, to confirm option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
-
-========================================================================
-J21 ASSEMBLY MASS & SURFACE AREA ATTRIBUTE UPDATER
-Build: J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3
-Mode: PROBE
-Mechanism: NX native mass-properties update (Roll Up + Update On Save)
-Attributes (standard NX, Rolled-Up Mass Properties): NX_MassPropRollupMass (kg), NX_MassPropRollupArea (mm^2)
-========================================================================
-PROBE FAILED: 'NXOpen.MeasureManager' object has no attribute 'CreateMassPropertiesBuilder'
-Send this probe output to confirm the exact NX 2506 MassPropertiesBuilder option names.
 """
 
 import csv
@@ -46,7 +36,7 @@ import NXOpen
 
 
 BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "PROBE"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
@@ -335,6 +325,36 @@ def _nx_enum(enum_path, member_name):
     )
 
 
+def _create_mass_properties_builder(work_part, objects):
+    """Create the native MassPropertiesBuilder from the correct manager.
+
+    NX places CreateMassPropertiesBuilder on PropertiesManager (NX12+) and,
+    on some builds, also on MeasureManager.  Returns (builder, manager_name).
+    """
+    attempts = ()
+    properties_manager = getattr(work_part, "PropertiesManager", None)
+    if properties_manager is not None:
+        attempts += ((properties_manager, "PropertiesManager"),)
+    measure_manager = getattr(work_part, "MeasureManager", None)
+    if measure_manager is not None:
+        attempts += ((measure_manager, "MeasureManager"),)
+    last_error = None
+    for manager, name in attempts:
+        create = getattr(manager, "CreateMassPropertiesBuilder", None)
+        if create is None:
+            last_error = "{0} has no CreateMassPropertiesBuilder".format(name)
+            continue
+        try:
+            return create(objects), name
+        except Exception as error:
+            last_error = "{0}: {1}".format(name, error_text(error))
+    raise RuntimeError(
+        "No MassPropertiesBuilder factory found: {0}".format(
+            last_error or "no PropertiesManager/MeasureManager"
+        )
+    )
+
+
 def run_native_mass_property_update(work_part):
     """Trigger NX's native roll-up mass property update on the assembly.
 
@@ -343,6 +363,7 @@ def run_native_mass_property_update(work_part):
     status message; raises nothing unless the update cannot be started.
     """
     warnings = []
+    builder = None
     try:
         root_component = getattr(
             getattr(work_part, "ComponentAssembly", None),
@@ -350,8 +371,10 @@ def run_native_mass_property_update(work_part):
             None,
         )
         objects = [root_component] if root_component is not None else [work_part]
-        manager = work_part.MeasureManager
-        builder = manager.CreateMassPropertiesBuilder(objects)
+        builder, manager_name = _create_mass_properties_builder(
+            work_part, objects
+        )
+        warnings.append("factory: {0}".format(manager_name))
 
         builder.Accuracy = MEASUREMENT_ACCURACY
         # NX X 2506 builder options; skipped defensively if a name differs.
@@ -372,7 +395,7 @@ def run_native_mass_property_update(work_part):
             )
         update_now()
         if warnings:
-            return "NATIVE_UPDATE_OK (skipped: {0})".format(
+            return "NATIVE_UPDATE_OK ({0})".format(
                 "; ".join(warnings)
             )
         return "NATIVE_UPDATE_OK"
@@ -384,13 +407,26 @@ def run_native_mass_property_update(work_part):
 
 def probe_builder_api(work_part):
     """Dump the MassPropertiesBuilder API surface of this NX build."""
-    builder = None
     lines = []
+    for manager_name in ("PropertiesManager", "MeasureManager"):
+        manager = getattr(work_part, manager_name, None)
+        lines.append("{0} members:".format(manager_name))
+        if manager is None:
+            lines.append("  <unavailable>")
+            continue
+        for member in sorted(
+            name
+            for name in dir(manager)
+            if not name.startswith("_")
+        ):
+            lines.append("  " + member)
+
+    builder = None
     try:
-        builder = work_part.MeasureManager.CreateMassPropertiesBuilder(
-            [work_part]
+        builder, manager_name = _create_mass_properties_builder(
+            work_part, [work_part]
         )
-        lines.append("MassPropertiesBuilder members:")
+        lines.append("MassPropertiesBuilder via {0}:".format(manager_name))
         for member in sorted(
             name
             for name in dir(builder)

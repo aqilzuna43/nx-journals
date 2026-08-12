@@ -53,6 +53,18 @@ def walk_prototypes(obj):
             yield part
 
 
+class FakeManagerFactory:
+    def __init__(self, name):
+        self.name = name
+        self.builder_calls = []
+        self.update_now_calls = 0
+
+    def CreateMassPropertiesBuilder(self, objects):
+        builder = FakeBuilder(self, objects)
+        self.builder_calls.append(builder)
+        return builder
+
+
 class FakeBuilder:
     def __init__(self, manager, objects):
         self.manager = manager
@@ -71,17 +83,6 @@ class FakeBuilder:
                 part.real_attributes["NX_MassPropRollupArea"] = 20000.0
                 part.real_attributes["NX_Mass"] = 0.1
                 part.real_attributes["NX_Area"] = 8000.0
-
-
-class FakeMeasureManager:
-    def __init__(self):
-        self.builder_calls = []
-        self.update_now_calls = 0
-
-    def CreateMassPropertiesBuilder(self, objects):
-        builder = FakeBuilder(self, objects)
-        self.builder_calls.append(builder)
-        return builder
 
 
 class FakePart:
@@ -172,7 +173,10 @@ class FakeSession:
         self.Parts = types.SimpleNamespace(Work=work_part)
         self.ListingWindow = FakeListingWindow()
         if work_part is not None:
-            work_part.MeasureManager = FakeMeasureManager()
+            work_part.PropertiesManager = FakeManagerFactory(
+                "PropertiesManager"
+            )
+            work_part.MeasureManager = FakeManagerFactory("MeasureManager")
 
 
 def rows_by_part_number(rows):
@@ -226,7 +230,7 @@ class J21Tests(unittest.TestCase):
         os.environ.pop("NX_J21_MODE", None)  # exercise the APPLY default
         _path, rows, diagnostics = self.j21.run(session)
 
-        manager = root.MeasureManager
+        manager = root.PropertiesManager
         self.assertEqual(1, len(manager.builder_calls))
         builder = manager.builder_calls[0]
         self.assertEqual(0.99, builder.Accuracy)
@@ -261,6 +265,20 @@ class J21Tests(unittest.TestCase):
             self.j21.ROLLUP_AREA_ATTRIBUTE,
         )
 
+    def test_apply_falls_back_to_measure_manager(self):
+        root, children = self.make_assembly()
+        session = FakeSession(root)
+        root.PropertiesManager = None
+
+        os.environ.pop("NX_J21_MODE", None)
+        _path, rows, _diagnostics = self.j21.run(session)
+
+        manager = root.MeasureManager
+        self.assertEqual(1, len(manager.builder_calls))
+        self.assertTrue(manager.builder_calls[0].UpdateNow_called)
+        self.assertEqual("0.250000", rows[0]["ROLLUP_MASS_KG"])
+        self.assertEqual("SAVED", rows[0]["SAVED"])
+
     def test_dry_run_reports_current_values_without_update_or_save(self):
         root, children = self.make_assembly()
         for part in (root, children[0], children[1]):
@@ -270,7 +288,7 @@ class J21Tests(unittest.TestCase):
 
         _path, rows, _diagnostics = self.j21.run(session)
 
-        manager = root.MeasureManager
+        manager = root.PropertiesManager
         self.assertEqual(0, manager.update_now_calls)
         self.assertEqual(0, len(manager.builder_calls))
         for part in (root, children[0], children[1]):
@@ -337,7 +355,10 @@ class J21Tests(unittest.TestCase):
         session = FakeSession(root)
 
         # Simulate NX not writing attributes for one part (e.g. empty refset).
-        class LimitedManager(FakeMeasureManager):
+        class LimitedManager(FakeManagerFactory):
+            def __init__(self):
+                super().__init__("PropertiesManager")
+
             def CreateMassPropertiesBuilder(self, objects):
                 builder = FakeBuilder(self, objects)
                 self.builder_calls.append(builder)
@@ -355,7 +376,7 @@ class J21Tests(unittest.TestCase):
                 builder.UpdateNow = limited_update
                 return builder
 
-        root.MeasureManager = LimitedManager()
+        root.PropertiesManager = LimitedManager()
 
         os.environ.pop("NX_J21_MODE", None)
         _path, rows, _diagnostics = self.j21.run(session)
@@ -392,7 +413,10 @@ class J21Tests(unittest.TestCase):
         self.assertIsNone(path)
         self.assertTrue(rows)
         self.assertTrue(
-            any("MassPropertiesBuilder members" in line for line in rows)
+            any("PropertiesManager members" in line for line in rows)
+        )
+        self.assertTrue(
+            any("MassPropertiesBuilder via" in line for line in rows)
         )
         self.assertFalse(diagnostics)
 
@@ -408,6 +432,7 @@ class J21Tests(unittest.TestCase):
         self.assertNotIn("AttributePropertiesBuilder", source)
         self.assertNotIn("SetRealAttribute", source)
         self.assertIn("CreateMassPropertiesBuilder", source)
+        self.assertIn("PropertiesManager", source)
         self.assertIn("RollUp", source)
         self.assertIn("UpdateNow", source)
         self.assertIn("NXOpenBoMExtended", source)
