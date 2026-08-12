@@ -1,9 +1,12 @@
 """Journal 04 - pull editable business attributes from 3D master models.
 
-The journal is deliberately read-only.  It traverses the active assembly,
-deduplicates prototype parts, and writes one wide CSV row per 3D master model.
-The CSV can be edited and passed directly to Journal 05.  A JSON sidecar keeps
-the exact typed baseline required for stale-value protection.
+The journal is deliberately read-only.  It traverses the active assembly and
+writes one wide CSV row per 3D master model that would actually show in the
+BoM export (same visibility filter as NXOpenBoMExtended.py): suppressed,
+reference-only, and keyword-named occurrences (CSYS, datum, skeleton, ...)
+are excluded together with their subtrees.  The CSV can be edited and passed
+directly to Journal 05.  A JSON sidecar keeps the exact typed baseline
+required for stale-value protection.
 """
 
 import csv
@@ -25,6 +28,16 @@ CONTROL_COLUMNS = [
     "PULL_STATUS",
     "PULL_MESSAGE",
 ]
+
+# --- BOM VISIBILITY (mirrors NXOpenBoMExtended.py) ---
+# Only components that would show in the BoM export are pulled.  Everything
+# else (CSYS, datums, skeletons, reference-only members, ...) is noise for the
+# update CSV and must not create rows here.
+IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
+BOM_REFERENCE_ATTRIBUTES = ("REFERENCE_COMPONENT", "PLIST_IGNORE_MEMBER")
+# NX marks native reference components with an empty string; manual overrides
+# use YES/1/True/true/yes.
+BOM_REFERENCE_FLAG_VALUES = ("", "YES", "1", "True", "true", "yes")
 
 
 def _text(value):
@@ -296,6 +309,33 @@ def _suppression_state(component):
         return None, _exception_details(exc)
 
 
+def _component_string_attribute(component, title):
+    """Safe read of a component-level string attribute; None when absent."""
+    try:
+        return component.GetStringAttribute(title)
+    except Exception:
+        return None
+
+
+def _is_bom_visible(component):
+    """Mirror NXOpenBoMExtended.py: only BoM-visible components are pulled.
+
+    Suppression is handled separately by the caller.  Keyword-named and
+    reference-flagged occurrences are excluded together with their subtrees.
+    """
+    name = _clean(getattr(component, "Name", ""))
+    display_name = _clean(getattr(component, "DisplayName", ""))
+    combined = " ".join((name, display_name)).upper()
+    for keyword in IGNORE_KEYWORDS:
+        if keyword in combined:
+            return False
+    for title in BOM_REFERENCE_ATTRIBUTES:
+        raw = _component_string_attribute(component, title)
+        if raw is not None and _clean(raw) in BOM_REFERENCE_FLAG_VALUES:
+            return False
+    return True
+
+
 def collect_unique_prototypes(work_part):
     """Return ordered unique prototype parts and traversal diagnostics."""
     unique = OrderedDict()
@@ -330,6 +370,8 @@ def collect_unique_prototypes(work_part):
             )
             continue
         if suppressed:
+            continue
+        if not _is_bom_visible(component):
             continue
         prototype = getattr(component, "Prototype", None)
         if prototype is None:

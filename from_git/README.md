@@ -48,10 +48,12 @@ Other journals still use shared helpers from `utils`, so keep the full folder
 together.
 
 J04 reads unique 3D master prototypes from the active assembly state only.
-Suppressed occurrences and their complete subtrees are excluded. It produces
-one editable `NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json`
-sidecar. It does not inspect drawings, require drawing scope, certify a BOM,
-or modify NX.
+Suppressed occurrences and their complete subtrees are excluded, and only
+BoM-visible models are pulled (same filter as `NXOpenBoMExtended.py`):
+reference-only members and keyword-named occurrences (CSYS, COORDINATE,
+DATUM, REFERENCE, SKELETON) are excluded too. It produces one editable
+`NX_ATTRIBUTE_UPDATE_*.csv` and a required `.baseline.json` sidecar. It does
+not inspect drawings, require drawing scope, certify a BOM, or modify NX.
 
 For normal NX use, open J05 and edit only the two user settings near its top:
 paste the edited J04 CSV path into `USER_UPDATE_CSV` and leave

@@ -84,6 +84,7 @@ class FakeComponent:
         suppressed=False,
         position=(0, 0, 0),
         orientation=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+        string_attributes=None,
     ):
         self.Name = name
         self.DisplayName = name
@@ -92,11 +93,17 @@ class FakeComponent:
         self.IsSuppressed = suppressed
         self.position = position
         self.orientation = orientation
+        self.string_attributes = dict(string_attributes or {})
         self.Tag = FakeComponent._tag
         FakeComponent._tag += 1
 
     def GetChildren(self):
         return list(self._children)
+
+    def GetStringAttribute(self, title):
+        if title not in self.string_attributes:
+            raise AttributeError("No such attribute: " + title)
+        return self.string_attributes[title]
 
     def GetPosition(self):
         return self.position, self.orientation
@@ -548,6 +555,95 @@ class J04Tests(unittest.TestCase):
             [record["row"]["Item Number"] for record in records],
         )
         self.assertEqual("SUPPRESSION_STATE_UNAVAILABLE", diagnostics[0]["code"])
+
+    def test_pull_excludes_keyword_named_occurrences(self):
+        root = FakePart("ROOT", attrs("ROOT"))
+        csys = FakePart("CSYS", attrs("CSYS"))
+        datum = FakePart("DATUM", attrs("DATUM"))
+        skeleton = FakePart("SKELETON", attrs("SKELETON"))
+        real = FakePart("REAL", attrs("REAL"))
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [
+                FakeComponent("CSYS_ORIGIN", csys),
+                FakeComponent("DATUM_PLANE_A", datum),
+                FakeComponent("SKELETON_MASTER", skeleton),
+                FakeComponent("REAL-1", real),
+            ],
+        )
+
+        records, diagnostics = self.j04.build_pull_records(
+            root, self.config, "RUN5"
+        )
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(
+            ["ROOT", "REAL"],
+            [record["row"]["Item Number"] for record in records],
+        )
+
+    def test_pull_excludes_reference_flagged_occurrences(self):
+        root = FakePart("ROOT", attrs("ROOT"))
+        empty_ref = FakePart("EMPTY_REF", attrs("EMPTY_REF"))
+        yes_ref = FakePart("YES_REF", attrs("YES_REF"))
+        plist = FakePart("PLIST", attrs("PLIST"))
+        real = FakePart("REAL", attrs("REAL"))
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [
+                FakeComponent(
+                    "EMPTY_REF",
+                    empty_ref,
+                    string_attributes={"REFERENCE_COMPONENT": ""},
+                ),
+                FakeComponent(
+                    "YES_REF",
+                    yes_ref,
+                    string_attributes={"REFERENCE_COMPONENT": "YES"},
+                ),
+                FakeComponent(
+                    "PLIST_IGNORED",
+                    plist,
+                    string_attributes={"PLIST_IGNORE_MEMBER": "YES"},
+                ),
+                FakeComponent("REAL-1", real),
+            ],
+        )
+
+        records, diagnostics = self.j04.build_pull_records(
+            root, self.config, "RUN6"
+        )
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(
+            ["ROOT", "REAL"],
+            [record["row"]["Item Number"] for record in records],
+        )
+
+    def test_part_with_any_visible_occurrence_is_pulled_once(self):
+        root = FakePart("ROOT", attrs("ROOT"))
+        shared = FakePart("SHARED", attrs("SHARED"))
+        root.ComponentAssembly.RootComponent = FakeComponent(
+            "ROOT-COMP",
+            root,
+            [
+                FakeComponent(
+                    "SHARED-REF",
+                    shared,
+                    string_attributes={"PLIST_IGNORE_MEMBER": "YES"},
+                ),
+                FakeComponent("SHARED-NORMAL", shared),
+            ],
+        )
+
+        records, _ = self.j04.build_pull_records(root, self.config, "RUN7")
+
+        self.assertEqual(
+            ["ROOT", "SHARED"],
+            [record["row"]["Item Number"] for record in records],
+        )
 
 
 class J05Tests(unittest.TestCase):

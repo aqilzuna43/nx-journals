@@ -114,9 +114,11 @@ when the checkout belongs to you. J17 never checks in automatically.
 ## Journal 04 + 05 - Business Attribute Update
 
 1. Open and fully load the required 3D assembly.
-2. Run **J04**. It pulls only the active assembly state, excluding suppressed
-   occurrences and their subtrees, then creates `NX_ATTRIBUTE_UPDATE_*.csv`
-   and a matching `.baseline.json`.
+2. Run **J04**. It pulls only the BoM-visible 3D master models (the same
+   filter as `NXOpenBoMExtended.py`): suppressed occurrences, reference-only
+   members, and CSYS/datum/skeleton/keyword-named occurrences are all
+   excluded together with their subtrees. It then creates
+   `NX_ATTRIBUTE_UPDATE_*.csv` and a matching `.baseline.json`.
 3. Edit the CSV business fields only. For rows to update, set `APPROVED=YES` and fill `ENGINEER`.
 4. In **J05**, set:
 
@@ -344,8 +346,10 @@ it opened.
 ## Notes
 
 - Journals use the active NX Teamcenter connection and do not create a separate Teamcenter login.
-- J04 reads prototype attributes from active, unsuppressed occurrences only,
-  so its values correspond to the 3D master objects J05 updates.
+- J04 reads prototype attributes from BoM-visible occurrences only (same
+  filter as `NXOpenBoMExtended.py`: suppressed, reference-only, and
+  CSYS/datum/skeleton/keyword-named occurrences are excluded), so its values
+  correspond to the 3D master objects J05 updates.
 - J05 requires exact `DB_PART_NO + DB_PART_REV`; it never changes Part Name or Revision and never performs automatic check-in.
 - J14 changes Teamcenter Item Name only and verifies the result through UF_UGMGR read-back.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
