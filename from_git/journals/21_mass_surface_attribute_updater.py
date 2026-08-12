@@ -1,72 +1,65 @@
 """Journal 21 - Assembly Mass & Surface Area Attribute Updater (NX 2506)
 
-Drives NX's NATIVE Mass Properties update on the open assembly - the same
-engine behind Tools > Measure Mass Properties with Update On Save.  NX itself
-computes and writes its standard attributes on every component:
+Measures every direct traditional solid body of each unique BoM-visible 3D
+master in the open assembly (the active work part plus all child prototypes)
+and writes two Number attributes on every such part in one run, using the
+standard NX roll-up attribute titles:
 
-    NX_MassPropRollupMass  roll-up mass (kg)      [Rolled-Up Mass Properties]
-    NX_MassPropRollupArea  roll-up area (mm^2)    [Rolled-Up Mass Properties]
+    NX_MassPropRollupMass  roll-up mass of the part including every
+                           BoM-visible descendant (kg)
+    NX_MassPropRollupArea  roll-up surface area of the part including every
+                           BoM-visible descendant (square millimetres)
 
-The journal does NOT create, compute, or write attributes itself.  It:
-  1. confirms the BoM-visible 3D masters in the open assembly (same filter
-     as NXOpenBoMExtended.py / Journal 04: suppressed, reference-only, and
-     keyword-named occurrences are excluded),
-  2. triggers the native mass-properties update once on the assembly
-     (PropertiesManager.CreateMassPropertiesBuilder with UpdateOnSave=Yes,
-     then UpdateNow; NX 2506 has no RollUp option - roll-up is implicit when
-     the assembly root is measured),
-  3. saves each BoM-visible part (attributes are persisted on save),
-  4. reads the standard attributes back for the CSV/Listing report, so the
-     run proves what NX wrote.  A blank read-back means the native update
-     did not engage for that part and must be investigated.
+Values are computed by the journal with the classic, proven NX measure APIs
+(NewFaceProperties for area, NewMassProperties for mass) and written with
+AttributePropertiesBuilder - the same write path that was verified working.
+The category defaults to the NX-native "Rolled-Up Mass Properties" and falls
+back to "Materials" if the PDM template rejects the write, so the run always
+reports exactly what happened per attribute.
+
+Scope follows the BoM exactly (same filter as NXOpenBoMExtended.py and
+Journal 04): suppressed occurrences, reference-only members
+(REFERENCE_COMPONENT / PLIST_IGNORE_MEMBER), and keyword-named occurrences
+(CSYS, COORDINATE, DATUM, REFERENCE, SKELETON) are excluded together with
+their subtrees, so the journal never touches the same noise parts that the
+BoM export hides.
 
 WRITE_MODE defaults to "APPLY".  Set WRITE_MODE = "DRY_RUN" (or the
-NX_J21_MODE environment variable) to report the current stored attribute
-values and scope without updating or saving anything.  Set WRITE_MODE =
-"SMOKE" to run the native update on the active work part only (fast
-iteration to verify the mechanism before a full-assembly run).  Set
-WRITE_MODE = "PROBE" to dump the PropertiesManager/MeasureManager and
-builder API surface of this NX build to the Listing Window (useful once,
-to confirm option names).
+NX_J21_MODE environment variable) to compute and report without writing or
+saving.  Set WRITE_MODE = "SMOKE" to run on the active work part only (fast
+iteration).  Teamcenter parts must be writable (checked out) before APPLY;
+otherwise the per-part save reports SAVE_FAILED.
 
-Target: NX X 2506 embedded Python only
+Target: NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
-
-========================================================================
-J21 ASSEMBLY MASS & SURFACE AREA ATTRIBUTE UPDATER
-Build: J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3
-Mode: SMOKE
-Mechanism: NX native mass-properties update (Update On Save + Commit)
-Attributes (standard NX, Rolled-Up Mass Properties): NX_MassPropRollupMass (kg), NX_MassPropRollupArea (mm^2)
-========================================================================
-264MN032797A01 | 0 | rollup mass=<blank> kg [BLANK] | rollup area=<blank> m^2 [BLANK] | saved=SAVED | PARTIAL
-    MASS ATTRIBUTE: NX did not write NX_MassPropRollupMass for this part. | AREA ATTRIBUTE: NX did not write NX_MassPropRollupArea for this part.
-Parts reported: 1
-CSV: C:\Users\my62022696\Desktop\NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_264MN032797A01_20260812_234158.csv
 """
 
 import csv
 import datetime
 import os
+import re
 import traceback
 
 import NXOpen
 
 
-BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "SMOKE"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+BUILD = "J21-NX2506-MASS-SURFACE-ATTRIBUTE-UPDATER-V4"
+WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "SMOKE"; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
-MASS_DECIMAL_PLACES = 6
-AREA_DECIMAL_PLACES = 2
+AREA_DECIMAL_PLACES = 2   # mm^2 column
 AREA_M2_DECIMAL_PLACES = 4
-# NX stores the roll-up area in square millimetres (PDM template); the report
-# also presents it in square metres for readability on large systems.
-SQUARE_METRES_PER_SQUARE_MILLIMETRE = 1e-6
+MASS_DECIMAL_PLACES = 6
 
-# Standard NX roll-up attributes (category "Rolled-Up Mass Properties").
+# Standard NX roll-up attribute titles.  NX defines these under
+# "Rolled-Up Mass Properties"; "Materials" is the fallback that was verified
+# writable on NX 2506.
 ROLLUP_MASS_ATTRIBUTE = "NX_MassPropRollupMass"
 ROLLUP_AREA_ATTRIBUTE = "NX_MassPropRollupArea"
+ATTRIBUTE_CATEGORIES = ("Rolled-Up Mass Properties", "Materials")
+# NX defines NX_MassPropRollupArea in square millimetres; the journal
+# measures in square metres and converts at write time.
+SQUARE_MILLIMETRES_PER_SQUARE_METRE = 1_000_000.0
 
 # --- BOM VISIBILITY (mirrors NXOpenBoMExtended.py and Journal 04) ---
 IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
@@ -83,11 +76,13 @@ RESULT_COLUMNS = (
     "DB_PART_REV",
     "PART_NAME",
     "LEVEL",
-    "ROLLUP_MASS_KG",
+    "OWN_SOLID_BODY_COUNT",
+    "ROLLUP_SOLID_BODY_COUNT",
     "ROLLUP_AREA_MM2",
     "ROLLUP_AREA_M2",
-    "ROLLUP_MASS_ATTRIBUTE",
+    "ROLLUP_MASS_KG",
     "ROLLUP_AREA_ATTRIBUTE",
+    "ROLLUP_MASS_ATTRIBUTE",
     "SAVED",
     "STATUS",
     "MESSAGE",
@@ -213,6 +208,112 @@ def part_identity(part):
     }
 
 
+def body_flag(body, property_name):
+    value = getattr(body, property_name)
+    return bool(value() if callable(value) else value)
+
+
+def classify_bodies(part):
+    """Return direct traditional solid bodies plus skipped-body counts."""
+    included = []
+    skipped_sheet = 0
+    skipped_convergent = 0
+
+    for body in list(getattr(part, "Bodies", [])):
+        if body_flag(body, "IsConvergentBody"):
+            skipped_convergent += 1
+        elif body_flag(body, "IsSolidBody"):
+            included.append(body)
+        elif body_flag(body, "IsSheetBody"):
+            skipped_sheet += 1
+
+    return {
+        "included": included,
+        "skipped_sheet": skipped_sheet,
+        "skipped_convergent": skipped_convergent,
+    }
+
+
+def normalized_unit_token(value):
+    text = clean(value).upper()
+    text = text.replace("²", "2").replace("^", "")
+    return re.sub(r"[^A-Z0-9]", "", text)
+
+
+def unit_tokens(unit):
+    values = []
+    for property_name in ("Name", "Symbol", "Abbreviation", "TypeName"):
+        try:
+            values.append(normalized_unit_token(getattr(unit, property_name)))
+        except Exception:
+            pass
+    return {value for value in values if value}
+
+
+def unit_matches(unit, wanted_tokens):
+    return bool(unit_tokens(unit).intersection(wanted_tokens))
+
+
+def resolve_measure_unit(unit_collection, measure_name, object_names, tokens):
+    for object_name in object_names:
+        try:
+            unit = unit_collection.FindObject(object_name)
+            if unit is not None:
+                return unit
+        except Exception:
+            pass
+
+    try:
+        candidates = list(unit_collection.GetMeasureTypes(measure_name))
+    except Exception as error:
+        raise RuntimeError(
+            "NX could not enumerate {0} units: {1}".format(
+                measure_name, error_text(error)
+            )
+        )
+
+    for unit in candidates:
+        if unit_matches(unit, tokens):
+            return unit
+
+    available = sorted(
+        {
+            token
+            for unit in candidates
+            for token in unit_tokens(unit)
+        }
+    )
+    raise RuntimeError(
+        "NX {0} units are unavailable for {1}. Available unit tokens: {2}".format(
+            measure_name, measure_name, ", ".join(available) or "<none>"
+        )
+    )
+
+
+def resolve_units(work_part):
+    """Resolve square-metre area, metre length, and kilogram mass units once."""
+    units = work_part.UnitCollection
+    area_unit = resolve_measure_unit(
+        units,
+        "Area",
+        ("SquareMeter", "SquareMetre"),
+        {"SQUAREMETER", "SQUAREMETRE", "M2"},
+    )
+    length_unit = resolve_measure_unit(
+        units,
+        "Length",
+        ("Meter", "Metre"),
+        {"METER", "METRE", "M"},
+    )
+    mass_unit = resolve_measure_unit(
+        units,
+        "Mass",
+        ("Kilogram",),
+        {"KILOGRAM", "KG"},
+    )
+    return area_unit, length_unit, mass_unit
+
+
 def _object_key(nx_object):
     tag = getattr(nx_object, "Tag", None)
     return ("TAG", _text(tag)) if tag is not None else ("PY", id(nx_object))
@@ -261,12 +362,7 @@ def _is_active_visible(component):
 
 
 def collect_unique_parts(work_part):
-    """Return BoM-visible unique 3D masters and traversal diagnostics.
-
-    The work part is always included.  Each unique child prototype is included
-    once, at its first-seen level.  Suppressed, reference-flagged, and
-    keyword-named occurrences are excluded together with their subtrees.
-    """
+    """Return BoM-visible unique 3D masters and traversal diagnostics."""
     unique = {}
     diagnostics = []
 
@@ -312,185 +408,121 @@ def collect_unique_parts(work_part):
     return list(unique.values()), diagnostics
 
 
-def _update_on_save_yes(builder):
-    """Resolve the UpdateOnSave=Yes member from the builder instance.
-
-    NX 2506 exposes the nested UpdateOptions enum on the builder; module
-    namespace lookups are unreliable across builds.
-    """
-    try:
-        options = getattr(builder, "UpdateOptions", None)
-        if options is not None:
-            return getattr(options, "Yes", None)
-    except Exception:
-        pass
-    return None
-
-
-def _create_mass_properties_builder(work_part, objects):
-    """Create the native MassPropertiesBuilder from the correct manager.
-
-    NX places CreateMassPropertiesBuilder on PropertiesManager (NX12+) and,
-    on some builds, also on MeasureManager.  Returns (builder, manager_name).
-    """
-    attempts = ()
-    properties_manager = getattr(work_part, "PropertiesManager", None)
-    if properties_manager is not None:
-        attempts += ((properties_manager, "PropertiesManager"),)
-    measure_manager = getattr(work_part, "MeasureManager", None)
-    if measure_manager is not None:
-        attempts += ((measure_manager, "MeasureManager"),)
-    last_error = None
-    for manager, name in attempts:
-        create = getattr(manager, "CreateMassPropertiesBuilder", None)
-        if create is None:
-            last_error = "{0} has no CreateMassPropertiesBuilder".format(name)
-            continue
-        try:
-            return create(objects), name
-        except Exception as error:
-            last_error = "{0}: {1}".format(name, error_text(error))
-    raise RuntimeError(
-        "No MassPropertiesBuilder factory found: {0}".format(
-            last_error or "no PropertiesManager/MeasureManager"
-        )
+def rollup_bodies(part, cache):
+    """All BoM-visible solid bodies owned by the part or its descendants."""
+    key = _object_key(part)
+    if key in cache:
+        return cache[key]
+    total = list(classify_bodies(part)["included"])
+    root_component = getattr(
+        getattr(part, "ComponentAssembly", None), "RootComponent", None
     )
+    if root_component is not None:
+        for child in _children(root_component):
+            if not _is_active_visible(child):
+                continue
+            if not _is_bom_visible(child):
+                continue
+            prototype = getattr(child, "Prototype", None)
+            if prototype is not None:
+                total.extend(rollup_bodies(prototype, cache))
+    cache[key] = total
+    return total
 
 
-def run_native_mass_property_update(work_part, objects=None):
-    """Trigger NX's native roll-up mass property update on the assembly.
-
-    NX itself computes and writes NX_MassPropRollupMass / NX_MassPropRollupArea
-    (and the rest of the standard family) on every component.  Returns a
-    status message; raises nothing unless the update cannot be started.
-    """
-    warnings = []
-    builder = None
-    try:
-        if objects is None:
-            root_component = getattr(
-                getattr(work_part, "ComponentAssembly", None),
-                "RootComponent",
-                None,
-            )
-            objects = (
-                [root_component]
-                if root_component is not None
-                else [work_part]
-            )
-        builder, manager_name = _create_mass_properties_builder(
-            work_part, objects
-        )
-        warnings.append("factory: {0}".format(manager_name))
-
-        builder.Accuracy = MEASUREMENT_ACCURACY
-        # NX 2506 has no RollUp builder option: roll-up is implicit because
-        # the assembly root component is the measured object.
-        if getattr(builder, "UpdateOnSave", None) is not None:
-            yes = _update_on_save_yes(builder)
-            if yes is not None:
-                builder.UpdateOnSave = yes
-            else:
-                warnings.append("UpdateOnSave Yes value unavailable")
-        else:
-            warnings.append("UpdateOnSave option unavailable")
-        update_now = getattr(builder, "UpdateNow", None)
-        commit = getattr(builder, "Commit", None)
-        if update_now is None and commit is None:
-            raise RuntimeError(
-                "MassPropertiesBuilder has neither UpdateNow nor Commit."
-            )
-        # Compute immediately, then Commit creates the mass-property update
-        # feature; without Commit no attributes are written at save time.
-        if update_now is not None:
-            update_now()
-        if commit is not None:
-            commit()
-        else:
-            warnings.append("Commit unavailable (update feature not created)")
-        if warnings:
-            return "NATIVE_UPDATE_OK ({0})".format(
-                "; ".join(warnings)
-            )
-        return "NATIVE_UPDATE_OK"
-    except Exception as error:
-        return "NATIVE_UPDATE_FAILED: " + error_text(error)
-    finally:
-        dispose(builder)
-
-
-def probe_builder_api(work_part):
-    """Dump the MassPropertiesBuilder API surface of this NX build."""
-    lines = []
-    for manager_name in ("PropertiesManager", "MeasureManager"):
-        manager = getattr(work_part, manager_name, None)
-        lines.append("{0} members:".format(manager_name))
-        if manager is None:
-            lines.append("  <unavailable>")
+def measure_surface_area_m2(measure_manager, area_unit, length_unit, bodies):
+    """Sum of NewFaceProperties areas; fail-closed with a message."""
+    if not bodies:
+        return None, "No direct traditional solid bodies to measure."
+    total = 0.0
+    failures = []
+    for body in bodies:
+        faces = list(body.GetFaces())
+        if not faces:
+            failures.append("{0}: no measurable faces".format(body.Name))
             continue
-        for member in sorted(
-            name
-            for name in dir(manager)
-            if not name.startswith("_")
-        ):
-            lines.append("  " + member)
-
-    builder = None
-    try:
-        builder, manager_name = _create_mass_properties_builder(
-            work_part, [work_part]
-        )
-        lines.append("MassPropertiesBuilder via {0}:".format(manager_name))
-        for member in sorted(
-            name
-            for name in dir(builder)
-            if not name.startswith("_")
-        ):
-            lines.append("  " + member)
-        options = getattr(builder, "UpdateOptions", None)
-        if options is not None:
-            lines.append(
-                "UpdateOptions members: {0}".format(
-                    [
-                        name
-                        for name in dir(options)
-                        if not name.startswith("_")
-                    ]
+        measurement = None
+        try:
+            measurement = measure_manager.NewFaceProperties(
+                area_unit,
+                length_unit,
+                MEASUREMENT_ACCURACY,
+                faces,
+            )
+            area = float(measurement.Area)
+            if area < 0.0:
+                raise RuntimeError(
+                    "NX returned a negative surface area: {0}".format(area)
                 )
-            )
-        else:
-            lines.append("UpdateOptions: <unavailable>")
-        if getattr(builder, "RollUp", None) is None:
-            lines.append(
-                "RollUp option: <absent on this build; roll-up is implicit "
-                "when measuring the assembly root>"
-            )
-    except Exception as error:
-        lines.append("PROBE FAILED: " + error_text(error))
-    finally:
-        dispose(builder)
-    return lines
+            total += area
+        except Exception as error:
+            failures.append("{0}: {1}".format(body.Name, error_text(error)))
+        finally:
+            dispose(measurement)
+    if failures:
+        return None, " | ".join(failures)
+    return total, ""
 
 
-def _get_real_attribute(part, title):
+def measure_rollup_mass_kg(measure_manager, mass_unit, bodies):
+    """NewMassProperties over the whole roll-up body set; fail-closed."""
+    if not bodies:
+        return None, "No direct traditional solid bodies in the roll-up scope."
+    measurement = None
     try:
-        return float(part.GetRealAttribute(title))
-    except Exception:
-        return None
-
-
-def read_rollup_attributes(part):
-    """Read back the standard NX roll-up attributes (kg and mm^2)."""
-    return {
-        "mass": _get_real_attribute(part, ROLLUP_MASS_ATTRIBUTE),
-        "area": _get_real_attribute(part, ROLLUP_AREA_ATTRIBUTE),
-    }
+        measurement = measure_manager.NewMassProperties(
+            [mass_unit],
+            MEASUREMENT_ACCURACY,
+            bodies,
+        )
+        mass = float(measurement.Mass)
+        if mass < 0.0:
+            raise RuntimeError(
+                "NX returned a negative roll-up mass: {0}".format(mass)
+            )
+        return mass, ""
+    except Exception as error:
+        return None, error_text(error)
+    finally:
+        dispose(measurement)
 
 
 def number_text(value, decimal_places):
     if value is None:
         return ""
     return ("{0:." + str(decimal_places) + "f}").format(value)
+
+
+def _builder_data_type():
+    enum = NXOpen.AttributePropertiesBaseBuilder.DataTypeOptions
+    return enum.Number
+
+
+def write_number_attribute(session, part, title, value):
+    """Write a Number attribute; returns (ok, category, message).
+
+    Tries the NX-native category first, then the verified-writable fallback.
+    """
+    last_error = ""
+    for category in ATTRIBUTE_CATEGORIES:
+        builder = None
+        try:
+            builder = session.AttributeManager.CreateAttributePropertiesBuilder(
+                part,
+                [part],
+                NXOpen.AttributePropertiesBuilder.OperationType.Save,
+            )
+            builder.Category = category
+            builder.Title = title
+            builder.DataType = _builder_data_type()
+            builder.NumberValue = float(value)
+            builder.Commit()
+            return True, category, ""
+        except Exception as error:
+            last_error = error_text(error)
+        finally:
+            dispose(builder)
+    return False, "", last_error
 
 
 def save_part(part):
@@ -514,60 +546,130 @@ def save_part(part):
         dispose(status)
 
 
-def build_result_rows(work_part, timestamp, mode, parts=None):
+def _get_real_attribute(part, title):
+    try:
+        return float(part.GetRealAttribute(title))
+    except Exception:
+        return None
+
+
+def build_result_rows(
+    session,
+    work_part,
+    timestamp,
+    mode,
+    area_unit,
+    length_unit,
+    mass_unit,
+    parts=None,
+):
     if parts is None:
         parts, diagnostics = collect_unique_parts(work_part)
     else:
         diagnostics = []
+    measure_manager = work_part.MeasureManager
+    body_cache = {}
     rows = []
 
     for part, level in parts:
         identity = part_identity(part)
-        messages = []
+        own_bodies = classify_bodies(part)["included"]
+        rollup = rollup_bodies(part, body_cache)
+        area, area_message = measure_surface_area_m2(
+            measure_manager, area_unit, length_unit, rollup
+        )
+        mass, mass_message = measure_rollup_mass_kg(
+            measure_manager, mass_unit, rollup
+        )
 
+        issues = []
+        notes = []
+        if area_message:
+            issues.append("AREA: " + area_message)
+        if mass_message:
+            issues.append("MASS: " + mass_message)
+
+        area_attr_status = ""
+        mass_attr_status = ""
         if mode in ("APPLY", "SMOKE"):
-            # Persist first: with UpdateOnSave=Yes NX writes the roll-up
-            # attributes during Save, so read-back must happen afterwards.
+            if area is not None:
+                ok, category, write_message = write_number_attribute(
+                    session,
+                    part,
+                    ROLLUP_AREA_ATTRIBUTE,
+                    area * SQUARE_MILLIMETRES_PER_SQUARE_METRE,
+                )
+                area_attr_status = "WRITTEN" if ok else "WRITE_FAILED"
+                if not ok:
+                    issues.append(
+                        "AREA ATTRIBUTE: " + write_message
+                    )
+                elif category != ATTRIBUTE_CATEGORIES[0]:
+                    notes.append(
+                        "AREA ATTRIBUTE: fallback category {0}".format(category)
+                    )
+            else:
+                area_attr_status = "NO_SOLIDS" if not rollup else "FAILED"
+            if mass is not None:
+                ok, category, write_message = write_number_attribute(
+                    session, part, ROLLUP_MASS_ATTRIBUTE, mass
+                )
+                mass_attr_status = "WRITTEN" if ok else "WRITE_FAILED"
+                if not ok:
+                    issues.append(
+                        "MASS ATTRIBUTE: " + write_message
+                    )
+                elif category != ATTRIBUTE_CATEGORIES[0]:
+                    notes.append(
+                        "MASS ATTRIBUTE: fallback category {0}".format(category)
+                    )
+            else:
+                mass_attr_status = "NO_SOLIDS" if not rollup else "FAILED"
+        else:
+            area_attr_status = "DRY_RUN" if area is not None else (
+                "NO_SOLIDS" if not rollup else "FAILED"
+            )
+            mass_attr_status = "DRY_RUN" if mass is not None else (
+                "NO_SOLIDS" if not rollup else "FAILED"
+            )
+
+        saved = ""
+        if mode in ("APPLY", "SMOKE") and (area is not None or mass is not None):
             saved_ok, save_message = save_part(part)
             saved = "SAVED" if saved_ok else "SAVE_FAILED"
             if not saved_ok:
-                messages.append("SAVE: " + save_message)
-            attributes = read_rollup_attributes(part)
-            mass_status = (
-                "POPULATED" if attributes["mass"] is not None else "BLANK"
-            )
-            area_status = (
-                "POPULATED" if attributes["area"] is not None else "BLANK"
-            )
-            if mass_status == "BLANK":
-                messages.append(
-                    "MASS ATTRIBUTE: NX did not write {0} for this part.".format(
+                issues.append("SAVE: " + save_message)
+        elif mode in ("APPLY", "SMOKE"):
+            saved = "NOT_APPLICABLE"
+        else:
+            saved = "DRY_RUN"
+
+        # Verify by reading the standard titles back after the write+save.
+        # Only meaningful when attributes were actually written.
+        if mode in ("APPLY", "SMOKE"):
+            read_mass = _get_real_attribute(part, ROLLUP_MASS_ATTRIBUTE)
+            read_area = _get_real_attribute(part, ROLLUP_AREA_ATTRIBUTE)
+            if read_mass is None and mass is not None:
+                issues.append(
+                    "VERIFY: {0} not readable after write".format(
                         ROLLUP_MASS_ATTRIBUTE
                     )
                 )
-            if area_status == "BLANK":
-                messages.append(
-                    "AREA ATTRIBUTE: NX did not write {0} for this part.".format(
+            if read_area is None and area is not None:
+                issues.append(
+                    "VERIFY: {0} not readable after write".format(
                         ROLLUP_AREA_ATTRIBUTE
                     )
                 )
-        else:
-            # DRY_RUN: report the currently stored attributes without updating.
-            attributes = read_rollup_attributes(part)
-            mass_status = (
-                "STORED" if attributes["mass"] is not None else "BLANK"
-            )
-            area_status = (
-                "STORED" if attributes["area"] is not None else "BLANK"
-            )
-            saved = "DRY_RUN"
 
         row_status = "SUCCESS"
         if "SAVE_FAILED" in saved:
             row_status = "SAVE_FAILED"
-        elif "BLANK" in mass_status or "BLANK" in area_status:
+        elif "WRITE_FAILED" in area_attr_status or "WRITE_FAILED" in mass_attr_status:
             row_status = "PARTIAL"
-        elif messages:
+        elif "FAILED" in area_attr_status or "FAILED" in mass_attr_status:
+            row_status = "PARTIAL"
+        elif issues:
             row_status = "PARTIAL"
 
         rows.append(
@@ -579,26 +681,27 @@ def build_result_rows(work_part, timestamp, mode, parts=None):
                 "DB_PART_REV": identity["revision"],
                 "PART_NAME": identity["name"],
                 "LEVEL": level,
-                "ROLLUP_MASS_KG": number_text(
-                    attributes["mass"], MASS_DECIMAL_PLACES
-                ),
+                "OWN_SOLID_BODY_COUNT": len(own_bodies),
+                "ROLLUP_SOLID_BODY_COUNT": len(rollup),
                 "ROLLUP_AREA_MM2": number_text(
-                    attributes["area"], AREA_DECIMAL_PLACES
-                ),
-                "ROLLUP_AREA_M2": number_text(
                     (
-                        attributes["area"]
-                        * SQUARE_METRES_PER_SQUARE_MILLIMETRE
-                        if attributes["area"] is not None
+                        area * SQUARE_MILLIMETRES_PER_SQUARE_METRE
+                        if area is not None
                         else None
                     ),
-                    AREA_M2_DECIMAL_PLACES,
+                    AREA_DECIMAL_PLACES,
                 ),
-                "ROLLUP_MASS_ATTRIBUTE": mass_status,
-                "ROLLUP_AREA_ATTRIBUTE": area_status,
+                "ROLLUP_AREA_M2": number_text(
+                    area, AREA_M2_DECIMAL_PLACES
+                ),
+                "ROLLUP_MASS_KG": number_text(
+                    mass, MASS_DECIMAL_PLACES
+                ),
+                "ROLLUP_AREA_ATTRIBUTE": area_attr_status,
+                "ROLLUP_MASS_ATTRIBUTE": mass_attr_status,
                 "SAVED": saved,
                 "STATUS": row_status,
-                "MESSAGE": " | ".join(messages),
+                "MESSAGE": " | ".join(notes + issues),
             }
         )
 
@@ -636,9 +739,9 @@ def run(session, run_datetime=None):
     timestamp = now.isoformat(timespec="seconds")
     file_timestamp = now.strftime("%Y%m%d_%H%M%S")
     mode = clean(os.environ.get("NX_J21_MODE")) or WRITE_MODE
-    if mode not in ("APPLY", "DRY_RUN", "PROBE", "SMOKE"):
+    if mode not in ("APPLY", "DRY_RUN", "SMOKE"):
         raise RuntimeError(
-            "NX_J21_MODE must be APPLY, DRY_RUN, PROBE, or SMOKE, got: {0}".format(
+            "NX_J21_MODE must be APPLY, DRY_RUN, or SMOKE, got: {0}".format(
                 mode
             )
         )
@@ -651,29 +754,21 @@ def run(session, run_datetime=None):
     if work_part is None:
         raise RuntimeError("Open an NX 3D master part or assembly first.")
 
-    if mode == "PROBE":
-        return None, probe_builder_api(work_part), []
-
-    if mode == "APPLY":
-        update_status = run_native_mass_property_update(work_part)
-        if not update_status.startswith("NATIVE_UPDATE_OK"):
-            raise RuntimeError(update_status)
-        rows, diagnostics = build_result_rows(
-            work_part, timestamp, mode
-        )
-    elif mode == "SMOKE":
-        # Fast iteration: run the native update on the work part only and
-        # report just that part, so the mechanism can be verified quickly.
-        update_status = run_native_mass_property_update(
-            work_part, objects=[work_part]
-        )
-        if not update_status.startswith("NATIVE_UPDATE_OK"):
-            raise RuntimeError(update_status)
-        rows, diagnostics = build_result_rows(
-            work_part, timestamp, mode, parts=[(work_part, 0)]
-        )
+    area_unit, length_unit, mass_unit = resolve_units(work_part)
+    if mode == "SMOKE":
+        parts = [(work_part, 0)]
     else:
-        rows, diagnostics = build_result_rows(work_part, timestamp, mode)
+        parts = None
+    rows, diagnostics = build_result_rows(
+        session,
+        work_part,
+        timestamp,
+        mode,
+        area_unit,
+        length_unit,
+        mass_unit,
+        parts=parts,
+    )
     path = output_path(part_identity(work_part), file_timestamp)
     write_csv(path, rows)
     return path, rows, diagnostics
@@ -688,29 +783,20 @@ def main():
     log_line(session, "Mode: " + mode)
     log_line(
         session,
-        "Mechanism: NX native mass-properties update (Update On Save + Commit)",
+        "Mechanism: classic measure APIs + AttributePropertiesBuilder write",
     )
     log_line(
         session,
-        "Attributes (standard NX, Rolled-Up Mass Properties): "
-        "{0} (kg), {1} (mm^2)".format(
-            ROLLUP_MASS_ATTRIBUTE, ROLLUP_AREA_ATTRIBUTE
+        "Attributes (standard titles): {0} (kg), {1} (mm^2) in {2}".format(
+            ROLLUP_MASS_ATTRIBUTE,
+            ROLLUP_AREA_ATTRIBUTE,
+            " / ".join(ATTRIBUTE_CATEGORIES),
         ),
     )
     log_line(session, "=" * 72)
 
     try:
         path, rows, diagnostics = run(session)
-        if mode == "PROBE":
-            for line in rows:
-                log_line(session, line)
-            log_line(
-                session,
-                "Send this probe output to confirm the exact NX 2506 "
-                "MassPropertiesBuilder option names.",
-            )
-            return
-
         for row in rows:
             log_line(
                 session,
@@ -728,10 +814,7 @@ def main():
             )
             if row["MESSAGE"]:
                 log_line(session, "    " + row["MESSAGE"])
-        log_line(
-            session,
-            "Parts reported: {0}".format(len(rows)),
-        )
+        log_line(session, "Parts reported: {0}".format(len(rows)))
         if diagnostics:
             log_line(
                 session,

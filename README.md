@@ -61,7 +61,8 @@ shared helpers from `from_git\utils`.
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 | 20 | `from_git/journals/20_diagnose_assembly_full_load.py` | Isolates component/prototype failures that occur only during assembly Full Load |
-| 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Drives NX's native Mass Properties update (Roll Up + Update On Save) on the open assembly so NX itself writes `NX_MassPropRollupArea` (mm^2) / `NX_MassPropRollupMass` (kg) on every component, then saves and reports read-back values; area is presented in m^2 |
+| 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Measures roll-up area + mass with the classic NX measure APIs and writes `NX_MassPropRollupArea` (mm^2) / `NX_MassPropRollupMass` (kg) on every BoM-visible 3D master (standard category with `Materials` fallback), then saves and verifies by read-back; area presented in m^2 |
+| 22 | `from_git/journals/22_diagnose_mass_attribute_write.py` | One-part diagnostic: tests classic compute, the native mass-properties builder, and per-category attribute writes, with full before/after attribute dumps |
 
 ## Key Runtime Notes
 
@@ -344,6 +345,7 @@ it opened.
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 | J18 | `NX_SURFACE_AREA\J18_SURFACE_AREA_<part>_<timestamp>.csv` |
 | J21 | `NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_<root>_<timestamp>.csv` |
+| J22 | `NX_MASS_SURFACE_UPDATE\J22_DIAGNOSTIC_<root>_<timestamp>.csv` and `.json` |
 
 ## Notes
 
@@ -358,4 +360,5 @@ it opened.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
 - J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
 - J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.
-- J21 does NOT compute or write attributes itself: it triggers NX's native Mass Properties update (via `PropertiesManager.CreateMassPropertiesBuilder` with `UpdateOnSave=Yes`, `UpdateNow()`, and `Commit()` to create the update feature) on the open assembly, so NX itself writes its standard `NX_MassPropRollupMass` (kg) and `NX_MassPropRollupArea` (mm^2) attributes under `Rolled-Up Mass Properties` on every component. The journal then saves each BoM-visible 3D master (same filter as `NXOpenBoMExtended.py`/J04) and reads the standard attributes back after save. Because NX stores area in mm^2 (PDM template), J21's report adds an m^2 column and the extended BoM exports `NX_MassPropRollupArea_m2` (m^2). `WRITE_MODE` defaults to `APPLY`; `NX_J21_MODE=DRY_RUN` reports current values without touching anything, `NX_J21_MODE=SMOKE` runs the native update on the active work part only (fast iteration to verify the mechanism), and `NX_J21_MODE=PROBE` dumps the builder API surface. Teamcenter parts must be writable (checked out) for the save to succeed; otherwise the part is reported `SAVE_FAILED`.
+- J21 measures every direct traditional solid body of each unique BoM-visible 3D master (work part + unique child prototypes, same filter as `NXOpenBoMExtended.py`/J04) with the classic, verified NX measure APIs (`NewFaceProperties` for roll-up area in m^2, `NewMassProperties` for roll-up mass in kg) and writes the standard `NX_MassPropRollupMass` (kg) and `NX_MassPropRollupArea` (mm^2) Number attributes via `AttributePropertiesBuilder` - the write path verified working on NX 2506. The category defaults to the NX-native `Rolled-Up Mass Properties` and falls back to `Materials` if the PDM template rejects the write; each part is saved and verified by reading the attributes back. `WRITE_MODE` defaults to `APPLY`; `NX_J21_MODE=DRY_RUN` computes and reports without writing, `NX_J21_MODE=SMOKE` runs the active work part only. Teamcenter parts must be writable (checked out) for the save to succeed.
+- J22 is a fast one-part diagnostic (run on a disposable part): it tests the classic compute APIs, the native mass-properties builder (CreateMassPropertiesBuilder + UpdateOnSave + UpdateNow + Commit), and per-category AttributePropertiesBuilder writes, and dumps all attributes before/after so the working mechanism and category on a given NX build are visible.

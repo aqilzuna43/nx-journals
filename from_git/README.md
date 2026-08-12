@@ -37,7 +37,8 @@ Available production journals:
 18_work_part_surface_area.py Active-work-part solid surface-area CSV
 19_test_teamcenter_drawing_import_contract.py Read-only J16 runtime contract probe
 20_diagnose_assembly_full_load.py Component-by-component Full Load failure diagnostic
-21_mass_surface_attribute_updater.py Drives NX-native roll-up mass-properties update
+21_mass_surface_attribute_updater.py Measures roll-up area/mass, writes standard attributes
+22_diagnose_mass_attribute_write.py One-part write-mechanism diagnostic
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
