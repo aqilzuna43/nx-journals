@@ -333,9 +333,9 @@ class J21Tests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         row = rows[0]
         self.assertEqual("264MN000001A01", row["DB_PART_NO"])
-        self.assertEqual("2.5000", row["SURFACE_AREA_M2"])
+        self.assertEqual("2.5000", row["ROLLUP_SURFACE_AREA_M2"])
         self.assertEqual("1.250000", row["ROLLUP_MASS_KG"])
-        self.assertEqual("DRY_RUN", row["SURFACE_AREA_ATTRIBUTE"])
+        self.assertEqual("DRY_RUN", row["ROLLUP_AREA_ATTRIBUTE"])
         self.assertEqual("DRY_RUN", row["ROLLUP_MASS_ATTRIBUTE"])
         self.assertEqual("DRY_RUN", row["SAVED"])
         self.assertEqual("SUCCESS", row["STATUS"])
@@ -374,7 +374,8 @@ class J21Tests(unittest.TestCase):
         self.assertEqual(2, root_row["ROLLUP_SOLID_BODY_COUNT"])
         self.assertEqual("2.000000", child_row["ROLLUP_MASS_KG"])
         self.assertEqual(1, child_row["ROLLUP_SOLID_BODY_COUNT"])
-        self.assertEqual("3.0000", child_row["SURFACE_AREA_M2"])
+        self.assertEqual("4.0000", root_row["ROLLUP_SURFACE_AREA_M2"])
+        self.assertEqual("3.0000", child_row["ROLLUP_SURFACE_AREA_M2"])
         self.assertEqual(0, root_row["LEVEL"])
         self.assertEqual(1, child_row["LEVEL"])
 
@@ -454,7 +455,7 @@ class J21Tests(unittest.TestCase):
         _path, rows, _diagnostics = self.j21.run(session)
 
         row = rows[0]
-        self.assertEqual("WRITTEN", row["SURFACE_AREA_ATTRIBUTE"])
+        self.assertEqual("WRITTEN", row["ROLLUP_AREA_ATTRIBUTE"])
         self.assertEqual("WRITTEN", row["ROLLUP_MASS_ATTRIBUTE"])
         self.assertEqual("SAVED", row["SAVED"])
         self.assertEqual("SUCCESS", row["STATUS"])
@@ -463,14 +464,14 @@ class J21Tests(unittest.TestCase):
             [
                 (
                     part,
-                    "Materials",
-                    "NX_SURFACE_AREA",
+                    "Rolled-Up Mass Properties",
+                    "NX_MassPropRollupArea",
                     "NUMBER",
-                    4.0,
+                    4000000.0,
                 ),
                 (
                     part,
-                    "Materials",
+                    "Rolled-Up Mass Properties",
                     "NX_MassPropRollupMass",
                     "NUMBER",
                     2.0,
@@ -529,7 +530,7 @@ class J21Tests(unittest.TestCase):
         _path, rows, _diagnostics = self.j21.run(session)
 
         row = rows[0]
-        self.assertEqual("WRITE_FAILED", row["SURFACE_AREA_ATTRIBUTE"])
+        self.assertEqual("WRITE_FAILED", row["ROLLUP_AREA_ATTRIBUTE"])
         self.assertEqual("WRITE_FAILED", row["ROLLUP_MASS_ATTRIBUTE"])
         self.assertEqual("PARTIAL", row["STATUS"])
         self.assertIn("AREA ATTRIBUTE:", row["MESSAGE"])
@@ -558,8 +559,8 @@ class J21Tests(unittest.TestCase):
         _path, rows, _diagnostics = self.j21.run(session)
 
         row = rows[0]
-        self.assertEqual("", row["SURFACE_AREA_M2"])
-        self.assertEqual("FAILED", row["SURFACE_AREA_ATTRIBUTE"])
+        self.assertEqual("", row["ROLLUP_SURFACE_AREA_M2"])
+        self.assertEqual("FAILED", row["ROLLUP_AREA_ATTRIBUTE"])
         self.assertEqual("PARTIAL", row["STATUS"])
         self.assertIn("AREA:", row["MESSAGE"])
         # Mass is independent of the failed face measurement.

@@ -2,12 +2,14 @@
 
 Measures every direct traditional solid body of each unique BoM-visible 3D
 master in the open assembly (the active work part plus all child prototypes)
-and writes two Number attributes on every such part in one run:
+and writes two Number attributes on every such part in one run, using the
+NX-native roll-up attribute family under the "Rolled-Up Mass Properties"
+category (exactly where NX itself stores NX_MassPropRollupMass):
 
-    NX_SURFACE_AREA        total surface area of the part's own solid
-                           bodies (square metres)
     NX_MassPropRollupMass  roll-up mass of the part including every
-                           BoM-visible descendant (kilograms)
+                           BoM-visible descendant (kg)
+    NX_MassPropRollupArea  roll-up surface area of the part including every
+                           BoM-visible descendant (square millimetres)
 
 Scope follows the BoM exactly (same filter as NXOpenBoMExtended.py and
 Journal 04): suppressed occurrences, reference-only members
@@ -36,15 +38,20 @@ import traceback
 import NXOpen
 
 
-BUILD = "J21-NX2506-MASS-SURFACE-ATTRIBUTE-UPDATER-V1"
+BUILD = "J21-NX2506-MASS-SURFACE-ATTRIBUTE-UPDATER-V2"
 WRITE_MODE = "APPLY"  # "APPLY" or "DRY_RUN"; environment NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 AREA_DECIMAL_PLACES = 4
 MASS_DECIMAL_PLACES = 6
-ATTRIBUTE_CATEGORY = "Materials"
-SURFACE_AREA_ATTRIBUTE = "NX_SURFACE_AREA"
+# NX-native roll-up attribute family; the category matches where NX itself
+# stores NX_MassPropRollupMass (see the part attribute listing template).
+ATTRIBUTE_CATEGORY = "Rolled-Up Mass Properties"
 ROLLUP_MASS_ATTRIBUTE = "NX_MassPropRollupMass"
+ROLLUP_AREA_ATTRIBUTE = "NX_MassPropRollupArea"
+# NX defines NX_MassPropRollupArea in square millimetres; the journal
+# measures in square metres and converts at write time.
+SQUARE_MILLIMETRES_PER_SQUARE_METRE = 1_000_000.0
 
 # --- BOM VISIBILITY (mirrors NXOpenBoMExtended.py and Journal 04) ---
 IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
@@ -63,9 +70,9 @@ RESULT_COLUMNS = (
     "LEVEL",
     "OWN_SOLID_BODY_COUNT",
     "ROLLUP_SOLID_BODY_COUNT",
-    "SURFACE_AREA_M2",
+    "ROLLUP_SURFACE_AREA_M2",
     "ROLLUP_MASS_KG",
-    "SURFACE_AREA_ATTRIBUTE",
+    "ROLLUP_AREA_ATTRIBUTE",
     "ROLLUP_MASS_ATTRIBUTE",
     "SAVED",
     "STATUS",
@@ -560,7 +567,7 @@ def build_result_rows(
             measure_manager,
             area_unit,
             length_unit,
-            own_bodies,
+            rollup,
         )
         mass, mass_message = measure_rollup_mass_kg(
             measure_manager,
@@ -579,7 +586,10 @@ def build_result_rows(
         if mode == "APPLY":
             if area is not None:
                 ok, write_message = write_number_attribute(
-                    session, part, SURFACE_AREA_ATTRIBUTE, area
+                    session,
+                    part,
+                    ROLLUP_AREA_ATTRIBUTE,
+                    area * SQUARE_MILLIMETRES_PER_SQUARE_METRE,
                 )
                 area_attr_status = "WRITTEN" if ok else "WRITE_FAILED"
                 if not ok:
@@ -587,7 +597,7 @@ def build_result_rows(
                         "AREA ATTRIBUTE: " + write_message
                     )
             else:
-                area_attr_status = "NO_SOLIDS" if not own_bodies else "FAILED"
+                area_attr_status = "NO_SOLIDS" if not rollup else "FAILED"
             if mass is not None:
                 ok, write_message = write_number_attribute(
                     session, part, ROLLUP_MASS_ATTRIBUTE, mass
@@ -605,7 +615,7 @@ def build_result_rows(
             if area is not None:
                 area_attr_status = "DRY_RUN"
             else:
-                area_attr_status = "NO_SOLIDS" if not own_bodies else "FAILED"
+                area_attr_status = "NO_SOLIDS" if not rollup else "FAILED"
             if mass is not None:
                 mass_attr_status = "DRY_RUN"
             else:
@@ -643,9 +653,11 @@ def build_result_rows(
                 "LEVEL": level,
                 "OWN_SOLID_BODY_COUNT": len(own_bodies),
                 "ROLLUP_SOLID_BODY_COUNT": len(rollup),
-                "SURFACE_AREA_M2": number_text(area, AREA_DECIMAL_PLACES),
+                "ROLLUP_SURFACE_AREA_M2": number_text(
+                    area, AREA_DECIMAL_PLACES
+                ),
                 "ROLLUP_MASS_KG": number_text(mass, MASS_DECIMAL_PLACES),
-                "SURFACE_AREA_ATTRIBUTE": area_attr_status,
+                "ROLLUP_AREA_ATTRIBUTE": area_attr_status,
                 "ROLLUP_MASS_ATTRIBUTE": mass_attr_status,
                 "SAVED": saved,
                 "STATUS": row_status,
@@ -728,8 +740,8 @@ def main():
     )
     log_line(
         session,
-        "Attributes: {0} (m^2), {1} (kg, roll-up)".format(
-            SURFACE_AREA_ATTRIBUTE,
+        "Attributes: {0} (mm^2), {1} (kg, roll-up)".format(
+            ROLLUP_AREA_ATTRIBUTE,
             ROLLUP_MASS_ATTRIBUTE,
         ),
     )
@@ -740,12 +752,12 @@ def main():
         for row in rows:
             log_line(
                 session,
-                "{0} | {1} | area={2} m^2 [{3}] | rollup={4} kg [{5}] | "
+                "{0} | {1} | rollup area={2} m^2 [{3}] | rollup={4} kg [{5}] | "
                 "saved={6} | {7}".format(
                     row["DB_PART_NO"] or row["PART_NAME"],
                     row["LEVEL"],
-                    row["SURFACE_AREA_M2"] or "<blank>",
-                    row["SURFACE_AREA_ATTRIBUTE"],
+                    row["ROLLUP_SURFACE_AREA_M2"] or "<blank>",
+                    row["ROLLUP_AREA_ATTRIBUTE"],
                     row["ROLLUP_MASS_KG"] or "<blank>",
                     row["ROLLUP_MASS_ATTRIBUTE"],
                     row["SAVED"],
