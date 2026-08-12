@@ -23,9 +23,11 @@ The journal does NOT create, compute, or write attributes itself.  It:
 WRITE_MODE defaults to "APPLY".  Set WRITE_MODE = "DRY_RUN" (or the
 NX_J21_MODE environment variable) to report the current stored attribute
 values and scope without updating or saving anything.  Set WRITE_MODE =
-"PROBE" to dump the PropertiesManager/MeasureManager and builder API
-surface of this NX build to the Listing Window (useful once, to confirm
-option names).
+"SMOKE" to run the native update on the active work part only (fast
+iteration to verify the mechanism before a full-assembly run).  Set
+WRITE_MODE = "PROBE" to dump the PropertiesManager/MeasureManager and
+builder API surface of this NX build to the Listing Window (useful once,
+to confirm option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
@@ -343,7 +345,7 @@ def _create_mass_properties_builder(work_part, objects):
     )
 
 
-def run_native_mass_property_update(work_part):
+def run_native_mass_property_update(work_part, objects=None):
     """Trigger NX's native roll-up mass property update on the assembly.
 
     NX itself computes and writes NX_MassPropRollupMass / NX_MassPropRollupArea
@@ -353,12 +355,17 @@ def run_native_mass_property_update(work_part):
     warnings = []
     builder = None
     try:
-        root_component = getattr(
-            getattr(work_part, "ComponentAssembly", None),
-            "RootComponent",
-            None,
-        )
-        objects = [root_component] if root_component is not None else [work_part]
+        if objects is None:
+            root_component = getattr(
+                getattr(work_part, "ComponentAssembly", None),
+                "RootComponent",
+                None,
+            )
+            objects = (
+                [root_component]
+                if root_component is not None
+                else [work_part]
+            )
         builder, manager_name = _create_mass_properties_builder(
             work_part, objects
         )
@@ -376,11 +383,19 @@ def run_native_mass_property_update(work_part):
         else:
             warnings.append("UpdateOnSave option unavailable")
         update_now = getattr(builder, "UpdateNow", None)
-        if update_now is None:
+        commit = getattr(builder, "Commit", None)
+        if update_now is None and commit is None:
             raise RuntimeError(
-                "MassPropertiesBuilder.UpdateNow is unavailable on this build."
+                "MassPropertiesBuilder has neither UpdateNow nor Commit."
             )
-        update_now()
+        # Compute immediately, then Commit creates the mass-property update
+        # feature; without Commit no attributes are written at save time.
+        if update_now is not None:
+            update_now()
+        if commit is not None:
+            commit()
+        else:
+            warnings.append("Commit unavailable (update feature not created)")
         if warnings:
             return "NATIVE_UPDATE_OK ({0})".format(
                 "; ".join(warnings)
@@ -487,15 +502,18 @@ def save_part(part):
         dispose(status)
 
 
-def build_result_rows(work_part, timestamp, mode):
-    parts, diagnostics = collect_unique_parts(work_part)
+def build_result_rows(work_part, timestamp, mode, parts=None):
+    if parts is None:
+        parts, diagnostics = collect_unique_parts(work_part)
+    else:
+        diagnostics = []
     rows = []
 
     for part, level in parts:
         identity = part_identity(part)
         messages = []
 
-        if mode == "APPLY":
+        if mode in ("APPLY", "SMOKE"):
             # Persist first: with UpdateOnSave=Yes NX writes the roll-up
             # attributes during Save, so read-back must happen afterwards.
             saved_ok, save_message = save_part(part)
@@ -606,9 +624,9 @@ def run(session, run_datetime=None):
     timestamp = now.isoformat(timespec="seconds")
     file_timestamp = now.strftime("%Y%m%d_%H%M%S")
     mode = clean(os.environ.get("NX_J21_MODE")) or WRITE_MODE
-    if mode not in ("APPLY", "DRY_RUN", "PROBE"):
+    if mode not in ("APPLY", "DRY_RUN", "PROBE", "SMOKE"):
         raise RuntimeError(
-            "NX_J21_MODE must be APPLY, DRY_RUN, or PROBE, got: {0}".format(
+            "NX_J21_MODE must be APPLY, DRY_RUN, PROBE, or SMOKE, got: {0}".format(
                 mode
             )
         )
@@ -628,8 +646,22 @@ def run(session, run_datetime=None):
         update_status = run_native_mass_property_update(work_part)
         if not update_status.startswith("NATIVE_UPDATE_OK"):
             raise RuntimeError(update_status)
-
-    rows, diagnostics = build_result_rows(work_part, timestamp, mode)
+        rows, diagnostics = build_result_rows(
+            work_part, timestamp, mode
+        )
+    elif mode == "SMOKE":
+        # Fast iteration: run the native update on the work part only and
+        # report just that part, so the mechanism can be verified quickly.
+        update_status = run_native_mass_property_update(
+            work_part, objects=[work_part]
+        )
+        if not update_status.startswith("NATIVE_UPDATE_OK"):
+            raise RuntimeError(update_status)
+        rows, diagnostics = build_result_rows(
+            work_part, timestamp, mode, parts=[(work_part, 0)]
+        )
+    else:
+        rows, diagnostics = build_result_rows(work_part, timestamp, mode)
     path = output_path(part_identity(work_part), file_timestamp)
     write_csv(path, rows)
     return path, rows, diagnostics
@@ -644,7 +676,7 @@ def main():
     log_line(session, "Mode: " + mode)
     log_line(
         session,
-        "Mechanism: NX native mass-properties update (Roll Up + Update On Save)",
+        "Mechanism: NX native mass-properties update (Update On Save + Commit)",
     )
     log_line(
         session,

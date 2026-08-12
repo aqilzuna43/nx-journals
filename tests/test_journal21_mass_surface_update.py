@@ -58,6 +58,7 @@ class FakeManagerFactory:
         self.name = name
         self.builder_calls = []
         self.update_now_calls = 0
+        self.commit_calls = 0
 
     def CreateMassPropertiesBuilder(self, objects):
         builder = FakeBuilder(self, objects)
@@ -74,16 +75,24 @@ class FakeBuilder:
         self.UpdateOnSave = "NO"
         self.UpdateOptions = types.SimpleNamespace(Yes="YES")
         self.UpdateNow_called = False
+        self.Commit_called = False
 
     def UpdateNow(self):
         self.UpdateNow_called = True
         self.manager.update_now_calls += 1
         for obj in self.objects:
-            for part in walk_prototypes(obj):
+            targets = list(walk_prototypes(obj))
+            if not targets and getattr(obj, "real_attributes", None) is not None:
+                targets = [obj]  # the measured object is a part itself
+            for part in targets:
                 part.real_attributes["NX_MassPropRollupMass"] = 0.25
                 part.real_attributes["NX_MassPropRollupArea"] = 20000.0
                 part.real_attributes["NX_Mass"] = 0.1
                 part.real_attributes["NX_Area"] = 8000.0
+
+    def Commit(self):
+        self.Commit_called = True
+        self.manager.commit_calls += 1
 
 
 class FakePart:
@@ -240,7 +249,9 @@ class J21Tests(unittest.TestCase):
         self.assertIsNone(builder.RollUp)
         self.assertEqual("YES", builder.UpdateOnSave)
         self.assertTrue(builder.UpdateNow_called)
+        self.assertTrue(builder.Commit_called)
         self.assertEqual(1, manager.update_now_calls)
+        self.assertEqual(1, manager.commit_calls)
 
         self.assertFalse(diagnostics)
         by_number = rows_by_part_number(rows)
@@ -283,6 +294,27 @@ class J21Tests(unittest.TestCase):
         self.assertEqual("0.250000", rows[0]["ROLLUP_MASS_KG"])
         self.assertEqual("0.0200", rows[0]["ROLLUP_AREA_M2"])
         self.assertEqual("SAVED", rows[0]["SAVED"])
+
+    def test_smoke_runs_update_on_work_part_only(self):
+        root, children = self.make_assembly()
+        session = FakeSession(root)
+
+        os.environ["NX_J21_MODE"] = "SMOKE"
+        _path, rows, _diagnostics = self.j21.run(session)
+
+        manager = root.PropertiesManager
+        self.assertEqual(1, len(manager.builder_calls))
+        # SMOKE measures only the work part, not the whole assembly.
+        self.assertEqual([root], manager.builder_calls[0].objects)
+        self.assertTrue(manager.builder_calls[0].UpdateNow_called)
+        self.assertTrue(manager.builder_calls[0].Commit_called)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("264MN000001A01", rows[0]["DB_PART_NO"])
+        self.assertEqual("POPULATED", rows[0]["ROLLUP_MASS_ATTRIBUTE"])
+        self.assertEqual("SAVED", rows[0]["SAVED"])
+        self.assertTrue(root.saved)
+        self.assertFalse(children[0].saved)
+        self.assertFalse(children[1].saved)
 
     def test_dry_run_reports_current_values_without_update_or_save(self):
         root, children = self.make_assembly()
