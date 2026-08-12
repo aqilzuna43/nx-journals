@@ -37,11 +37,15 @@ Available production journals:
 18_work_part_surface_area.py Active-work-part solid surface-area CSV
 19_test_teamcenter_drawing_import_contract.py Read-only J16 runtime contract probe
 20_diagnose_assembly_full_load.py Component-by-component Full Load failure diagnostic
+21_mass_surface_attribute_updater.py Assembly mass + surface-area attribute updater
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
 package/import path problems. They read
 `config/attribute_reconciliation.json`; J05 production saving remains
+J21 is also self-contained and follows the same BoM visibility filter as
+`NXOpenBoMExtended.py` (suppressed, reference-only, and keyword-named
+occurrences are excluded).
 The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder

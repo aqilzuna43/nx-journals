@@ -61,6 +61,7 @@ shared helpers from `from_git\utils`.
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 | 20 | `from_git/journals/20_diagnose_assembly_full_load.py` | Isolates component/prototype failures that occur only during assembly Full Load |
+| 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Measures surface area + roll-up mass and writes `NX_SURFACE_AREA` / `NX_MassPropRollupMass` on every BoM-visible 3D master in the open assembly, then saves |
 
 ## Key Runtime Notes
 
@@ -342,6 +343,7 @@ it opened.
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 | J18 | `NX_SURFACE_AREA\J18_SURFACE_AREA_<part>_<timestamp>.csv` |
+| J21 | `NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_<root>_<timestamp>.csv` |
 
 ## Notes
 
@@ -356,3 +358,4 @@ it opened.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
 - J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
 - J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.
+- J21 measures every BoM-visible 3D master in the open assembly (work part + unique child prototypes, same filter as `NXOpenBoMExtended.py`/J04) and writes `NX_SURFACE_AREA` (m^2, own solid bodies) and `NX_MassPropRollupMass` (kg, own + BoM-visible descendants) as Number attributes in the `Materials` category, then saves each part. `WRITE_MODE` defaults to `APPLY` so one run updates the active part and all children; set `WRITE_MODE = "DRY_RUN"` (or `NX_J21_MODE=DRY_RUN`) to report without writing. Teamcenter parts must be writable (checked out) for the save to succeed; otherwise the part is reported `SAVE_FAILED`.
