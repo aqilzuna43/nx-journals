@@ -31,6 +31,18 @@ to confirm option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
+
+========================================================================
+J21 ASSEMBLY MASS & SURFACE AREA ATTRIBUTE UPDATER
+Build: J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3
+Mode: SMOKE
+Mechanism: NX native mass-properties update (Update On Save + Commit)
+Attributes (standard NX, Rolled-Up Mass Properties): NX_MassPropRollupMass (kg), NX_MassPropRollupArea (mm^2)
+========================================================================
+264MN032797A01 | 0 | rollup mass=<blank> kg [BLANK] | rollup area=<blank> m^2 [BLANK] | saved=SAVED | PARTIAL
+    MASS ATTRIBUTE: NX did not write NX_MassPropRollupMass for this part. | AREA ATTRIBUTE: NX did not write NX_MassPropRollupArea for this part.
+Parts reported: 1
+CSV: C:\Users\my62022696\Desktop\NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_264MN032797A01_20260812_234158.csv
 """
 
 import csv
@@ -42,7 +54,7 @@ import NXOpen
 
 
 BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+WRITE_MODE = "SMOKE"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
