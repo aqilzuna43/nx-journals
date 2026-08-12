@@ -70,8 +70,9 @@ class FakeBuilder:
         self.manager = manager
         self.objects = list(objects)
         self.Accuracy = None
-        self.RollUp = False
+        self.RollUp = None
         self.UpdateOnSave = "NO"
+        self.UpdateOptions = types.SimpleNamespace(Yes="YES")
         self.UpdateNow_called = False
 
     def UpdateNow(self):
@@ -234,7 +235,9 @@ class J21Tests(unittest.TestCase):
         self.assertEqual(1, len(manager.builder_calls))
         builder = manager.builder_calls[0]
         self.assertEqual(0.99, builder.Accuracy)
-        self.assertIs(True, builder.RollUp)
+        # NX 2506 has no RollUp builder option; roll-up is implicit when the
+        # assembly root is measured.
+        self.assertIsNone(builder.RollUp)
         self.assertEqual("YES", builder.UpdateOnSave)
         self.assertTrue(builder.UpdateNow_called)
         self.assertEqual(1, manager.update_now_calls)

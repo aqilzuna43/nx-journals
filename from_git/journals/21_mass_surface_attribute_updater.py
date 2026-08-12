@@ -1,8 +1,8 @@
 """Journal 21 - Assembly Mass & Surface Area Attribute Updater (NX 2506)
 
 Drives NX's NATIVE Mass Properties update on the open assembly - the same
-engine behind Tools > Measure Mass Properties with Roll Up + Update On Save.
-NX itself computes and writes its standard attributes on every component:
+engine behind Tools > Measure Mass Properties with Update On Save.  NX itself
+computes and writes its standard attributes on every component:
 
     NX_MassPropRollupMass  roll-up mass (kg)      [Rolled-Up Mass Properties]
     NX_MassPropRollupArea  roll-up area (mm^2)    [Rolled-Up Mass Properties]
@@ -11,8 +11,11 @@ The journal does NOT create, compute, or write attributes itself.  It:
   1. confirms the BoM-visible 3D masters in the open assembly (same filter
      as NXOpenBoMExtended.py / Journal 04: suppressed, reference-only, and
      keyword-named occurrences are excluded),
-  2. triggers the native mass-properties update once on the assembly,
-  3. saves each BoM-visible part,
+  2. triggers the native mass-properties update once on the assembly
+     (PropertiesManager.CreateMassPropertiesBuilder with UpdateOnSave=Yes,
+     then UpdateNow; NX 2506 has no RollUp option - roll-up is implicit when
+     the assembly root is measured),
+  3. saves each BoM-visible part (attributes are persisted on save),
   4. reads the standard attributes back for the CSV/Listing report, so the
      run proves what NX wrote.  A blank read-back means the native update
      did not engage for that part and must be investigated.
@@ -20,8 +23,9 @@ The journal does NOT create, compute, or write attributes itself.  It:
 WRITE_MODE defaults to "APPLY".  Set WRITE_MODE = "DRY_RUN" (or the
 NX_J21_MODE environment variable) to report the current stored attribute
 values and scope without updating or saving anything.  Set WRITE_MODE =
-"PROBE" to dump the MassPropertiesBuilder API surface of this NX build to
-the Listing Window (useful once, to confirm option names).
+"PROBE" to dump the PropertiesManager/MeasureManager and builder API
+surface of this NX build to the Listing Window (useful once, to confirm
+option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
@@ -262,25 +266,6 @@ RESULT_COLUMNS = (
 _INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
 
-def _resolve_update_on_save_yes():
-    """Resolve the UpdateOnSave=Yes enum member at import time."""
-    for base in ("NXOpen.Measure", "NXOpen"):
-        try:
-            current = __import__("NXOpen", fromlist=["*"])
-            for part in base.split(".")[1:] + [
-                "MassPropertiesBuilder",
-                "UpdateOptions",
-            ]:
-                current = getattr(current, part)
-            return getattr(current, "Yes")
-        except Exception:
-            continue
-    return None
-
-
-UPDATE_ON_SAVE_YES = _resolve_update_on_save_yes()
-
-
 def _text(value):
     return "" if value is None else str(value)
 
@@ -497,21 +482,19 @@ def collect_unique_parts(work_part):
     return list(unique.values()), diagnostics
 
 
-def _nx_enum(enum_path, member_name):
-    """Resolve an NXOpen enum member defensively across package layouts."""
-    for base in ("NXOpen.Measure", "NXOpen"):
-        try:
-            current = __import__("NXOpen", fromlist=["*"])
-            for part in base.split(".")[1:] + enum_path.split("."):
-                current = getattr(current, part)
-            return getattr(current, member_name)
-        except Exception:
-            continue
-    raise RuntimeError(
-        "NX enum {0}.{1} is unavailable on this build.".format(
-            enum_path, member_name
-        )
-    )
+def _update_on_save_yes(builder):
+    """Resolve the UpdateOnSave=Yes member from the builder instance.
+
+    NX 2506 exposes the nested UpdateOptions enum on the builder; module
+    namespace lookups are unreliable across builds.
+    """
+    try:
+        options = getattr(builder, "UpdateOptions", None)
+        if options is not None:
+            return getattr(options, "Yes", None)
+    except Exception:
+        pass
+    return None
 
 
 def _create_mass_properties_builder(work_part, objects):
@@ -566,15 +549,14 @@ def run_native_mass_property_update(work_part):
         warnings.append("factory: {0}".format(manager_name))
 
         builder.Accuracy = MEASUREMENT_ACCURACY
-        # NX X 2506 builder options; skipped defensively if a name differs.
-        if getattr(builder, "RollUp", None) is not None:
-            builder.RollUp = True
-        else:
-            warnings.append("RollUp option unavailable")
-        if UPDATE_ON_SAVE_YES is not None and getattr(
-            builder, "UpdateOnSave", None
-        ) is not None:
-            builder.UpdateOnSave = UPDATE_ON_SAVE_YES
+        # NX 2506 has no RollUp builder option: roll-up is implicit because
+        # the assembly root component is the measured object.
+        if getattr(builder, "UpdateOnSave", None) is not None:
+            yes = _update_on_save_yes(builder)
+            if yes is not None:
+                builder.UpdateOnSave = yes
+            else:
+                warnings.append("UpdateOnSave Yes value unavailable")
         else:
             warnings.append("UpdateOnSave option unavailable")
         update_now = getattr(builder, "UpdateNow", None)
@@ -622,22 +604,24 @@ def probe_builder_api(work_part):
             if not name.startswith("_")
         ):
             lines.append("  " + member)
-        for path in (
-            "MassPropertiesBuilder.UpdateOptions",
-            "MassPropertiesBuilder.MeasurementType",
-        ):
-            try:
-                enum_type = _nx_enum(path, "__members__")
-                lines.append(
-                    "{0} = {1}".format(
-                        path,
-                        [member for member in enum_type],
-                    )
+        options = getattr(builder, "UpdateOptions", None)
+        if options is not None:
+            lines.append(
+                "UpdateOptions members: {0}".format(
+                    [
+                        name
+                        for name in dir(options)
+                        if not name.startswith("_")
+                    ]
                 )
-            except Exception as error:
-                lines.append(
-                    "{0}: unavailable ({1})".format(path, error_text(error))
-                )
+            )
+        else:
+            lines.append("UpdateOptions: <unavailable>")
+        if getattr(builder, "RollUp", None) is None:
+            lines.append(
+                "RollUp option: <absent on this build; roll-up is implicit "
+                "when measuring the assembly root>"
+            )
     except Exception as error:
         lines.append("PROBE FAILED: " + error_text(error))
     finally:
@@ -696,6 +680,12 @@ def build_result_rows(work_part, timestamp, mode):
         messages = []
 
         if mode == "APPLY":
+            # Persist first: with UpdateOnSave=Yes NX writes the roll-up
+            # attributes during Save, so read-back must happen afterwards.
+            saved_ok, save_message = save_part(part)
+            saved = "SAVED" if saved_ok else "SAVE_FAILED"
+            if not saved_ok:
+                messages.append("SAVE: " + save_message)
             attributes = read_rollup_attributes(part)
             mass_status = (
                 "POPULATED" if attributes["mass"] is not None else "BLANK"
@@ -715,10 +705,6 @@ def build_result_rows(work_part, timestamp, mode):
                         ROLLUP_AREA_ATTRIBUTE
                     )
                 )
-            saved_ok, save_message = save_part(part)
-            saved = "SAVED" if saved_ok else "SAVE_FAILED"
-            if not saved_ok:
-                messages.append("SAVE: " + save_message)
         else:
             # DRY_RUN: report the currently stored attributes without updating.
             attributes = read_rollup_attributes(part)
