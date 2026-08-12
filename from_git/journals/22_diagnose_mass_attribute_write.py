@@ -258,6 +258,59 @@ def resolve_area_units(work_part):
     return area_unit, length_unit, mass_unit
 
 
+def child_parts(work_part):
+    """Active direct child (name, prototype) pairs of the assembly root."""
+    root = getattr(
+        getattr(work_part, "ComponentAssembly", None), "RootComponent", None
+    )
+    if root is None:
+        return []
+    result = []
+    for component in list(getattr(root, "GetChildren", lambda: [])()):
+        if bool(getattr(component, "IsSuppressed", False)):
+            continue
+        prototype = getattr(component, "Prototype", None)
+        if prototype is not None:
+            name = clean(
+                getattr(component, "DisplayName", "")
+                or getattr(component, "Name", "")
+                or "<unknown>"
+            )
+            result.append((name, prototype))
+    return result
+
+
+def _builder_members(manager, create_name, objects):
+    """Dump the API surface of a named builder factory, if present."""
+    create = getattr(manager, create_name, None)
+    if create is None:
+        return {
+            "builder": create_name,
+            "available": False,
+            "members": [],
+        }
+    builder = None
+    try:
+        builder = create(objects)
+        members = sorted(
+            name for name in dir(builder) if not name.startswith("_")
+        )
+        return {
+            "builder": create_name,
+            "available": True,
+            "members": members,
+        }
+    except Exception as error:
+        return {
+            "builder": create_name,
+            "available": "ERROR",
+            "members": [],
+            "message": error_text(error),
+        }
+    finally:
+        dispose(builder)
+
+
 def test_classic_compute(work_part, bodies):
     """Test A: NewMassProperties + NewFaceProperties on own solid bodies."""
     findings = []
@@ -375,6 +428,18 @@ def test_native_builder(work_part):
                 "message": " | ".join(messages),
             }
         )
+        # Also dump the assembly-properties builder surfaces: these are the
+        # likely roll-up mass/area API on NX 2506 (MassPropertiesBuilder has
+        # no RollUp option).
+        for create_name in (
+            "CreateAssembliesGeneralPropertiesBuilder",
+            "CreateAssembliesParameterPropertiesBuilder",
+        ):
+            info = _builder_members(
+                properties_manager, create_name, objects
+            )
+            info["test"] = "B_probe_builders"
+            findings.append(info)
     except Exception as error:
         findings.append(
             {
@@ -478,21 +543,46 @@ def run(session, run_datetime=None):
         )
 
     # After save, did NX's native update actually write the reserved roll-up
-    # attributes?  This is the key read-back proof.
-    try:
-        rollup_mass = work_part.GetRealAttribute(ROLLUP_MASS_ATTRIBUTE)
-    except Exception:
-        rollup_mass = None
-    try:
-        rollup_area = work_part.GetRealAttribute(ROLLUP_AREA_ATTRIBUTE)
-    except Exception:
-        rollup_area = None
+    # attributes?  Read back from the assembly AND each direct child part
+    # (roll-up attributes live on component parts, not the empty assembly).
+    def _read_rollup(part):
+        try:
+            mass = part.GetRealAttribute(ROLLUP_MASS_ATTRIBUTE)
+        except Exception:
+            mass = None
+        try:
+            area = part.GetRealAttribute(ROLLUP_AREA_ATTRIBUTE)
+        except Exception:
+            area = None
+        return mass, area
+
+    work_mass, work_area = _read_rollup(work_part)
+    children = child_parts(work_part)
+    child_read_back = []
+    for name, prototype in children:
+        mass, area = _read_rollup(prototype)
+        child_read_back.append(
+            {
+                "name": name,
+                "number": get_string_attribute(prototype, "DB_PART_NO")
+                or get_string_attribute(prototype, "PART_NUMBER")
+                or "",
+                "NX_MassPropRollupMass_kg": mass,
+                "NX_MassPropRollupArea_mm2": area,
+            }
+        )
     findings.append(
         {
             "test": "B_native_read_back",
-            "status": "POPULATED" if rollup_mass is not None else "BLANK",
-            "NX_MassPropRollupMass_kg": rollup_mass,
-            "NX_MassPropRollupArea_mm2": rollup_area,
+            "status": (
+                "POPULATED"
+                if work_mass is not None
+                or any(item["NX_MassPropRollupMass_kg"] is not None for item in child_read_back)
+                else "BLANK"
+            ),
+            "work_part_NX_MassPropRollupMass_kg": work_mass,
+            "work_part_NX_MassPropRollupArea_mm2": work_area,
+            "children": child_read_back,
         }
     )
 

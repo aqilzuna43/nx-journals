@@ -342,7 +342,7 @@ class J22Tests(unittest.TestCase):
         self.assertEqual("264MN000001A01", payload["work_part"]["number"])
         self.assertEqual(1, payload["solid_body_count"])
         statuses = {
-            (item.get("test"), item.get("category", "")): item["status"]
+            (item.get("test"), item.get("category", "")): item.get("status")
             for item in payload["findings"]
         }
         self.assertEqual("OK", statuses[("A_classic_compute", "")])
@@ -367,7 +367,7 @@ class J22Tests(unittest.TestCase):
         _csv_path, _json_path, report = self.j22.run(session)
 
         statuses = {
-            item.get("test"): item["status"] for item in report["findings"]
+            item.get("test"): item.get("status") for item in report["findings"]
         }
         self.assertEqual(
             "FAILED", statuses["A_classic_compute_NewMassProperties"]
@@ -380,7 +380,7 @@ class J22Tests(unittest.TestCase):
         _csv_path, _json_path, report = self.j22.run(session)
 
         statuses = {
-            item.get("test"): item["status"] for item in report["findings"]
+            item.get("test"): item.get("status") for item in report["findings"]
         }
         self.assertEqual("NO_PROPERTIES_MANAGER", statuses["B_native_builder"])
 
@@ -393,7 +393,7 @@ class J22Tests(unittest.TestCase):
         _csv_path, _json_path, report = self.j22.run(session)
 
         statuses = {
-            (item.get("test"), item.get("category", "")): item["status"]
+            (item.get("test"), item.get("category", "")): item.get("status")
             for item in report["findings"]
         }
         self.assertEqual(
