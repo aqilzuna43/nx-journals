@@ -25,6 +25,16 @@ the Listing Window (useful once, to confirm option names).
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
+
+========================================================================
+J21 ASSEMBLY MASS & SURFACE AREA ATTRIBUTE UPDATER
+Build: J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3
+Mode: PROBE
+Mechanism: NX native mass-properties update (Roll Up + Update On Save)
+Attributes (standard NX, Rolled-Up Mass Properties): NX_MassPropRollupMass (kg), NX_MassPropRollupArea (mm^2)
+========================================================================
+PROBE FAILED: 'NXOpen.MeasureManager' object has no attribute 'CreateMassPropertiesBuilder'
+Send this probe output to confirm the exact NX 2506 MassPropertiesBuilder option names.
 """
 
 import csv
@@ -36,7 +46,7 @@ import NXOpen
 
 
 BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+WRITE_MODE = "PROBE"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
