@@ -48,7 +48,8 @@ J21 is also self-contained and follows the same BoM visibility filter as
 occurrences are excluded). J21 does not write attributes itself: it triggers
 NX's native Mass Properties update (Roll Up + Update On Save) and NX writes
 its standard `NX_MassPropRollupMass` / `NX_MassPropRollupArea` attributes on
-every component.
+every component. NX stores area in mm^2; the extended BoM exports
+`NX_MassPropRollupArea_m2` (converted m^2) and the J21 report carries both.
 The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder

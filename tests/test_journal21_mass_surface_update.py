@@ -250,6 +250,7 @@ class J21Tests(unittest.TestCase):
             row = by_number[number]
             self.assertEqual("0.250000", row["ROLLUP_MASS_KG"])
             self.assertEqual("20000.00", row["ROLLUP_AREA_MM2"])
+            self.assertEqual("0.0200", row["ROLLUP_AREA_M2"])
             self.assertEqual("POPULATED", row["ROLLUP_MASS_ATTRIBUTE"])
             self.assertEqual("POPULATED", row["ROLLUP_AREA_ATTRIBUTE"])
             self.assertEqual("SAVED", row["SAVED"])
@@ -277,6 +278,7 @@ class J21Tests(unittest.TestCase):
         self.assertEqual(1, len(manager.builder_calls))
         self.assertTrue(manager.builder_calls[0].UpdateNow_called)
         self.assertEqual("0.250000", rows[0]["ROLLUP_MASS_KG"])
+        self.assertEqual("0.0200", rows[0]["ROLLUP_AREA_M2"])
         self.assertEqual("SAVED", rows[0]["SAVED"])
 
     def test_dry_run_reports_current_values_without_update_or_save(self):
@@ -296,6 +298,7 @@ class J21Tests(unittest.TestCase):
         row = rows_by_part_number(rows)["264MN000002A01"]
         self.assertEqual("0.500000", row["ROLLUP_MASS_KG"])
         self.assertEqual("10000.00", row["ROLLUP_AREA_MM2"])
+        self.assertEqual("0.0100", row["ROLLUP_AREA_M2"])
         self.assertEqual("STORED", row["ROLLUP_MASS_ATTRIBUTE"])
         self.assertEqual("DRY_RUN", row["SAVED"])
         self.assertEqual("SUCCESS", row["STATUS"])

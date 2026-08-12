@@ -22,7 +22,7 @@ FZ_COLUMNS = [
     "NX_FINISH",
     "NX_MASS",
     "NX_MassPropRollupMass",
-    "NX_MassPropRollupArea",
+    "NX_MassPropRollupArea_m2",
     "COMPONENT_CLASS",
     "LIFED",
     "SERIAL_NUMBERED_PART",
@@ -125,6 +125,16 @@ def walk_assembly_tree(component, level, csv_writer, quantity=1):
         row["Part Description"] = part_name
     if not row["Lifecycle"]:
         row["Lifecycle"] = DEFAULT_LIFECYCLE
+
+    # NX stores NX_MassPropRollupArea in square millimetres; present it in
+    # square metres so large-system values stay readable.
+    raw_area = row.get("NX_MassPropRollupArea")
+    if isinstance(raw_area, (int, float)):
+        row["NX_MassPropRollupArea_m2"] = round(
+            raw_area / 1000000.0, 4
+        )
+    else:
+        row["NX_MassPropRollupArea_m2"] = ""
 
     csv_writer.writerow([row[column] for column in FZ_COLUMNS])
     

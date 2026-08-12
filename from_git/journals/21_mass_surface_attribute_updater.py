@@ -41,6 +41,10 @@ OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
 AREA_DECIMAL_PLACES = 2
+AREA_M2_DECIMAL_PLACES = 4
+# NX stores the roll-up area in square millimetres (PDM template); the report
+# also presents it in square metres for readability on large systems.
+SQUARE_METRES_PER_SQUARE_MILLIMETRE = 1e-6
 
 # Standard NX roll-up attributes (category "Rolled-Up Mass Properties").
 ROLLUP_MASS_ATTRIBUTE = "NX_MassPropRollupMass"
@@ -63,6 +67,7 @@ RESULT_COLUMNS = (
     "LEVEL",
     "ROLLUP_MASS_KG",
     "ROLLUP_AREA_MM2",
+    "ROLLUP_AREA_M2",
     "ROLLUP_MASS_ATTRIBUTE",
     "ROLLUP_AREA_ATTRIBUTE",
     "SAVED",
@@ -564,6 +569,15 @@ def build_result_rows(work_part, timestamp, mode):
                 "ROLLUP_AREA_MM2": number_text(
                     attributes["area"], AREA_DECIMAL_PLACES
                 ),
+                "ROLLUP_AREA_M2": number_text(
+                    (
+                        attributes["area"]
+                        * SQUARE_METRES_PER_SQUARE_MILLIMETRE
+                        if attributes["area"] is not None
+                        else None
+                    ),
+                    AREA_M2_DECIMAL_PLACES,
+                ),
                 "ROLLUP_MASS_ATTRIBUTE": mass_status,
                 "ROLLUP_AREA_ATTRIBUTE": area_status,
                 "SAVED": saved,
@@ -670,13 +684,13 @@ def main():
         for row in rows:
             log_line(
                 session,
-                "{0} | {1} | rollup mass={2} kg [{3}] | rollup area={4} mm^2 [{5}] | "
+                "{0} | {1} | rollup mass={2} kg [{3}] | rollup area={4} m^2 [{5}] | "
                 "saved={6} | {7}".format(
                     row["DB_PART_NO"] or row["PART_NAME"],
                     row["LEVEL"],
                     row["ROLLUP_MASS_KG"] or "<blank>",
                     row["ROLLUP_MASS_ATTRIBUTE"],
-                    row["ROLLUP_AREA_MM2"] or "<blank>",
+                    row["ROLLUP_AREA_M2"] or "<blank>",
                     row["ROLLUP_AREA_ATTRIBUTE"],
                     row["SAVED"],
                     row["STATUS"],
