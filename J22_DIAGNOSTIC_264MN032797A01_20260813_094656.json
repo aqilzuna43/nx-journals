@@ -1,0 +1,851 @@
+{
+  "build": "J22-NX2506-MASS-ATTRIBUTE-WRITE-DIAGNOSTIC-V1",
+  "timestamp": "2026-08-13T09:46:56+08:00",
+  "work_part": {
+    "number": "264MN032797A01",
+    "revision": "A",
+    "name": "264MN032797A01/A;1-ASY, LAM BB COMPLETE, DCDC"
+  },
+  "solid_body_count": 0,
+  "before_attributes": [
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_DESC",
+      "type": "String",
+      "value": "032797",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_MFKID",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_NAME",
+      "type": "String",
+      "value": "ASY, LAM BB COMPLETE, DCDC",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_NO",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_TYPE",
+      "type": "String",
+      "value": "Cad0Design",
+      "unset": false
+    },
+    {
+      "category": "Cad0DesignRevision",
+      "title": "DB_PART_REV",
+      "type": "String",
+      "value": "A",
+      "unset": false
+    },
+    {
+      "category": "checked_out_user",
+      "title": "CHECKED_OUT_USER",
+      "type": "String",
+      "value": "99946e1828964542b86c86d6c2cf3cbe",
+      "unset": false
+    },
+    {
+      "category": "DB Part",
+      "title": "DB_SEED_PART_USED",
+      "type": "String",
+      "value": "@DB/nxml_assembly-mm-template/A",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_Arrangement",
+      "type": "String",
+      "value": "Arrangement 1",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_ComponentGroup",
+      "type": "String",
+      "value": "AllComponents",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_ReferenceSet",
+      "type": "String",
+      "value": "MODEL",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Area",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_AreaSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Density",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_DensitySource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Mass",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MassSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MaterialMissingAssignments",
+      "type": "String",
+      "value": "TRUE",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MaterialMultipleAssigned",
+      "type": "String",
+      "value": "TRUE",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Volume",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_VolumeSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Weight",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_WeightSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "owning_user",
+      "title": "OWNER_ID",
+      "type": "String",
+      "value": "0821764746104705939e98facce2bd71",
+      "unset": false
+    },
+    {
+      "category": "UGMASTER",
+      "title": "CHECKED_OUT",
+      "type": "String",
+      "value": " ",
+      "unset": false
+    },
+    {
+      "category": "UGMASTER",
+      "title": "LAST_MOD_DATE",
+      "type": "6",
+      "value": "13-Aug-2026",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Commodity_Code",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "COMMODITYTYPE",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "COMPONENT_CLASS",
+      "type": "String",
+      "value": "C",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Country_of_Origin",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Export_Control_Number",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "LIFED",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "MFG",
+      "type": "String",
+      "value": "FABRICATOR",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "MPN",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "NX_FINISH",
+      "type": "String",
+      "value": "N/A",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "SERIAL_NUMBERED_PART",
+      "type": "String",
+      "value": "BATCH",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Serviceable_item_flag",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Stocking_Type",
+      "type": "String",
+      "value": "MAKE",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Temperature_Sensitive",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Unit_Of_Measure",
+      "type": "String",
+      "value": "ea",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_DB_PART_NAME",
+      "type": "String",
+      "value": "ASY, LAM BB COMPLETE, DCDC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_Hazardous",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_VERSION",
+      "type": "String",
+      "value": "1",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAEItemItemID",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    }
+  ],
+  "after_attributes": [
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_DESC",
+      "type": "String",
+      "value": "032797",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_MFKID",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_NAME",
+      "type": "String",
+      "value": "ASY, LAM BB COMPLETE, DCDC",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_NO",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "Cad0Design",
+      "title": "DB_PART_TYPE",
+      "type": "String",
+      "value": "Cad0Design",
+      "unset": false
+    },
+    {
+      "category": "Cad0DesignRevision",
+      "title": "DB_PART_REV",
+      "type": "String",
+      "value": "A",
+      "unset": false
+    },
+    {
+      "category": "checked_out_user",
+      "title": "CHECKED_OUT_USER",
+      "type": "String",
+      "value": "99946e1828964542b86c86d6c2cf3cbe",
+      "unset": false
+    },
+    {
+      "category": "DB Part",
+      "title": "DB_SEED_PART_USED",
+      "type": "String",
+      "value": "@DB/nxml_assembly-mm-template/A",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_Arrangement",
+      "type": "String",
+      "value": "Arrangement 1",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_ComponentGroup",
+      "type": "String",
+      "value": "AllComponents",
+      "unset": false
+    },
+    {
+      "category": "Mass Properties Configuration Context",
+      "title": "NX_ReferenceSet",
+      "type": "String",
+      "value": "MODEL",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Area",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_AreaSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Density",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_DensitySource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Mass",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MassSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MaterialMissingAssignments",
+      "type": "String",
+      "value": "TRUE",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_MaterialMultipleAssigned",
+      "type": "String",
+      "value": "TRUE",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Volume",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_VolumeSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_Weight",
+      "type": "Number",
+      "value": 0.0,
+      "unset": false
+    },
+    {
+      "category": "Materials",
+      "title": "NX_WeightSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "owning_user",
+      "title": "OWNER_ID",
+      "type": "String",
+      "value": "0821764746104705939e98facce2bd71",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupArea",
+      "type": "Number",
+      "value": 1863304.1125345754,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupAreaSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupCenterOfMassSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupCenterOfMassX",
+      "type": "Number",
+      "value": 0.29847020889893683,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupCenterOfMassY",
+      "type": "Number",
+      "value": -31.978302827200476,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupCenterOfMassZ",
+      "type": "Number",
+      "value": -3.884810743928521,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupDensity",
+      "type": "Number",
+      "value": 8.14098780780056e-06,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupDensitySource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupMass",
+      "type": "Number",
+      "value": 10.497949368845926,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupMassSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupVolume",
+      "type": "Number",
+      "value": 1289517.8836635728,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupVolumeSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupWeight",
+      "type": "Number",
+      "value": 102.9497151779929,
+      "unset": false
+    },
+    {
+      "category": "Rolled-Up Mass Properties",
+      "title": "NX_MassPropRollupWeightSource",
+      "type": "String",
+      "value": "From Design",
+      "unset": false
+    },
+    {
+      "category": "UGMASTER",
+      "title": "CHECKED_OUT",
+      "type": "String",
+      "value": " ",
+      "unset": false
+    },
+    {
+      "category": "UGMASTER",
+      "title": "LAST_MOD_DATE",
+      "type": "6",
+      "value": "13-Aug-2026",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Commodity_Code",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "COMMODITYTYPE",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "COMPONENT_CLASS",
+      "type": "String",
+      "value": "C",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Country_of_Origin",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Export_Control_Number",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "LIFED",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "MFG",
+      "type": "String",
+      "value": "FABRICATOR",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "MPN",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "NX_FINISH",
+      "type": "String",
+      "value": "N/A",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "SERIAL_NUMBERED_PART",
+      "type": "String",
+      "value": "BATCH",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Serviceable_item_flag",
+      "type": "String",
+      "value": "TBC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Stocking_Type",
+      "type": "String",
+      "value": "MAKE",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Temperature_Sensitive",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "Unit_Of_Measure",
+      "type": "String",
+      "value": "ea",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_DB_PART_NAME",
+      "type": "String",
+      "value": "ASY, LAM BB COMPLETE, DCDC",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_Hazardous",
+      "type": "String",
+      "value": "N",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAE_VERSION",
+      "type": "String",
+      "value": "1",
+      "unset": false
+    },
+    {
+      "category": "WAEItem",
+      "title": "WAEItemItemID",
+      "type": "String",
+      "value": "264MN032797A01",
+      "unset": false
+    }
+  ],
+  "findings": [
+    {
+      "test": "A_classic_compute",
+      "status": "NO_SOLID_BODIES"
+    },
+    {
+      "test": "B_native_builder",
+      "status": "OK",
+      "update_on_save_set": true,
+      "measured": "root_component",
+      "message": ""
+    },
+    {
+      "builder": "CreateAssembliesGeneralPropertiesBuilder",
+      "available": true,
+      "members": [
+        "Commit",
+        "Destroy",
+        "GetCommittedObjects",
+        "GetObject",
+        "Hidden",
+        "HiddenOptions",
+        "IntegerQuantity",
+        "Layer",
+        "LayerOption",
+        "LayerOptions",
+        "NonGeometric",
+        "Null",
+        "PreviewBuilder",
+        "QuantityOptions",
+        "QuantityType",
+        "RealQuantity",
+        "ReferenceComponent",
+        "ReferenceComponentOptions",
+        "SelectedObjects",
+        "ShowResults",
+        "SpecificColor",
+        "SpecificLineFont",
+        "SpecificPartialShade",
+        "SpecificTranslucency",
+        "SpecificWidth",
+        "SynchronizeAttributes",
+        "SynchronizeDisplay",
+        "SynchronizeLayers",
+        "Tag",
+        "Validate"
+      ],
+      "test": "B_probe_builders"
+    },
+    {
+      "builder": "CreateAssembliesParameterPropertiesBuilder",
+      "available": true,
+      "members": [
+        "ArrangementOptions",
+        "Arrangements",
+        "Commit",
+        "Destroy",
+        "GetCommittedObjects",
+        "GetObject",
+        "Null",
+        "PreviewBuilder",
+        "SelectedObjects",
+        "ShowResults",
+        "Tag",
+        "Validate"
+      ],
+      "test": "B_probe_builders"
+    },
+    {
+      "test": "C_direct_write",
+      "category": "Rolled-Up Mass Properties",
+      "status": "FAILED",
+      "message": "The attribute is reserved by an NX application or the system, so it cannot be set, changed or deleted. [512091]"
+    },
+    {
+      "test": "C_direct_write",
+      "category": "Materials",
+      "status": "FAILED",
+      "message": "The attribute is reserved by an NX application or the system, so it cannot be set, changed or deleted. [512091]"
+    },
+    {
+      "test": "C_direct_write",
+      "category": "Rolled-Up Mass Properties",
+      "status": "FAILED",
+      "message": "The attribute is reserved by an NX application or the system, so it cannot be set, changed or deleted. [512091]"
+    },
+    {
+      "test": "C_direct_write",
+      "category": "Materials",
+      "status": "FAILED",
+      "message": "The attribute is reserved by an NX application or the system, so it cannot be set, changed or deleted. [512091]"
+    },
+    {
+      "test": "save",
+      "status": "OK"
+    },
+    {
+      "test": "B_native_read_back",
+      "status": "POPULATED",
+      "work_part_NX_MassPropRollupMass_kg": 10.497949368845926,
+      "work_part_NX_MassPropRollupArea_mm2": 1863304.1125345754,
+      "children": [
+        {
+          "name": "264MN025224A01/A",
+          "number": "264MN025224A01",
+          "NX_MassPropRollupMass_kg": null,
+          "NX_MassPropRollupArea_mm2": null
+        },
+        {
+          "name": "264MN025210A01/A",
+          "number": "264MN025210A01",
+          "NX_MassPropRollupMass_kg": null,
+          "NX_MassPropRollupArea_mm2": null
+        },
+        {
+          "name": "264MN025224A01/A",
+          "number": "264MN025224A01",
+          "NX_MassPropRollupMass_kg": null,
+          "NX_MassPropRollupArea_mm2": null
+        }
+      ]
+    }
+  ]
+}
