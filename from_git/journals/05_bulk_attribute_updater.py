@@ -45,6 +45,11 @@ VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
 COMPATIBILITY_ALLOWED_VALUES = {
     "stocking_type": ("BUY/REF",),
 }
+# CSV display names can change without changing the underlying NX attribute.
+# Keep previously emitted J04 update packages usable when that happens.
+LEGACY_COLUMN_ALIASES = {
+    "Traceability": ("SERIAL_NUMBERED_PART",),
+}
 REPORT_COLUMNS = [
     "RUN_TIMESTAMP",
     "MODE",
@@ -253,6 +258,29 @@ def update_columns(config):
     )
 
 
+def _input_column_sources(headers, required):
+    sources = {}
+    missing = []
+    for column in required:
+        candidates = [column] + list(LEGACY_COLUMN_ALIASES.get(column, ()))
+        present = [candidate for candidate in candidates if candidate in headers]
+        if not present:
+            missing.append(column)
+            continue
+        if len(present) > 1:
+            raise RuntimeError(
+                "Update CSV has ambiguous columns for {0}: {1}".format(
+                    column, ", ".join(present)
+                )
+            )
+        sources[column] = present[0]
+    if missing:
+        raise RuntimeError(
+            "Update CSV is missing columns: {0}".format(", ".join(missing))
+        )
+    return sources
+
+
 def _read_csv(path, config):
     required = update_columns(config)
     last_error = None
@@ -261,15 +289,7 @@ def _read_csv(path, config):
             with open(path, "r", encoding=encoding, newline="") as handle:
                 reader = csv.DictReader(handle)
                 headers = [_clean(name) for name in (reader.fieldnames or [])]
-                missing = [
-                    column for column in required if column not in headers
-                ]
-                if missing:
-                    raise RuntimeError(
-                        "Update CSV is missing columns: {0}".format(
-                            ", ".join(missing)
-                        )
-                    )
+                sources = _input_column_sources(headers, required)
                 rows = []
                 for row_number, source in enumerate(reader, 2):
                     row = {
@@ -277,6 +297,8 @@ def _read_csv(path, config):
                         for key, value in source.items()
                         if key is not None
                     }
+                    for column, source_column in sources.items():
+                        row[column] = row.get(source_column, "")
                     row["_CSV_ROW"] = row_number
                     rows.append(row)
                 return rows
@@ -317,6 +339,22 @@ def _baseline_contract(config, key):
     ]
 
 
+def _canonical_contract(contract):
+    aliases = {
+        alias: canonical
+        for canonical, legacy_names in LEGACY_COLUMN_ALIASES.items()
+        for alias in legacy_names
+    }
+    result = []
+    for source in contract or []:
+        item = dict(source)
+        item["csv_column"] = aliases.get(
+            item.get("csv_column"), item.get("csv_column")
+        )
+        result.append(item)
+    return result
+
+
 def _validate_baseline_contract(baseline, config):
     if baseline.get("identity_columns") != _baseline_contract(
         config, "identity_columns"
@@ -324,12 +362,22 @@ def _validate_baseline_contract(baseline, config):
         raise RuntimeError(
             "Baseline identity mapping does not match the deployed config."
         )
-    if baseline.get("business_columns") != _baseline_contract(
-        config, "business_columns"
-    ):
+    if _canonical_contract(
+        baseline.get("business_columns")
+    ) != _baseline_contract(config, "business_columns"):
         raise RuntimeError(
             "Baseline business mapping does not match the deployed config."
         )
+
+
+def _baseline_business_value(baseline_part, column):
+    values = baseline_part.get("business_values", {})
+    if column in values:
+        return values[column]
+    for alias in LEGACY_COLUMN_ALIASES.get(column, ()):
+        if alias in values:
+            return values[alias]
+    return {}
 
 
 def _attribute_value(info):
@@ -782,11 +830,9 @@ def prepare_updates(
         approved = _approved(row)
         row_change_count = 0
         for column, rule in business_specs:
-            baseline_value = (
-                baseline_part.get("business_values", {})
-                .get(column, {})
-                .get("raw_value", "")
-            )
+            baseline_value = _baseline_business_value(
+                baseline_part, column
+            ).get("raw_value", "")
             expected = row.get(column, "")
             if _normalize_for_rule(
                 baseline_value, rule, config

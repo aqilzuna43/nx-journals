@@ -32,17 +32,19 @@ EXPECTED_EXTENDED_COLUMNS = [
     "NX_MassPropRollupMass",
     "NX_MassPropRollupArea_m2",
     "COMPONENT_CLASS",
+    "Dimensions",
+]
+NX_EXCLUDED_BUSINESS_COLUMNS = {
     "LIFED",
-    "SERIAL_NUMBERED_PART",
+    "Traceability",
     "Temperature_Sensitive",
     "Hazardous",
-    "Dimensions",
     "COMMODITYTYPE",
     "Commodity_Code",
     "Serviceable_item_flag",
     "Export_Control_Number",
     "Country_of_Origin",
-]
+}
 
 
 def load_with_fake_nxopen(module_name, path):
@@ -131,16 +133,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 ("NX_MassPropRollupMass", "NX_MassPropRollupMass", "Number"),
                 ("NX_MassPropRollupArea", "NX_MassPropRollupArea", "Number"),
                 ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
-                ("LIFED", "LIFED", "String"),
-                ("SERIAL_NUMBERED_PART", "SERIAL_NUMBERED_PART", "String"),
-                ("Temperature_Sensitive", "Temperature_Sensitive", "String"),
-                ("Hazardous", "WAE_Hazardous", "String"),
                 ("Dimensions", "Dimensions", "String"),
-                ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
-                ("Commodity_Code", "Commodity_Code", "String"),
-                ("Serviceable_item_flag", "Serviceable_item_flag", "String"),
-                ("Export_Control_Number", "Export_Control_Number", "String"),
-                ("Country_of_Origin", "Country_of_Origin", "String"),
             ],
             self.module.FZ_ATTRIBUTE_SPECS,
         )
@@ -160,9 +153,8 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         for attribute_title, attribute_type in configured_types.items():
             self.assertEqual(xml_types[attribute_title], attribute_type)
         self.assertEqual("String", configured_types["WAE_VERSION"])
-        self.assertIn(("Hazardous", "WAE_Hazardous", "String"), self.module.FZ_ATTRIBUTE_SPECS)
 
-    def test_j04_j05_business_mapping_matches_extended_bom(self):
+    def test_j04_j05_own_excluded_business_columns(self):
         import json
 
         config = json.loads(
@@ -191,14 +183,27 @@ class ExtendedBomAttributeTests(unittest.TestCase):
 
         for mapping in config["update_workflow"]["business_columns"]:
             rule = rules[mapping["logical_name"]]
-            self.assertEqual(
-                (rule["attribute"], rule["type"]),
-                extended[mapping["csv_column"]],
-            )
+            column = mapping["csv_column"]
+            if column in NX_EXCLUDED_BUSINESS_COLUMNS:
+                self.assertNotIn(column, extended)
+            else:
+                self.assertEqual(
+                    (rule["attribute"], rule["type"]), extended[column]
+                )
             template = xml_templates[rule["attribute"]]
             self.assertEqual("WAEItem", template["category"])
             self.assertEqual("false", template["ownedBySystem"])
             self.assertEqual("false", template["pdmBasedPartAttribute"])
+
+        traceability = next(
+            mapping
+            for mapping in config["update_workflow"]["business_columns"]
+            if mapping["logical_name"] == "traceability"
+        )
+        self.assertEqual("Traceability", traceability["csv_column"])
+        self.assertEqual(
+            "SERIAL_NUMBERED_PART", rules["traceability"]["attribute"]
+        )
 
     def test_typed_reads_preserve_numeric_zero_and_missing_values(self):
         nx_object = FakeNxObject(
@@ -300,16 +305,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 "2.5",
                 "12.5",
                 "A",
-                "N",
-                "SERIAL",
-                "N",
-                "Y",
                 "10 x 20 x 30",
-                "Assembly",
-                "123",
-                "Y",
-                "EAR99",
-                "MY",
             ]],
             list(csv.reader(io.StringIO(output.getvalue()))),
         )

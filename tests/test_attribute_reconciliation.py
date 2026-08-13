@@ -834,6 +834,57 @@ class J05Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "business mapping"):
             self.prepare(baseline=baseline)
 
+    def test_legacy_traceability_csv_and_baseline_remain_compatible(self):
+        baseline = self.baseline()
+        traceability = next(
+            item
+            for item in baseline["business_columns"]
+            if item["logical_name"] == "traceability"
+        )
+        traceability["csv_column"] = "SERIAL_NUMBERED_PART"
+        values = baseline["parts"][0]["business_values"]
+        values["SERIAL_NUMBERED_PART"] = values.pop("Traceability")
+
+        row = self.row()
+        row["SERIAL_NUMBERED_PART"] = row.pop("Traceability")
+        row["Traceability"] = row["SERIAL_NUMBERED_PART"]
+
+        reports, proposals = self.prepare(row=row, baseline=baseline)
+
+        self.assertEqual(["PROPOSED_UPDATE"], [r["ACTION"] for r in reports])
+        self.assertEqual(1, len(proposals))
+
+    def test_legacy_traceability_header_is_canonicalized_on_read(self):
+        headers = self.j05.update_columns(self.config)
+        headers[headers.index("Traceability")] = "SERIAL_NUMBERED_PART"
+        values = {column: "" for column in headers}
+        values.update(
+            {
+                "AUDIT_RUN_ID": "RUN1",
+                "Item Number": "P1",
+                "Item Rev": "A",
+                "SERIAL_NUMBERED_PART": "BATCH",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "legacy.csv"
+            with path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=headers)
+                writer.writeheader()
+                writer.writerow(values)
+
+            rows = self.j05._read_csv(str(path), self.config)
+
+        self.assertEqual("BATCH", rows[0]["Traceability"])
+
+    def test_duplicate_traceability_headers_are_rejected(self):
+        headers = self.j05.update_columns(self.config)
+        headers.append("SERIAL_NUMBERED_PART")
+
+        with self.assertRaisesRegex(RuntimeError, "ambiguous columns"):
+            self.j05._input_column_sources(headers, headers[:-1])
+
     def test_identity_blank_controlled_and_runtime_flags_fail_closed(self):
         reports, _ = self.prepare(
             self.row(**{"Part Description": "EDITED"})
