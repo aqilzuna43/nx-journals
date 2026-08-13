@@ -61,7 +61,7 @@ shared helpers from `from_git\utils`.
 | 18 | `from_git/journals/18_work_part_surface_area.py` | Read-only active-work-part solid surface-area CSV |
 | 19 | `from_git/journals/19_test_teamcenter_drawing_import_contract.py` | Read-only J16 checkout/export/runtime contract probe |
 | 20 | `from_git/journals/20_diagnose_assembly_full_load.py` | Isolates component/prototype failures that occur only during assembly Full Load |
-| 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Measures roll-up area + mass with the classic NX measure APIs and writes `NX_MassPropRollupArea` (mm^2) / `NX_MassPropRollupMass` (kg) on every BoM-visible 3D master (standard category with `Materials` fallback), then saves and verifies by read-back; area presented in m^2 |
+| 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Triggers NX's native mass-properties update (Update On Save + Commit) and reports what NX wrote: `NX_MassPropRollupMass` (kg) / `NX_MassPropRollupArea` (mm^2, also presented in m^2) on every BoM-visible 3D master, then saves and verifies by read-back; DRY_RUN / SMOKE / PROBE modes. Does NOT write the reserved titles directly (NX rejects them with [512006]) |
 | 22 | `from_git/journals/22_diagnose_mass_attribute_write.py` | One-part diagnostic: tests classic compute, the native mass-properties builder, and per-category attribute writes, with full before/after attribute dumps |
 
 ## Key Runtime Notes
