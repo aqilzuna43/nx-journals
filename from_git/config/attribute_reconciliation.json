@@ -33,7 +33,7 @@
       {"csv_column": "NX_FINISH", "logical_name": "finish"},
       {"csv_column": "COMPONENT_CLASS", "logical_name": "component_class"},
       {"csv_column": "LIFED", "logical_name": "shelf_life_limited"},
-      {"csv_column": "SERIAL_NUMBERED_PART", "logical_name": "traceability"},
+      {"csv_column": "Traceability", "logical_name": "traceability"},
       {"csv_column": "Temperature_Sensitive", "logical_name": "temperature_sensitive"},
       {"csv_column": "Hazardous", "logical_name": "hazardous"},
       {"csv_column": "COMMODITYTYPE", "logical_name": "commodity_type"},

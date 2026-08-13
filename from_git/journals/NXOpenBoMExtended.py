@@ -6,6 +6,10 @@ import datetime
 # --- CONFIGURATION ---
 # The first ten fields follow docs/FZ-PowerSystem_v1_22Jun.csv. The remaining
 # fields are the extended columns requested in commit 25105de.
+# 2026-08-13: the nine NX-excluded columns (Commodity Code, Country of Origin,
+# Export Control Number, Traceability/Serial Numbered Part, Hazardous, Shelf
+# Life, Temperature Sensitive, Serviceable Item, Commodity Type) are no longer
+# exported — ITEMS is manually maintained and J4 enrichment owns them.
 FZ_COLUMNS = [
     "Level",
     "Item Number",
@@ -24,16 +28,7 @@ FZ_COLUMNS = [
     "NX_MassPropRollupMass",
     "NX_MassPropRollupArea_m2",
     "COMPONENT_CLASS",
-    "LIFED",
-    "SERIAL_NUMBERED_PART",
-    "Temperature_Sensitive",
-    "Hazardous",
     "Dimensions",
-    "COMMODITYTYPE",
-    "Commodity_Code",
-    "Serviceable_item_flag",
-    "Export_Control_Number",
-    "Country_of_Origin",
 ]
 
 # CSV column -> exact internal NX/Teamcenter title -> NX attribute type.
@@ -52,16 +47,7 @@ FZ_ATTRIBUTE_SPECS = [
     ("NX_MassPropRollupMass", "NX_MassPropRollupMass", "Number"),
     ("NX_MassPropRollupArea", "NX_MassPropRollupArea", "Number"),
     ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
-    ("LIFED", "LIFED", "String"),
-    ("SERIAL_NUMBERED_PART", "SERIAL_NUMBERED_PART", "String"),
-    ("Temperature_Sensitive", "Temperature_Sensitive", "String"),
-    ("Hazardous", "WAE_Hazardous", "String"),
     ("Dimensions", "Dimensions", "String"),
-    ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
-    ("Commodity_Code", "Commodity_Code", "String"),
-    ("Serviceable_item_flag", "Serviceable_item_flag", "String"),
-    ("Export_Control_Number", "Export_Control_Number", "String"),
-    ("Country_of_Origin", "Country_of_Origin", "String"),
 ]
 
 # The attribute used as the primary identifier (Source of Truth).
