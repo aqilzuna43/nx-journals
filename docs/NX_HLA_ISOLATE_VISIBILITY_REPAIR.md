@@ -5,9 +5,31 @@ that mapped occurrence geometry is absent from an active view named `Isolate`.
 
 NXOpen does not provide an `ExitIsolation` method. The supported assembly APIs
 are `CreateIsolateViewWithComponents`, `ShowComponentsInIsolateView`, and
-`HideComponentsInIsolateView`. J24 uses the least disruptive option: it adds
-only the selected missing occurrence and its complete subtree to the current
-isolate view.
+`HideComponentsInIsolateView`. J24 uses the least disruptive option. V2 first
+adds only the selected missing parent. If that does not restore mapped bodies,
+it adds only unsuppressed descendants for which J23 found mapped body
+occurrences.
+
+## Why V2 replaced V1
+
+The first NX X 2506 J24 artifact proved that the Python wrapper accepts one
+input argument:
+
+```text
+Function takes 1 arguments, 2 passed.
+```
+
+The artifact proves that the API's documented C# `out View` is not passed as a
+second Python input. V2 therefore calls:
+
+```python
+result = component_assembly.ShowComponentsInIsolateView(components)
+```
+
+It does not assume whether or where Python returns that output view. The JSON
+describes every returned runtime object, identifies `ErrorList` and view-shaped
+objects by capability, and checks exact mapped-body visibility in both the
+active work view and any returned view.
 
 ## Safety contract
 
@@ -43,7 +65,11 @@ failing HLA work view.
   API changed exact mapped-target visibility from zero to a positive count.
   Isolation membership is causally confirmed.
 - `API_ERROR / SHOW_COMPONENTS_IN_ISOLATE_VIEW_FAILED`: NX rejected the
-  operation. The JSON contains the exception and rollback status.
+  one-input parent operation. The JSON contains the exception and rollback
+  status.
+- `API_ERROR / SHOW_MAPPED_DESCENDANTS_IN_ISOLATE_VIEW_FAILED`: the parent call
+  completed without restoring mapped geometry and the targeted descendant call
+  failed.
 - `INCONCLUSIVE / ISOLATE_SHOW_DID_NOT_RESTORE_MAPPED_GEOMETRY`: the API call
   completed, but the exact target bodies remained absent. J24 attempts rollback;
   the next branch is a controlled layout/work-view replacement diagnostic.
@@ -63,3 +89,7 @@ The NX X 2506 J23 V2 artifact for component tag `69623` established:
 
 J24 turns the remaining isolation hypothesis into a direct before/after causal
 test instead of inferring it from the view name.
+
+V2 additionally inventories the active displayed views and current layout
+views before and after the operation. This distinguishes a true visibility
+change from NX returning or activating a different isolate view.

@@ -1,10 +1,11 @@
 """J24 - guarded repair and causal test for missing HLA isolate-view geometry.
 
 Select exactly one missing component occurrence in the Assembly Navigator, then
-play this journal in the affected top-level HLA window.  J24 adds that exact
-occurrence and its subtree to the current NX isolate view through the supported
-ComponentAssembly.ShowComponentsInIsolateView API.  It records exact mapped-body
-visibility before and after the call.
+play this journal in the affected top-level HLA window. J24 first adds the exact
+selected parent and, only if necessary, then adds its unsuppressed descendants
+that have mapped body occurrences. It uses the NX Python one-input form of
+ComponentAssembly.ShowComponentsInIsolateView and records the returned output
+objects instead of assuming the C# out-parameter is a Python input.
 
 The operation is display-only and is never saved by this journal.  A visible NX
 undo mark named "J24 Show Target In Isolate View" is created before mutation.
@@ -24,8 +25,8 @@ import traceback
 import NXOpen
 
 
-BUILD = "J24-NX2506-HLA-ISOLATE-REPAIR-V1"
-SCHEMA_VERSION = 1
+BUILD = "J24-NX2506-HLA-ISOLATE-REPAIR-V2"
+SCHEMA_VERSION = 2
 UNDO_MARK_NAME = "J24 Show Target In Isolate View"
 ISOLATE_NAME_TOKEN = "ISOLATE"
 
@@ -82,6 +83,118 @@ def error_list_evidence(error_list, j23):
     return rows
 
 
+def exposes(value, member_name):
+    if value is None:
+        return False
+    try:
+        getattr(value, member_name)
+        return True
+    except Exception:
+        return False
+
+
+def returned_object_evidence(value, j23):
+    return {
+        "runtime_type": j23.object_kind(value),
+        "tag": j23.object_tag(value),
+        "name": j23.safe_name(value, ""),
+        "has_error_list_shape": exposes(value, "GetErrorInfo") and exposes(value, "Length"),
+        "has_view_shape": exposes(value, "AskVisibleObjects"),
+    }
+
+
+def normalize_isolate_result(result, j23):
+    """Identify ErrorList- and View-shaped values without assuming tuple order."""
+    if isinstance(result, (tuple, list)):
+        values = list(result)
+        shape = "SEQUENCE"
+    else:
+        values = [result]
+        shape = "SINGLE"
+    error_list = None
+    output_view = None
+    for value in values:
+        if value is None:
+            continue
+        if error_list is None and exposes(value, "GetErrorInfo") and exposes(value, "Length"):
+            error_list = value
+        if output_view is None and exposes(value, "AskVisibleObjects"):
+            output_view = value
+    for container in values:
+        if container is None:
+            continue
+        if error_list is None:
+            for member_name in ("ErrorList", "errorList", "Errors", "errors"):
+                candidate = j23.safe_value(container, member_name, None)
+                if candidate is not None and exposes(candidate, "GetErrorInfo"):
+                    error_list = candidate
+                    break
+        if output_view is None:
+            for member_name in ("View", "view", "OutputView", "outputView"):
+                candidate = j23.safe_value(container, member_name, None)
+                if candidate is not None and exposes(candidate, "AskVisibleObjects"):
+                    output_view = candidate
+                    break
+    evidence = {
+        "shape": shape,
+        "runtime_type": j23.object_kind(result),
+        "item_count": len(values),
+        "items": [returned_object_evidence(value, j23) for value in values],
+        "error_list_detected": error_list is not None,
+        "output_view_detected": output_view is not None,
+    }
+    return error_list, output_view, evidence
+
+
+def view_identity(view, j23):
+    if view is None:
+        return {"available": False, "name": "", "tag": ""}
+    return {
+        "available": True,
+        "name": j23.safe_name(view, "<view>"),
+        "tag": j23.object_tag(view),
+    }
+
+
+def displayed_view_context(work_part, j23):
+    result = {
+        "work_view": view_identity(
+            getattr(getattr(work_part, "ModelingViews", None), "WorkView", None), j23
+        ),
+        "active_views_status": j23.UNAVAILABLE,
+        "active_views": [],
+        "active_views_error": "",
+        "layout_status": j23.UNAVAILABLE,
+        "current_layout": {"name": "", "tag": ""},
+        "layout_views": [],
+        "layout_error": "",
+    }
+    views = j23.safe_value(work_part, "Views", None)
+    if views is not None:
+        active = j23.method_probe(views, "GetActiveViews")
+        result["active_views_status"] = active["status"]
+        result["active_views_error"] = active["error"]
+        if active["status"] == j23.OBSERVED:
+            result["active_views"] = [
+                view_identity(view, j23) for view in list(active["value"])
+            ]
+    layouts = j23.safe_value(work_part, "Layouts", None)
+    current = j23.safe_value(layouts, "Current", None) if layouts is not None else None
+    if current is not None:
+        result["current_layout"] = {
+            "name": j23.safe_name(current, "<layout>"),
+            "tag": j23.object_tag(current),
+        }
+        layout_views = j23.method_probe(current, "GetViews")
+        result["layout_status"] = layout_views["status"]
+        result["layout_error"] = layout_views["error"]
+        if layout_views["status"] == j23.OBSERVED:
+            result["layout_views"] = [
+                view_identity(view, j23) for view in list(layout_views["value"])
+            ]
+    return result
+
+
 def visible_snapshot(view, mapped_tags, j23):
     result = j23.method_probe(view, "AskVisibleObjects")
     if result["status"] != j23.OBSERVED:
@@ -129,6 +242,86 @@ def refresh_display(session, work_part, view, j23):
     return probes
 
 
+def run_show_stage(label, components, component_assembly, session, work_part, mapped_tags, j23):
+    stage = {
+        "label": label,
+        "api": "ComponentAssembly.ShowComponentsInIsolateView",
+        "python_signature": "ShowComponentsInIsolateView(components)",
+        "attempted": False,
+        "component_count": len(components),
+        "component_tags": [j23.object_tag(component) for component in components],
+        "return_evidence": None,
+        "error_list": [],
+        "exception": "",
+        "refresh_probes": [],
+        "work_view_after": None,
+        "returned_view": None,
+        "returned_view_visibility": None,
+        "maximum_mapped_target_count_visible": None,
+    }
+    if not components:
+        stage["exception"] = "No eligible components for this stage."
+        return stage
+    stage["attempted"] = True
+    try:
+        # The real NX X 2506 V1 artifact proved that passing the documented
+        # C# `out View` as a second Python input raises "Function takes 1
+        # arguments, 2 passed" before the operation executes. Inspect the
+        # one-input call's returned runtime values without assuming their order.
+        raw_result = component_assembly.ShowComponentsInIsolateView(components)
+        error_list, returned_view, return_evidence = normalize_isolate_result(
+            raw_result, j23
+        )
+        stage["return_evidence"] = return_evidence
+        stage["error_list"] = error_list_evidence(error_list, j23)
+        current_view = work_part.ModelingViews.WorkView
+        stage["refresh_probes"] = refresh_display(
+            session, work_part, current_view, j23
+        )
+        current_view = work_part.ModelingViews.WorkView
+        stage["work_view_after"] = {
+            "identity": view_identity(current_view, j23),
+            "visibility": visible_snapshot(current_view, mapped_tags, j23),
+        }
+        stage["returned_view"] = view_identity(returned_view, j23)
+        if returned_view is not None:
+            stage["returned_view_visibility"] = visible_snapshot(
+                returned_view, mapped_tags, j23
+            )
+        counts = []
+        work_count = stage["work_view_after"]["visibility"][
+            "mapped_target_count_visible"
+        ]
+        if work_count is not None:
+            counts.append(work_count)
+        if stage["returned_view_visibility"] is not None:
+            returned_count = stage["returned_view_visibility"][
+                "mapped_target_count_visible"
+            ]
+            if returned_count is not None:
+                counts.append(returned_count)
+        stage["maximum_mapped_target_count_visible"] = max(counts) if counts else None
+    except Exception as error:
+        stage["exception"] = j23.error_text(error)
+    return stage
+
+
+def mapped_unsuppressed_descendants(target, subtree_nodes, target_analysis, j23):
+    target_tag = target["identity"]["component_tag"]
+    eligible_tags = {
+        row["identity"]["component_tag"]
+        for row in target_analysis["subtree_occurrences"]
+        if row["identity"]["component_tag"] != target_tag
+        and row["mapping"]["mapped_body_count"] > 0
+        and j23.boolean_observed(row["component_state"]["suppressed"], False)
+    }
+    return [
+        node["_component"]
+        for node in subtree_nodes
+        if node["identity"]["component_tag"] in eligible_tags
+    ]
+
+
 def rollback(session, undo_mark, j23):
     try:
         session.UndoToMark(undo_mark, UNDO_MARK_NAME)
@@ -139,6 +332,12 @@ def rollback(session, undo_mark, j23):
             "status": "ROLLBACK_FAILED",
             "error": j23.error_text(error),
         }
+
+
+def capture_after_state(report, work_part, mapped_tags, j23):
+    current_view = work_part.ModelingViews.WorkView
+    report["after"] = visible_snapshot(current_view, mapped_tags, j23)
+    report["view_context_after"] = displayed_view_context(work_part, j23)
 
 
 def write_report(report, request_value, now, j23):
@@ -186,6 +385,9 @@ def run(session, run_datetime=None, dependency=None):
     work_view = work_part.ModelingViews.WorkView
     view_name = j23.safe_name(work_view, "<work view>")
     before = visible_snapshot(work_view, mapped_tags, j23)
+    descendant_components = mapped_unsuppressed_descendants(
+        target, subtree_nodes, target_analysis, j23
+    )
     report = {
         "schema_version": SCHEMA_VERSION,
         "journal_build": BUILD,
@@ -195,21 +397,30 @@ def run(session, run_datetime=None, dependency=None):
         "target_request": request,
         "target": target["identity"],
         "traversal_errors": traversal_errors,
+        "view_context_before": displayed_view_context(work_part, j23),
         "work_view": {"name": view_name, "tag": j23.object_tag(work_view)},
         "mapped_target_body_count": len(mapped_tags),
         "before": before,
         "action": {
             "api": "ComponentAssembly.ShowComponentsInIsolateView",
             "attempted": False,
-            "component_scope": "EXACT_TARGET_AND_COMPLETE_SUBTREE",
-            "component_count": len(subtree_nodes),
-            "component_tags": [node["identity"]["component_tag"] for node in subtree_nodes],
-            "error_list": [],
+            "binding_evidence": {
+                "failed_v1_signature": "ShowComponentsInIsolateView(components, work_view)",
+                "failed_v1_error": "Function takes 1 arguments, 2 passed.",
+                "v2_signature": "ShowComponentsInIsolateView(components)",
+                "out_view_policy": "Inspect possible returned view-shaped values; never pass the C# out View as a Python input.",
+            },
+            "strategy": "TARGET_PARENT_THEN_UNSUPPRESSED_MAPPED_DESCENDANTS",
+            "eligible_descendant_count": len(descendant_components),
+            "eligible_descendant_tags": [
+                j23.object_tag(component) for component in descendant_components
+            ],
+            "stages": [],
             "exception": "",
-            "refresh_probes": [],
             "undo_mark_name": UNDO_MARK_NAME,
         },
         "after": None,
+        "view_context_after": None,
         "rollback": {"attempted": False, "status": "NOT_REQUIRED", "error": ""},
         "verdict": None,
     }
@@ -257,35 +468,75 @@ def run(session, run_datetime=None, dependency=None):
         return write_report(report, request["value"], now, j23), report
 
     report["action"]["attempted"] = True
-    components = [node["_component"] for node in subtree_nodes]
-    try:
-        errors = component_assembly.ShowComponentsInIsolateView(components, work_view)
-        report["action"]["error_list"] = error_list_evidence(errors, j23)
-        report["action"]["refresh_probes"] = refresh_display(
-            session, work_part, work_view, j23
-        )
-        after = visible_snapshot(work_view, mapped_tags, j23)
-        report["after"] = after
-    except Exception as error:
-        report["action"]["exception"] = j23.error_text(error)
+    parent_stage = run_show_stage(
+        "TARGET_PARENT",
+        [target["_component"]],
+        component_assembly,
+        session,
+        work_part,
+        mapped_tags,
+        j23,
+    )
+    report["action"]["stages"].append(parent_stage)
+    parent_count = parent_stage["maximum_mapped_target_count_visible"]
+    if parent_stage["exception"]:
+        report["action"]["exception"] = parent_stage["exception"]
         report["rollback"] = rollback(session, undo_mark, j23)
+        capture_after_state(report, work_part, mapped_tags, j23)
         report["verdict"] = {
             "status": "API_ERROR",
             "root_cause_code": "SHOW_COMPONENTS_IN_ISOLATE_VIEW_FAILED",
-            "statement": "NX rejected the supported isolate-view show operation; the undo rollback was attempted.",
+            "statement": "The NX Python one-input isolate-view show call failed before a visibility comparison; rollback was attempted.",
         }
         return write_report(report, request["value"], now, j23), report
 
-    after_count = report["after"]["mapped_target_count_visible"]
+    if not parent_count:
+        descendant_stage = run_show_stage(
+            "UNSUPPRESSED_MAPPED_DESCENDANTS",
+            descendant_components,
+            component_assembly,
+            session,
+            work_part,
+            mapped_tags,
+            j23,
+        )
+        report["action"]["stages"].append(descendant_stage)
+        if descendant_stage["attempted"] and descendant_stage["exception"]:
+            report["action"]["exception"] = descendant_stage["exception"]
+            report["rollback"] = rollback(session, undo_mark, j23)
+            capture_after_state(report, work_part, mapped_tags, j23)
+            report["verdict"] = {
+                "status": "API_ERROR",
+                "root_cause_code": "SHOW_MAPPED_DESCENDANTS_IN_ISOLATE_VIEW_FAILED",
+                "statement": "The parent call completed without restoring geometry, then the mapped-descendant call failed; rollback was attempted.",
+            }
+            return write_report(report, request["value"], now, j23), report
+
+    capture_after_state(report, work_part, mapped_tags, j23)
+    stage_counts = [
+        stage["maximum_mapped_target_count_visible"]
+        for stage in report["action"]["stages"]
+        if stage["maximum_mapped_target_count_visible"] is not None
+    ]
+    after_count = max(stage_counts + [
+        report["after"]["mapped_target_count_visible"]
+        if report["after"]["mapped_target_count_visible"] is not None else 0
+    ])
     if report["after"]["probe_status"] == j23.OBSERVED and after_count > 0:
-        error_count = len(report["action"]["error_list"])
+        error_count = sum(
+            len(stage["error_list"]) for stage in report["action"]["stages"]
+        )
+        successful_stage = next(
+            stage["label"] for stage in report["action"]["stages"]
+            if (stage["maximum_mapped_target_count_visible"] or 0) > 0
+        )
         report["verdict"] = {
             "status": "CONFIRMED" if error_count == 0 else "CONFIRMED_WITH_API_WARNINGS",
             "root_cause_code": "ISOLATE_VIEW_MEMBERSHIP_EXCLUDED_TARGET",
             "statement": (
-                "Adding the exact target subtree to the current isolate view changed mapped-body visibility "
-                "from 0 to {0}; isolation membership is the confirmed cause."
-            ).format(after_count),
+                "The {0} stage changed exact mapped-body visibility from 0 to {1}; "
+                "isolation membership is the confirmed cause."
+            ).format(successful_stage, after_count),
         }
     else:
         report["rollback"] = rollback(session, undo_mark, j23)

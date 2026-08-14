@@ -64,7 +64,7 @@ shared helpers from `from_git\utils`.
 | 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Triggers NX's native mass-properties update (Update On Save + Commit) and reports what NX wrote: `NX_MassPropRollupMass` (kg) / `NX_MassPropRollupArea` (mm^2, also presented in m^2) on every BoM-visible 3D master, then saves and verifies by read-back; DRY_RUN / SMOKE / PROBE modes. Does NOT write the reserved titles directly (NX rejects them with [512006]) |
 | 22 | `from_git/journals/22_diagnose_mass_attribute_write.py` | One-part diagnostic: tests classic compute, the native mass-properties builder, and per-category attribute writes, with full before/after attribute dumps |
 | 23 | `from_git/journals/23_diagnose_hla_visibility.py` | Read-only, exact-target HLA visibility proof: tri-state NX probes, subtree/reference-set occurrence mapping, cross-view and same-prototype controls, hypothesis verdicts, and fact-cited root-cause conclusions |
-| 24 | `from_git/journals/24_repair_hla_isolate_visibility.py` | Guarded display-only causal test and repair: adds one selected missing subtree to the current isolate view, verifies exact mapped-body visibility before/after, records JSON evidence, and provides an NX undo mark without saving |
+| 24 | `from_git/journals/24_repair_hla_isolate_visibility.py` | Guarded display-only causal test and repair: uses the NX Python one-input isolate API, tests the selected parent then mapped unsuppressed descendants, compares active/returned/layout views, records exact before/after JSON evidence, and provides an NX undo mark without saving |
 
 ## Key Runtime Notes
 

@@ -17,6 +17,13 @@ NX_V1_ARTIFACT = (
     / "docs"
     / "J23_HLA_VISIBILITY_264MN024625A01_20260814_115209.json"
 )
+NX_J24_V1_ARTIFACT = (
+    ROOT
+    / "from_git"
+    / "templates"
+    / "LOGS"
+    / "J24_ISOLATE_REPAIR_264MN031978A01_20260814_124546.json"
+)
 
 
 def load_journal():
@@ -201,6 +208,7 @@ class FakeAssembly:
         self.show_calls = []
         self.show_exception = None
         self.show_errors = []
+        self.active_view = None
 
     def GetSuppressedState(self, component, controlled):
         return State("Suppressed" if component.IsSuppressed else "Unsuppressed")
@@ -211,15 +219,16 @@ class FakeAssembly:
     def GetNonGeometricState(self, component):
         return component.non_geometric
 
-    def ShowComponentsInIsolateView(self, components, view):
-        self.show_calls.append((list(components), view))
+    def ShowComponentsInIsolateView(self, components):
+        view = self.active_view
+        self.show_calls.append(list(components))
         if self.show_exception is not None:
             raise self.show_exception
         for component in components:
             for occurrence in component.occurrence_map.values():
                 if isinstance(occurrence, FakeBodyOccurrence) and occurrence not in view.visible:
                     view.visible.append(occurrence)
-        return FakeErrorList(self.show_errors)
+        return FakeErrorList(self.show_errors), view
 
 
 class FakeErrorInfo:
@@ -290,9 +299,19 @@ class FakeWorkPart:
         self.ComponentAssembly = FakeAssembly(children)
         self.Layers = FakeLayers(layer_states)
         work_view = FakeView(visible or [], name=view_name)
+        self.ComponentAssembly.active_view = work_view
         self.ModelingViews = FakeModelingViews(work_view, other_views)
         self.DynamicSections = FakeDynamicSections()
-        self.Views = types.SimpleNamespace(UpdateDisplay=lambda: None)
+        self.Views = types.SimpleNamespace(
+            UpdateDisplay=lambda: None,
+            GetActiveViews=lambda: [work_view],
+        )
+        layout = types.SimpleNamespace(
+            Name="Layout 1",
+            Tag=9001,
+            GetViews=lambda: [work_view],
+        )
+        self.Layouts = types.SimpleNamespace(Current=layout)
 
     def GetStringAttribute(self, name):
         if name == "DB_PART_NO":
@@ -579,8 +598,13 @@ class Journal24Tests(unittest.TestCase):
             report["verdict"]["root_cause_code"],
         )
         self.assertEqual(1, len(work.ComponentAssembly.show_calls))
+        stage = report["action"]["stages"][0]
+        self.assertEqual("ShowComponentsInIsolateView(components)", stage["python_signature"])
+        self.assertTrue(stage["return_evidence"]["error_list_detected"])
+        self.assertTrue(stage["return_evidence"]["output_view_detected"])
         self.assertEqual([], session.rollbacks)
         self.assertEqual(self.j24.BUILD, payload["journal_build"])
+        self.assertEqual(2, payload["schema_version"])
 
     def test_non_isolate_view_is_not_mutated(self):
         component, occurrence = healthy_component("TARGET-264")
@@ -601,12 +625,34 @@ class Journal24Tests(unittest.TestCase):
         self.assertIn("NX rejected view", report["action"]["exception"])
         self.assertEqual("ROLLED_BACK", report["rollback"]["status"])
         self.assertEqual(1, len(session.rollbacks))
+        self.assertEqual(0, report["after"]["mapped_target_count_visible"])
+
+    def test_result_normalizer_accepts_either_tuple_order(self):
+        view = FakeView([], name="Isolate#3")
+        errors = FakeErrorList()
+        for result in ((errors, view), (view, errors)):
+            error_list, output_view, evidence = self.j24.normalize_isolate_result(
+                result, self.j23
+            )
+            self.assertIs(errors, error_list)
+            self.assertIs(view, output_view)
+            self.assertEqual("SEQUENCE", evidence["shape"])
+            self.assertTrue(evidence["error_list_detected"])
+            self.assertTrue(evidence["output_view_detected"])
+
+        result_object = types.SimpleNamespace(errorList=errors, view=view)
+        error_list, output_view, evidence = self.j24.normalize_isolate_result(
+            result_object, self.j23
+        )
+        self.assertIs(errors, error_list)
+        self.assertIs(view, output_view)
+        self.assertEqual("SINGLE", evidence["shape"])
 
     def test_no_visibility_change_is_inconclusive_and_rolled_back(self):
         component, occurrence = healthy_component("TARGET-264")
         work = FakeWorkPart([component], visible=[], view_name="Isolate")
         work.ComponentAssembly.ShowComponentsInIsolateView = (
-            lambda components, view: FakeErrorList()
+            lambda components: (FakeErrorList(), work.ModelingViews.WorkView)
         )
         session = self.session_for(work)
         report, _ = self.run_in_temp(session)
@@ -617,6 +663,60 @@ class Journal24Tests(unittest.TestCase):
         )
         self.assertEqual("ROLLED_BACK", report["rollback"]["status"])
         self.assertEqual(1, len(session.rollbacks))
+
+    def test_subassembly_falls_back_to_mapped_unsuppressed_descendant_stage(self):
+        child_body = FakeBody(81)
+        child_occurrence_body = FakeBodyOccurrence(82)
+        child_refset = FakeReferenceSet("MODEL", [child_body])
+        child_prototype = FakePrototype("CHILD", [child_body], [child_refset])
+        child = FakeComponent(
+            "CHILD/A",
+            child_prototype,
+            occurrence_map={child_body: child_occurrence_body},
+        )
+        prototype_child = FakeComponent("CHILD-PROTOTYPE", child_prototype)
+        target_prototype = FakePrototype(
+            "TARGET-264",
+            [],
+            [],
+            part_number="TARGET-264",
+            prototype_children=[prototype_child],
+        )
+        target = FakeComponent(
+            "TARGET-264/A",
+            target_prototype,
+            children=[child],
+            reference_set="Entire Part",
+            occurrence_map={prototype_child: child},
+        )
+        work = FakeWorkPart([target], visible=[], view_name="Isolate")
+        session = self.session_for(work)
+        report, _ = self.run_in_temp(session)
+        self.assertEqual("CONFIRMED", report["verdict"]["status"])
+        self.assertEqual(2, len(report["action"]["stages"]))
+        self.assertEqual("TARGET_PARENT", report["action"]["stages"][0]["label"])
+        self.assertEqual(
+            "UNSUPPRESSED_MAPPED_DESCENDANTS",
+            report["action"]["stages"][1]["label"],
+        )
+        self.assertEqual(1, report["action"]["eligible_descendant_count"])
+        self.assertEqual(1, report["after"]["mapped_target_count_visible"])
+
+    def test_real_j24_v1_artifact_drives_one_input_binding_fix(self):
+        payload = json.loads(NX_J24_V1_ARTIFACT.read_text(encoding="utf-8"))
+        self.assertEqual(36, payload["mapped_target_body_count"])
+        self.assertEqual(0, payload["before"]["mapped_target_count_visible"])
+        self.assertEqual(
+            "Function takes 1 arguments, 2 passed.",
+            payload["action"]["exception"],
+        )
+        self.assertEqual("ROLLED_BACK", payload["rollback"]["status"])
+        source = JOURNAL24.read_text(encoding="utf-8")
+        self.assertIn("ShowComponentsInIsolateView(components)", source)
+        self.assertNotIn(
+            "ShowComponentsInIsolateView(components, work_view)",
+            source.replace('"failed_v1_signature": "ShowComponentsInIsolateView(components, work_view)"', ""),
+        )
 
 
 if __name__ == "__main__":
