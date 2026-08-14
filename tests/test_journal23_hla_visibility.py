@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNAL = ROOT / "from_git" / "journals" / "23_diagnose_hla_visibility.py"
+JOURNAL24 = ROOT / "from_git" / "journals" / "24_repair_hla_isolate_visibility.py"
 NX_V1_ARTIFACT = (
     ROOT
     / "docs"
@@ -30,6 +31,29 @@ def load_journal():
     sys.modules["NXOpen"] = nxopen
     try:
         spec = importlib.util.spec_from_file_location("journal23", JOURNAL)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        if prior is None:
+            sys.modules.pop("NXOpen", None)
+        else:
+            sys.modules["NXOpen"] = prior
+
+
+def load_journal24():
+    nxopen = types.ModuleType("NXOpen")
+    nxopen.NXObject = types.SimpleNamespace(
+        AttributeType=types.SimpleNamespace(String="String")
+    )
+    nxopen.Session = types.SimpleNamespace(
+        LibraryUnloadOption=types.SimpleNamespace(Immediately="Immediately"),
+        MarkVisibility=types.SimpleNamespace(Visible="Visible"),
+    )
+    prior = sys.modules.get("NXOpen")
+    sys.modules["NXOpen"] = nxopen
+    try:
+        spec = importlib.util.spec_from_file_location("journal24", JOURNAL24)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -174,6 +198,9 @@ class FakeAssembly:
     def __init__(self, children):
         self.RootComponent = types.SimpleNamespace(GetChildren=lambda: list(children))
         self.ActiveArrangement = Named("Arrangement 1")
+        self.show_calls = []
+        self.show_exception = None
+        self.show_errors = []
 
     def GetSuppressedState(self, component, controlled):
         return State("Suppressed" if component.IsSuppressed else "Unsuppressed")
@@ -183,6 +210,37 @@ class FakeAssembly:
 
     def GetNonGeometricState(self, component):
         return component.non_geometric
+
+    def ShowComponentsInIsolateView(self, components, view):
+        self.show_calls.append((list(components), view))
+        if self.show_exception is not None:
+            raise self.show_exception
+        for component in components:
+            for occurrence in component.occurrence_map.values():
+                if isinstance(occurrence, FakeBodyOccurrence) and occurrence not in view.visible:
+                    view.visible.append(occurrence)
+        return FakeErrorList(self.show_errors)
+
+
+class FakeErrorInfo:
+    def __init__(self, code, description):
+        self.ErrorCode = code
+        self.Description = description
+        self.ErrorObject = None
+        self.ErrorObjectDescription = ""
+
+
+class FakeErrorList:
+    def __init__(self, errors=None):
+        self.errors = list(errors or [])
+        self.Length = len(self.errors)
+        self.freed = False
+
+    def GetErrorInfo(self, index):
+        return self.errors[index]
+
+    def FreeResource(self):
+        self.freed = True
 
 
 class FakeView:
@@ -200,6 +258,9 @@ class FakeView:
 
     def IsDynamicSectionVisible(self, section):
         return section in self.visible_sections
+
+    def Regenerate(self):
+        return None
 
 
 class FakeModelingViews:
@@ -231,6 +292,7 @@ class FakeWorkPart:
         work_view = FakeView(visible or [], name=view_name)
         self.ModelingViews = FakeModelingViews(work_view, other_views)
         self.DynamicSections = FakeDynamicSections()
+        self.Views = types.SimpleNamespace(UpdateDisplay=lambda: None)
 
     def GetStringAttribute(self, name):
         if name == "DB_PART_NO":
@@ -444,6 +506,117 @@ class Journal23Tests(unittest.TestCase):
         self.assertTrue(
             all("GetSuppressedState: No overload" in row["PROBE_ERRORS"] for row in rows)
         )
+
+
+class Journal24Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.j23 = load_journal()
+        cls.j24 = load_journal24()
+
+    def session_for(self, work):
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(Work=work, Display=work),
+            DisplayManager=types.SimpleNamespace(MakeUpToDate=lambda: None),
+            undo_marks=[],
+            rollbacks=[],
+        )
+
+        def set_undo_mark(visibility, name):
+            mark = len(session.undo_marks) + 1
+            session.undo_marks.append((visibility, name, mark))
+            return mark
+
+        def undo_to_mark(mark, name):
+            session.rollbacks.append((mark, name))
+
+        session.SetUndoMark = set_undo_mark
+        session.UndoToMark = undo_to_mark
+        return session
+
+    def run_in_temp(self, session):
+        with tempfile.TemporaryDirectory() as folder:
+            old_io = os.environ.get("NX_JOURNALS_IO_DIR")
+            old_target = os.environ.get("NX_J23_TARGET")
+            os.environ["NX_JOURNALS_IO_DIR"] = folder
+            os.environ["NX_J23_TARGET"] = "TARGET-264"
+            try:
+                path, report = self.j24.run(
+                    session,
+                    datetime.datetime(2026, 8, 14, 13, 0, 0),
+                    dependency=self.j23,
+                )
+                payload = json.loads(Path(path).read_text(encoding="utf-8"))
+                return report, payload
+            finally:
+                if old_io is None:
+                    os.environ.pop("NX_JOURNALS_IO_DIR", None)
+                else:
+                    os.environ["NX_JOURNALS_IO_DIR"] = old_io
+                if old_target is None:
+                    os.environ.pop("NX_J23_TARGET", None)
+                else:
+                    os.environ["NX_J23_TARGET"] = old_target
+
+    def test_source_is_display_only_and_has_undo_guard(self):
+        source = JOURNAL24.read_text(encoding="utf-8")
+        self.assertIn("ShowComponentsInIsolateView", source)
+        self.assertIn("SetUndoMark", source)
+        self.assertIn("UndoToMark", source)
+        for token in (".Save(", ".Suppress(", ".Unsuppress(", ".Blank(", ".Unblank("):
+            self.assertNotIn(token, source)
+
+    def test_isolate_show_restores_target_and_confirms_cause(self):
+        component, occurrence = healthy_component("TARGET-264")
+        work = FakeWorkPart([component], visible=[], view_name="Isolate")
+        session = self.session_for(work)
+        report, payload = self.run_in_temp(session)
+        self.assertEqual(0, report["before"]["mapped_target_count_visible"])
+        self.assertEqual(1, report["after"]["mapped_target_count_visible"])
+        self.assertEqual("CONFIRMED", report["verdict"]["status"])
+        self.assertEqual(
+            "ISOLATE_VIEW_MEMBERSHIP_EXCLUDED_TARGET",
+            report["verdict"]["root_cause_code"],
+        )
+        self.assertEqual(1, len(work.ComponentAssembly.show_calls))
+        self.assertEqual([], session.rollbacks)
+        self.assertEqual(self.j24.BUILD, payload["journal_build"])
+
+    def test_non_isolate_view_is_not_mutated(self):
+        component, occurrence = healthy_component("TARGET-264")
+        work = FakeWorkPart([component], visible=[], view_name="Trimetric")
+        session = self.session_for(work)
+        report, _ = self.run_in_temp(session)
+        self.assertEqual("NOT_APPLIED", report["verdict"]["status"])
+        self.assertEqual([], work.ComponentAssembly.show_calls)
+        self.assertEqual([], session.undo_marks)
+
+    def test_api_failure_rolls_back_and_preserves_error_evidence(self):
+        component, occurrence = healthy_component("TARGET-264")
+        work = FakeWorkPart([component], visible=[], view_name="Isolate#2")
+        work.ComponentAssembly.show_exception = RuntimeError("NX rejected view")
+        session = self.session_for(work)
+        report, _ = self.run_in_temp(session)
+        self.assertEqual("API_ERROR", report["verdict"]["status"])
+        self.assertIn("NX rejected view", report["action"]["exception"])
+        self.assertEqual("ROLLED_BACK", report["rollback"]["status"])
+        self.assertEqual(1, len(session.rollbacks))
+
+    def test_no_visibility_change_is_inconclusive_and_rolled_back(self):
+        component, occurrence = healthy_component("TARGET-264")
+        work = FakeWorkPart([component], visible=[], view_name="Isolate")
+        work.ComponentAssembly.ShowComponentsInIsolateView = (
+            lambda components, view: FakeErrorList()
+        )
+        session = self.session_for(work)
+        report, _ = self.run_in_temp(session)
+        self.assertEqual("INCONCLUSIVE", report["verdict"]["status"])
+        self.assertEqual(
+            "ISOLATE_SHOW_DID_NOT_RESTORE_MAPPED_GEOMETRY",
+            report["verdict"]["root_cause_code"],
+        )
+        self.assertEqual("ROLLED_BACK", report["rollback"]["status"])
+        self.assertEqual(1, len(session.rollbacks))
 
 
 if __name__ == "__main__":

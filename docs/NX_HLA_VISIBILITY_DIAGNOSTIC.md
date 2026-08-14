@@ -102,3 +102,12 @@ Local tests verify traversal, exact targeting, tri-state probes, subassembly
 reference-set mapping, evidence citations, hypothesis rules, report structure,
 and absence of mutation calls. Only the next NX X 2506 JSON can verify the new
 runtime probes and establish the final root cause.
+
+## If NX X 2506 has no visible “Exit Isolation” command
+
+Run `from_git/journals/24_repair_hla_isolate_visibility.py`. NXOpen exposes no
+`ExitIsolation` method, so J24 uses the supported
+`ComponentAssembly.ShowComponentsInIsolateView` operation against the exact
+selected target subtree. It records mapped-body visibility before and after,
+does not save, and creates a visible undo mark. See
+`docs/NX_HLA_ISOLATE_VISIBILITY_REPAIR.md` for the guarded run procedure.
