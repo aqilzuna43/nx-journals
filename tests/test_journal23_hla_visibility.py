@@ -11,6 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNAL = ROOT / "from_git" / "journals" / "23_diagnose_hla_visibility.py"
+NX_V1_ARTIFACT = (
+    ROOT
+    / "docs"
+    / "J23_HLA_VISIBILITY_264MN024625A01_20260814_115209.json"
+)
 
 
 def load_journal():
@@ -89,6 +94,7 @@ class FakePrototype:
         reference_sets=None,
         fully_loaded=True,
         part_number=None,
+        prototype_children=None,
     ):
         FakePrototype._next_tag += 1
         self.Tag = FakePrototype._next_tag
@@ -102,7 +108,7 @@ class FakePrototype:
         self.EmptyPartRefsetName = "Empty"
         self._reference_sets = list(reference_sets or [])
         self.part_number = part_number or name
-        root = types.SimpleNamespace(GetChildren=lambda: [])
+        root = types.SimpleNamespace(GetChildren=lambda: list(prototype_children or []))
         self.ComponentAssembly = types.SimpleNamespace(RootComponent=root)
 
     def GetAllReferenceSets(self):
@@ -157,6 +163,9 @@ class FakeComponent:
     def GetComponentRepresentationMode(self):
         return State(self.representation)
 
+    def GetNonGeometricState(self):
+        return self.non_geometric
+
     def FindOccurrence(self, member):
         return self.occurrence_map.get(member)
 
@@ -177,12 +186,29 @@ class FakeAssembly:
 
 
 class FakeView:
-    def __init__(self, visible):
-        self.Name = "Trimetric"
+    _next_tag = 3000
+
+    def __init__(self, visible, name="Trimetric", visible_sections=None):
+        FakeView._next_tag += 1
+        self.Tag = FakeView._next_tag
+        self.Name = name
         self.visible = list(visible)
+        self.visible_sections = set(visible_sections or [])
 
     def AskVisibleObjects(self):
         return list(self.visible)
+
+    def IsDynamicSectionVisible(self, section):
+        return section in self.visible_sections
+
+
+class FakeModelingViews:
+    def __init__(self, work_view, others=None):
+        self.WorkView = work_view
+        self.views = [work_view] + list(others or [])
+
+    def ToArray(self):
+        return list(self.views)
 
 
 class FakeDynamicSections:
@@ -191,11 +217,19 @@ class FakeDynamicSections:
 
 
 class FakeWorkPart:
-    def __init__(self, children, visible=None, layer_states=None):
+    def __init__(
+        self,
+        children,
+        visible=None,
+        layer_states=None,
+        view_name="Trimetric",
+        other_views=None,
+    ):
         self.Name = "TOP-HLA"
         self.ComponentAssembly = FakeAssembly(children)
         self.Layers = FakeLayers(layer_states)
-        self.ModelingViews = types.SimpleNamespace(WorkView=FakeView(visible or []))
+        work_view = FakeView(visible or [], name=view_name)
+        self.ModelingViews = FakeModelingViews(work_view, other_views)
         self.DynamicSections = FakeDynamicSections()
 
     def GetStringAttribute(self, name):
@@ -238,104 +272,94 @@ class Journal23Tests(unittest.TestCase):
         self.assertIn("def get_unload_option(dummy):", source)
         self.assertIn("LibraryUnloadOption.Immediately", source)
 
-    def test_healthy_exact_occurrence_has_no_direct_cause(self):
-        component, occurrence = healthy_component()
-        work = FakeWorkPart([component], visible=[occurrence])
-        view = self.journal.work_view_snapshot(work)
-        sections = self.journal.dynamic_section_snapshot(work)
-        rows, errors = self.journal.collect_records(
-            work, "2026-08-14T10:00:00+08:00", "", view, sections
-        )
-        self.assertEqual([], errors)
-        self.assertEqual(1, len(rows))
-        self.assertEqual("NO_DIRECT_CAUSE_FOUND", rows[0]["ISSUE_CODES"])
-        self.assertEqual("LOW", rows[0]["CONFIDENCE"])
-        self.assertEqual(1, rows[0]["OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW"])
-        self.assertNotIn("SUPPRESSED_CURRENT_ARRANGEMENT", rows[0]["ISSUE_CODES"])
+    def test_failed_and_missing_probes_never_become_false(self):
+        class Broken:
+            @property
+            def IsBlanked(self):
+                raise RuntimeError("NX probe failed")
 
-    def test_hidden_hla_component_layer_is_ranked_high(self):
+        error = self.journal.property_probe(Broken(), "IsBlanked")
+        missing = self.journal.property_probe(Broken(), "IsSuppressed")
+        self.assertEqual(self.journal.ERROR, error["status"])
+        self.assertIsNone(error["value"])
+        self.assertEqual(self.journal.UNAVAILABLE, missing["status"])
+        self.assertIsNone(missing["value"])
+
+    def test_exact_target_view_exclusion_is_confirmed_by_other_view(self):
+        component, occurrence = healthy_component("TARGET-264")
+        alternate = FakeView([occurrence], name="Trimetric")
+        work = FakeWorkPart(
+            [component], visible=[], view_name="Isolate", other_views=[alternate]
+        )
+        nodes, errors = self.journal.collect_nodes(work)
+        self.assertEqual([], errors)
+        analysis = self.journal.analyze_target(nodes[0], nodes, work)
+        self.assertEqual("CONFIRMED", analysis["conclusion"]["status"])
+        self.assertEqual(
+            "CURRENT_WORK_VIEW_EXCLUSION",
+            analysis["conclusion"]["root_cause_code"],
+        )
+        verdicts = {item["code"]: item["verdict"] for item in analysis["hypotheses"]}
+        self.assertEqual("RULED_OUT", verdicts["SUPPRESSION_AS_PRIMARY_CAUSE"])
+        self.assertEqual("RULED_OUT", verdicts["BLANKING_AS_PRIMARY_CAUSE"])
+        self.assertEqual("RULED_OUT", verdicts["REFERENCE_SET_AS_PRIMARY_CAUSE"])
+        self.assertEqual("STRONGLY_SUPPORTED", verdicts["ISOLATE_VIEW_MECHANISM"])
+
+    def test_entire_part_subassembly_maps_children_and_descendant_bodies(self):
+        child_body = FakeBody(61)
+        child_occ_body = FakeBodyOccurrence(62)
+        child_refset = FakeReferenceSet("MODEL", [child_body])
+        child_proto = FakePrototype("CHILD", [child_body], [child_refset])
+        child_occ = FakeComponent(
+            "CHILD/A", child_proto, occurrence_map={child_body: child_occ_body}
+        )
+        prototype_child = FakeComponent("CHILD-PROTOTYPE", child_proto)
+        target_proto = FakePrototype(
+            "TARGET-SUBASM",
+            [],
+            [],
+            part_number="264MN031978A01",
+            prototype_children=[prototype_child],
+        )
+        target = FakeComponent(
+            "264MN031978A01/A",
+            target_proto,
+            children=[child_occ],
+            reference_set="Entire Part",
+            occurrence_map={prototype_child: child_occ},
+        )
+        alternate = FakeView([child_occ_body], name="Trimetric")
+        work = FakeWorkPart(
+            [target], visible=[], view_name="Isolate", other_views=[alternate]
+        )
+        nodes, _ = self.journal.collect_nodes(work)
+        analysis = self.journal.analyze_target(nodes[0], nodes, work)
+        target_row = analysis["subtree_occurrences"][0]
+        self.assertEqual("ENTIRE_PART", target_row["reference_set"]["kind"])
+        self.assertEqual(1, target_row["reference_set"]["component_member_count"])
+        self.assertEqual(1, target_row["mapping"]["mapped_component_count"])
+        self.assertEqual(1, analysis["subtree_summary"]["mapped_body_occurrences"])
+
+    def test_hidden_hla_layer_is_observed_not_assumed(self):
         component, occurrence = healthy_component("HIDDEN-LAYER")
         component.Layer = 77
         work = FakeWorkPart([component], visible=[], layer_states={77: "Hidden"})
-        view = self.journal.work_view_snapshot(work)
-        rows, _ = self.journal.collect_records(
-            work,
-            "2026-08-14T10:00:00+08:00",
-            "",
-            view,
-            self.journal.dynamic_section_snapshot(work),
-        )
-        self.assertEqual("COMPONENT_LAYER_HIDDEN", rows[0]["ISSUE_CODES"].split(" | ")[0])
-        self.assertEqual("HIGH", rows[0]["CONFIDENCE"])
-        self.assertIn("hidden layer in the top-level assembly", rows[0]["ROOT_CAUSE"])
+        nodes, _ = self.journal.collect_nodes(work)
+        analysis = self.journal.analyze_target(nodes[0], nodes, work)
+        verdicts = {item["code"]: item["verdict"] for item in analysis["hypotheses"]}
+        self.assertEqual("CONFIRMED", verdicts["HIDDEN_HLA_COMPONENT_LAYER"])
+        layer_probe = analysis["subtree_occurrences"][0]["component_state"]["layer_state"]
+        self.assertEqual(self.journal.OBSERVED, layer_probe["status"])
+        self.assertEqual("Hidden", layer_probe["value"])
 
-    def test_blanked_parent_is_inherited_by_child(self):
-        child, child_occurrence = healthy_component("MISSING-CHILD")
-        parent_body = FakeBody(30)
-        parent_occurrence = FakeBodyOccurrence(31)
-        parent_refset = FakeReferenceSet("MODEL", [parent_body])
-        parent_proto = FakePrototype("SUBASM", [parent_body], [parent_refset])
-        parent = FakeComponent(
-            "BLANKED-PARENT",
-            parent_proto,
-            children=[child],
-            blanked=True,
-            occurrence_map={parent_body: parent_occurrence},
-        )
-        work = FakeWorkPart([parent], visible=[child_occurrence])
-        view = self.journal.work_view_snapshot(work)
-        rows, _ = self.journal.collect_records(
-            work,
-            "2026-08-14T10:00:00+08:00",
-            "MISSING-CHILD",
-            view,
-            self.journal.dynamic_section_snapshot(work),
-        )
-        child_row = rows[1]
-        self.assertEqual("YES", child_row["ANCESTOR_BLANKED"])
-        self.assertEqual("ANCESTOR_BLANKED", child_row["ISSUE_CODES"].split(" | ")[0])
-        self.assertEqual("YES", child_row["TARGET_MATCH"])
-
-    def test_empty_and_missing_reference_sets_are_distinguished(self):
-        body = FakeBody(40)
-        prototype = FakePrototype("P", [body], [FakeReferenceSet("MODEL", [body])])
-        empty = FakeComponent("EMPTY", prototype, reference_set="Empty")
-        stale = FakeComponent("STALE", prototype, reference_set="OLD_MODEL")
-        work = FakeWorkPart([empty, stale])
-        view = self.journal.work_view_snapshot(work)
-        rows, _ = self.journal.collect_records(
-            work,
-            "2026-08-14T10:00:00+08:00",
-            "",
-            view,
-            self.journal.dynamic_section_snapshot(work),
-        )
-        self.assertEqual("EMPTY_REFERENCE_SET", rows[0]["ISSUE_CODES"].split(" | ")[0])
-        self.assertEqual("REFERENCE_SET_NOT_FOUND", rows[1]["ISSUE_CODES"].split(" | ")[0])
-
-    def test_target_filter_matches_prototype_part_number(self):
-        body = FakeBody(50)
-        occurrence = FakeBodyOccurrence(51)
-        reference_set = FakeReferenceSet("MODEL", [body])
-        prototype = FakePrototype(
-            "GENERIC-NAME",
-            [body],
-            [reference_set],
-            part_number="264MN099999A01",
-        )
-        component = FakeComponent(
-            "OCCURRENCE-7", prototype, occurrence_map={body: occurrence}
-        )
+    def test_unavailable_load_property_is_not_reported_as_no(self):
+        component, occurrence = healthy_component("TARGET")
+        del component.Prototype.IsFullyLoaded
         work = FakeWorkPart([component], visible=[occurrence])
-        view = self.journal.work_view_snapshot(work)
-        rows, _ = self.journal.collect_records(
-            work,
-            "2026-08-14T10:00:00+08:00",
-            "264MN099999A01",
-            view,
-            self.journal.dynamic_section_snapshot(work),
-        )
-        self.assertEqual("YES", rows[0]["TARGET_MATCH"])
+        nodes, _ = self.journal.collect_nodes(work)
+        row = self.journal.analyze_target(nodes[0], nodes, work)["subtree_occurrences"][0]
+        self.assertEqual(self.journal.UNAVAILABLE, row["prototype"]["fully_loaded"]["status"])
+        self.assertIsNone(row["prototype"]["fully_loaded"]["value"])
 
     def test_run_writes_ranked_csv_and_json_without_changing_part(self):
         component, occurrence = healthy_component("TARGET-264")
@@ -367,8 +391,13 @@ class Journal23Tests(unittest.TestCase):
             payload = json.loads(Path(json_path).read_text(encoding="utf-8"))
             self.assertEqual(self.journal.BUILD, payload["journal_build"])
             self.assertEqual(1, payload["target_match_count"])
-            self.assertEqual("READ_ONLY_HLA_VISIBILITY_DIAGNOSTIC", payload["scope"])
-            self.assertEqual(report["ranked_occurrences"], payload["ranked_occurrences"])
+            self.assertEqual(2, payload["schema_version"])
+            self.assertEqual("READ_ONLY_EXACT_TARGET_ROOT_CAUSE_PROOF", payload["scope"])
+            self.assertIn("truth_policy", payload)
+            analysis = payload["target_analyses"][0]
+            self.assertTrue(analysis["evidence_ledger"])
+            fact_ids = {item["id"] for item in analysis["evidence_ledger"]}
+            self.assertTrue(set(analysis["conclusion"]["evidence_ids"]) <= fact_ids)
 
     def test_run_requires_same_work_and_display_hla(self):
         component, occurrence = healthy_component()
@@ -377,8 +406,44 @@ class Journal23Tests(unittest.TestCase):
         session = types.SimpleNamespace(
             Parts=types.SimpleNamespace(Work=work, Display=other)
         )
-        with self.assertRaisesRegex(RuntimeError, "both the displayed part and work part"):
+        with self.assertRaisesRegex(RuntimeError, "both work and displayed part"):
             self.journal.run(session)
+
+    def test_real_nx_artifact_rules_out_suppression_and_blanking_for_target_subtree(self):
+        payload = json.loads(NX_V1_ARTIFACT.read_text(encoding="utf-8"))
+        prefix = (
+            "264MN024625A01/A;1-ASSY-DCDC / 264MN031978A01/A"
+        )
+        rows = [
+            row
+            for row in payload["ranked_occurrences"]
+            if row["ASSEMBLY_PATH"] == prefix
+            or row["ASSEMBLY_PATH"].startswith(prefix + " / ")
+        ]
+        mapped_absent = [
+            row
+            for row in rows
+            if int(row["OCCURRENCE_MEMBERS_FOUND"]) > 0
+            and int(row["OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW"]) == 0
+        ]
+        unsuppressed_mapped_absent = [
+            row for row in mapped_absent if row["SUPPRESSED"] == "NO"
+        ]
+        self.assertEqual(28, len(rows))
+        self.assertEqual(27, len(mapped_absent))
+        self.assertEqual(21, len(unsuppressed_mapped_absent))
+        self.assertEqual(0, sum(row["IS_BLANKED"] == "YES" for row in rows))
+        self.assertEqual(
+            0,
+            sum(
+                int(row["OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW"]) > 0
+                for row in rows
+            ),
+        )
+        self.assertEqual("Isolate", payload["work_view"]["name"])
+        self.assertTrue(
+            all("GetSuppressedState: No overload" in row["PROBE_ERRORS"] for row in rows)
+        )
 
 
 if __name__ == "__main__":

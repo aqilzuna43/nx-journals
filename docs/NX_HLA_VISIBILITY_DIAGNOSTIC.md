@@ -1,80 +1,104 @@
-# J23 — HLA Assembly Visibility Diagnostic
+# J23 V2 — Exact-target HLA Visibility Evidence
 
-Use `from_git/journals/23_diagnose_hla_visibility.py` when a part displays
-normally in its own NX window but its occurrence geometry is missing from the
-top-level HLA assembly.
+Use `from_git/journals/23_diagnose_hla_visibility.py` when an occurrence or
+subassembly is missing in the main HLA window but displays correctly through
+**Isolate in New Window**.
 
-J23 is read-only. It does not change hide/show state, layers, reference sets,
-arrangements, representations, load state, or Teamcenter data, and it never
-saves a part. It inventories the current failing display state so that the
-first correction can be based on evidence.
+J23 V2 is read-only. It does not show, hide, blank, suppress, load, switch a
+view, change a reference set, update, or save anything.
 
-## Before running
+## Why V2 replaced the first report
 
-1. Reproduce the problem in the affected NX session.
-2. Make the top-level HLA both the **displayed part** and **work part**.
-3. Keep the failing modeling work view and active arrangement selected.
-4. Do not open the missing prototype in a new window immediately before the
-   run if that action changes the HLA display state.
-5. Play `from_git/journals/23_diagnose_hla_visibility.py` from
-   **Tools > Journal > Play**.
+The first NX X 2506 run proved useful facts, but also exposed unsupported API
+calls. V1 treated some unavailable properties as false and therefore produced
+unsupported findings such as `PROTOTYPE_NOT_FULLY_LOADED`. V2 uses this rule:
 
-For a large HLA, optionally define `NX_J23_TARGET` before starting NX. Its
-value can be any case-insensitive component name, part number, or assembly-path
-substring. J23 still captures the entire structure but prints matching rows
-first. Example:
+> A failed or unavailable probe is `ERROR` or `UNAVAILABLE`; it is never
+> converted into `NO`, `False`, zero, or a root cause.
 
-```text
-NX_J23_TARGET=264MN012345A01
+Every V2 conclusion cites fact IDs from `evidence_ledger`. Each hypothesis is
+`CONFIRMED`, `STRONGLY_SUPPORTED`, `RULED_OUT`, or `INCONCLUSIVE`.
+
+## Current target
+
+The checked-in fallback is:
+
+```python
+USER_TARGET = "264MN031978A01"
 ```
 
-If setting an environment variable is inconvenient, run without it and use
-the missing component name to filter the CSV.
+Target resolution order is:
 
-## Output
+1. Exactly one component preselected in Assembly Navigator.
+2. Exact part number from `NX_J23_TARGET`.
+3. `USER_TARGET` in the journal.
 
-J23 writes two files under:
+Preselection is best when the same part number occurs more than once because
+it identifies the exact component tag and assembly path.
+
+## Run on the office NX machine
+
+1. Pull the current `master`.
+2. Reproduce the missing component in the **main HLA window**.
+3. Make the HLA both displayed part and work part.
+4. In Assembly Navigator, select exactly the missing
+   `264MN031978A01/A` occurrence. Do not select its prototype in a separate
+   window.
+5. Keep the failing main view active.
+6. Play `from_git/journals/23_diagnose_hla_visibility.py`.
+7. Push the generated `J23_EVIDENCE_*.json` under `docs/`.
+
+The report is written under:
 
 ```text
 <NX_JOURNALS_IO_DIR or Desktop>\NX_HLA_VISIBILITY_DIAGNOSTIC\
-  J23_HLA_VISIBILITY_<HLA>_<timestamp>.csv
-  J23_HLA_VISIBILITY_<HLA>_<timestamp>.json
+  J23_EVIDENCE_<target>_<timestamp>.csv
+  J23_EVIDENCE_<target>_<timestamp>.json
 ```
 
-The CSV is for quick filtering. The JSON preserves the active arrangement,
-work-view inventory, dynamic-section context, ranked occurrences, and probe
-errors. Return the **JSON**, the exact missing component name/path, and a
-screenshot of the HLA Assembly Navigator and graphics window.
+## What V2 proves
 
-## Root-cause ranking
+For the selected occurrence and its complete subtree, V2 records:
 
-The first issue code on a row is J23's highest-ranked explanation. The main
-high-confidence results are:
+- exact component/prototype tags and assembly paths;
+- direct suppression and blanking as independent NX probes;
+- HLA component-layer state from the displayed HLA only;
+- non-geometric and representation probes without boolean fallbacks;
+- runtime prototype type and load-property availability;
+- actual reference-set body **and component** members;
+- `Component.FindOccurrence` mappings for those members;
+- exact mapped body tags present in the active work view;
+- the same body tags present in every readable saved modeling view;
+- visible same-part/revision controls outside the target subtree;
+- dynamic-section visibility in the active view;
+- a hypothesis table and fact-cited conclusion.
 
-| Issue code | Meaning |
-|---|---|
-| `SUPPRESSED_CURRENT_ARRANGEMENT` / `ANCESTOR_SUPPRESSED` | Active-arrangement suppression hides the occurrence or its subtree. |
-| `COMPONENT_BLANKED` / `ANCESTOR_BLANKED` | Occurrence-level blanking hides the component or a parent subtree. |
-| `COMPONENT_LAYER_HIDDEN` / `ANCESTOR_LAYER_HIDDEN` | The component or a parent is placed on a hidden **HLA** layer. |
-| `NON_GEOMETRIC_OCCURRENCE` | The HLA occurrence is deliberately marked non-geometric. |
-| `EMPTY_REFERENCE_SET` | The occurrence uses NX's Empty reference set. |
-| `REFERENCE_SET_NOT_FOUND` | The occurrence names a reference set absent from the resolved revision. |
-| `REFERENCE_SET_HAS_NO_GEOMETRY` | The selected reference set exists but contains no body/component geometry. |
-| `NO_OCCURRENCE_GEOMETRY` | Prototype members exist, but NX cannot map them to HLA occurrences; stale/corrupt occurrence or representation data is suspected. |
-| `ALL_OCCURRENCE_GEOMETRY_BLANKED` | Every mapped geometry member is blanked in the HLA context. |
+`ISOLATE_VIEW_MECHANISM` is intentionally not marked `CONFIRMED` merely because
+the work view is named `Isolate`. NXOpen exposes commands that create and edit
+isolate membership, but the available read-only interface does not expose a
+direct membership query. It becomes `STRONGLY_SUPPORTED` only when independent
+geometry/view comparisons support it.
 
-Medium-confidence results include work-view/isolate visibility, hidden
-prototype body layers, body-level blanking, incomplete loading, and
-lightweight/partial representation. `ACTIVE_DYNAMIC_SECTION` is deliberately
-low confidence because clipping can be valid and unrelated.
+## Facts already established for 264MN031978A01
 
-`NO_DIRECT_CAUSE_FOUND` is not proof that the occurrence is healthy. It means
-the supported read-only NXOpen properties did not expose a direct cause; the
-returned JSON is then used to design a narrower second probe.
+The first NX artifact under
+`docs/J23_HLA_VISIBILITY_264MN024625A01_20260814_115209.json` proves:
+
+- target subtree occurrence rows: **28**;
+- rows with successfully mapped geometry absent from the work view: **27**;
+- mapped-but-absent rows whose components report unsuppressed: **21**;
+- blanked target-subtree rows: **0**;
+- target-subtree rows with mapped geometry visible in the main view: **0**;
+- active work-view name: **Isolate**.
+
+Therefore, suppression and blanking do not explain the entire missing
+subassembly. V2's alternate-view and same-prototype control probes are designed
+to close the remaining gap between “current-view exclusion observed” and a
+confirmed view-specific root cause.
 
 ## Verification boundary
 
-Local tests only verify imports, traversal, ranking, report structure, and the
-absence of mutation calls. Siemens NX is not installed on this repository
-host. Only an NX 2312/NX X 2506 run on the office machine can verify the API
-behavior and identify the real root cause.
+Local tests verify traversal, exact targeting, tri-state probes, subassembly
+reference-set mapping, evidence citations, hypothesis rules, report structure,
+and absence of mutation calls. Only the next NX X 2506 JSON can verify the new
+runtime probes and establish the final root cause.

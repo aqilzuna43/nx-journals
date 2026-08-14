@@ -63,7 +63,7 @@ shared helpers from `from_git\utils`.
 | 20 | `from_git/journals/20_diagnose_assembly_full_load.py` | Isolates component/prototype failures that occur only during assembly Full Load |
 | 21 | `from_git/journals/21_mass_surface_attribute_updater.py` | Triggers NX's native mass-properties update (Update On Save + Commit) and reports what NX wrote: `NX_MassPropRollupMass` (kg) / `NX_MassPropRollupArea` (mm^2, also presented in m^2) on every BoM-visible 3D master, then saves and verifies by read-back; DRY_RUN / SMOKE / PROBE modes. Does NOT write the reserved titles directly (NX rejects them with [512006]) |
 | 22 | `from_git/journals/22_diagnose_mass_attribute_write.py` | One-part diagnostic: tests classic compute, the native mass-properties builder, and per-category attribute writes, with full before/after attribute dumps |
-| 23 | `from_git/journals/23_diagnose_hla_visibility.py` | Read-only HLA occurrence visibility diagnostic covering arrangement suppression, blanking, HLA layers, non-geometric state, reference-set contents, mapped geometry, active work-view visibility, representation/load state, and dynamic-section context |
+| 23 | `from_git/journals/23_diagnose_hla_visibility.py` | Read-only, exact-target HLA visibility proof: tri-state NX probes, subtree/reference-set occurrence mapping, cross-view and same-prototype controls, hypothesis verdicts, and fact-cited root-cause conclusions |
 
 ## Key Runtime Notes
 
@@ -347,7 +347,7 @@ it opened.
 | J18 | `NX_SURFACE_AREA\J18_SURFACE_AREA_<part>_<timestamp>.csv` |
 | J21 | `NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_<root>_<timestamp>.csv` |
 | J22 | `NX_MASS_SURFACE_UPDATE\J22_DIAGNOSTIC_<root>_<timestamp>.csv` and `.json` |
-| J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_HLA_VISIBILITY_<root>_<timestamp>.csv` and `.json` |
+| J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_EVIDENCE_<target>_<timestamp>.csv` and `.json` |
 
 ## Notes
 

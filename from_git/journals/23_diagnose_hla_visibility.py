@@ -1,18 +1,14 @@
-"""J23 - Read-only HLA assembly visibility diagnostic.
+"""J23 V2 - target-focused, read-only HLA visibility root-cause proof.
 
-Use this journal when geometry is visible after a component prototype is
-opened in its own window, but the same component is missing from the top-level
-HLA assembly window.  J23 inventories every occurrence and ranks assembly-only
-visibility causes.  It does not repair or change the assembly.
+Select one missing component in Assembly Navigator before playing the journal,
+or set NX_J23_TARGET to its exact part number.  USER_TARGET is the fallback for
+the current investigation.  V2 never converts a failed probe into False: every
+value is OBSERVED, ERROR, UNAVAILABLE, or NOT_APPLICABLE.  Conclusions cite the
+fact IDs that prove them; all other hypotheses are explicitly ruled out or
+left inconclusive.
 
-Evidence includes occurrence/ancestor blanking, layer state, active-arrangement
-suppression, non-geometric state, reference-set membership, representation and
-load state, prototype geometry, mapped occurrence geometry, work-view visible
-objects, and dynamic-section context.
-
-Optional: set NX_J23_TARGET to a component name, part number, or assembly-path
-substring before starting NX.  All occurrences are still captured; matching
-rows are marked and printed first.
+The journal changes no NX object, view, load state, arrangement, or Teamcenter
+data and never saves.
 
 Target: NX 2312 and NX X 2506 embedded Python.
 Run via: NX > Tools > Journal > Play
@@ -27,64 +23,52 @@ import traceback
 import NXOpen
 
 
-BUILD = "J23-NX2506-HLA-VISIBILITY-DIAGNOSTIC-V1"
+BUILD = "J23-NX2506-HLA-VISIBILITY-EVIDENCE-V2"
+SCHEMA_VERSION = 2
+USER_TARGET = "264MN031978A01"
 OUTPUT_FOLDER = "NX_HLA_VISIBILITY_DIAGNOSTIC"
 MAX_OCCURRENCES = 100000
-MAX_MEMBER_PROBES_PER_OCCURRENCE = 500
+MAX_MEMBER_PROBES = 500
+
+OBSERVED = "OBSERVED"
+ERROR = "ERROR"
+UNAVAILABLE = "UNAVAILABLE"
+NOT_APPLICABLE = "NOT_APPLICABLE"
+HIDDEN_LAYER_NAMES = ("HIDDEN", "INVISIBLE")
+ENTIRE_REFSETS = ("ENTIRE PART", "ENTIRE_PART", "ENTIRE")
+EMPTY_REFSETS = ("EMPTY", "EMPTY PART", "EMPTY_PART")
 
 CSV_COLUMNS = (
-    "RUN_TIMESTAMP",
-    "JOURNAL_BUILD",
-    "ROOT_ASSEMBLY",
-    "TARGET_MATCH",
-    "LEVEL",
+    "ROLE",
     "ASSEMBLY_PATH",
-    "COMPONENT_NAME",
-    "PARENT_COMPONENT",
-    "PROTOTYPE_NAME",
+    "LEVEL",
+    "COMPONENT_TAG",
     "PART_NUMBER",
     "REVISION",
     "REFERENCE_SET",
-    "REFERENCE_SET_FOUND",
-    "REFERENCE_SET_MEMBER_COUNT",
-    "REFERENCE_SET_BODY_COUNT",
-    "REFERENCE_SET_COMPONENT_COUNT",
-    "SUPPRESSED",
-    "SUPPRESSED_STATE",
-    "SUPPRESSION_EXPRESSION",
-    "SUPPRESSING_ARRANGEMENT",
-    "ANCESTOR_SUPPRESSED",
-    "IS_BLANKED",
-    "ANCESTOR_BLANKED",
+    "SUPPRESSED_STATUS",
+    "SUPPRESSED_VALUE",
+    "BLANKED_STATUS",
+    "BLANKED_VALUE",
+    "NON_GEOMETRIC_STATUS",
+    "NON_GEOMETRIC_VALUE",
     "COMPONENT_LAYER",
-    "COMPONENT_LAYER_STATE",
-    "ANCESTOR_HIDDEN_LAYER",
-    "NON_GEOMETRIC",
-    "REPRESENTATION_MODE",
-    "USED_ARRANGEMENT",
-    "PROTOTYPE_LOAD_STATE",
-    "PROTOTYPE_FULLY_LOADED",
-    "PROTOTYPE_BODY_COUNT",
-    "PROTOTYPE_SOLID_BODY_COUNT",
-    "PROTOTYPE_CHILD_COMPONENT_COUNT",
-    "PROTOTYPE_BLANKED_BODY_COUNT",
-    "PROTOTYPE_HIDDEN_LAYER_BODY_COUNT",
-    "GEOMETRY_MEMBERS_PROBED",
-    "OCCURRENCE_MEMBERS_FOUND",
-    "OCCURRENCE_MEMBERS_BLANKED",
-    "OCCURRENCE_BODY_TAGS_TESTED_IN_WORK_VIEW",
-    "OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW",
-    "PROBE_LIMIT_REACHED",
-    "ISSUE_CODES",
-    "ROOT_CAUSE",
-    "CONFIDENCE",
-    "RECOMMENDATION",
+    "COMPONENT_LAYER_STATE_STATUS",
+    "COMPONENT_LAYER_STATE_VALUE",
+    "PROTOTYPE_TYPE",
+    "LOAD_STATUS",
+    "FULLY_LOADED_STATUS",
+    "FULLY_LOADED_VALUE",
+    "REFSET_PROBE_STATUS",
+    "REFSET_FOUND",
+    "REFSET_BODY_MEMBERS",
+    "REFSET_COMPONENT_MEMBERS",
+    "MAPPED_BODY_OCCURRENCES",
+    "MAPPED_COMPONENT_OCCURRENCES",
+    "MAPPED_BODIES_VISIBLE_CURRENT_VIEW",
+    "CURRENT_VIEW_NAME",
     "PROBE_ERRORS",
 )
-
-ENTIRE_REFSET_NAMES = ("ENTIRE PART", "ENTIRE_PART", "ENTIRE")
-EMPTY_REFSET_NAMES = ("EMPTY", "EMPTY PART", "EMPTY_PART")
-HIDDEN_LAYER_STATES = ("HIDDEN", "INVISIBLE")
 
 
 def clean(value):
@@ -105,16 +89,26 @@ def enum_text(value):
         return clean(value)
 
 
-def yes_no(value):
-    return "YES" if bool(value) else "NO"
-
-
 def error_text(error):
     message = clean(error) or type(error).__name__
     code = clean(getattr(error, "ErrorCode", ""))
-    if code:
-        return "{0} [NX error {1}]".format(message, code)
-    return message
+    return "{0}{1}".format(message, " [NX error {0}]".format(code) if code else "")
+
+
+def probe(status, value=None, source="", error=""):
+    return {"status": status, "value": value, "source": source, "error": error}
+
+
+def observed(value, source):
+    return probe(OBSERVED, value=value, source=source)
+
+
+def failed(source, error):
+    return probe(ERROR, value=None, source=source, error=error_text(error))
+
+
+def unavailable(source, reason):
+    return probe(UNAVAILABLE, value=None, source=source, error=clean(reason))
 
 
 def safe_value(value, property_name, fallback=""):
@@ -122,24 +116,16 @@ def safe_value(value, property_name, fallback=""):
         return fallback
     try:
         result = getattr(value, property_name)
-        if callable(result):
-            result = result()
-        return result
+        return result() if callable(result) else result
     except Exception:
         return fallback
 
 
 def safe_name(value, fallback="<unavailable>"):
-    for property_name in (
-        "DisplayName",
-        "Name",
-        "Leaf",
-        "JournalIdentifier",
-        "FullPath",
-    ):
-        result = clean(safe_value(value, property_name))
-        if result:
-            return result
+    for name in ("DisplayName", "Name", "Leaf", "JournalIdentifier", "FullPath"):
+        text = clean(safe_value(value, name))
+        if text:
+            return text
     return fallback
 
 
@@ -151,20 +137,11 @@ def object_tag(value):
         return ""
 
 
-def same_nx_object(first, second):
-    if first is second:
-        return True
-    first_tag = object_tag(first)
-    second_tag = object_tag(second)
-    return bool(first_tag and second_tag and first_tag == second_tag)
-
-
 def object_kind(value):
     if value is None:
         return ""
     try:
-        runtime_type = value.GetType()
-        name = clean(getattr(runtime_type, "Name", ""))
+        name = clean(getattr(value.GetType(), "Name", ""))
         if name:
             return name
     except Exception:
@@ -177,37 +154,103 @@ def is_body(value):
 
 
 def is_component(value):
-    kind = object_kind(value).lower()
-    return "component" in kind and "assembly" not in kind
+    name = object_kind(value).lower()
+    return "component" in name and "assembly" not in name
 
 
-def bool_property(value, property_name):
+def same_object(first, second):
+    if first is second:
+        return True
+    left, right = object_tag(first), object_tag(second)
+    return bool(left and right and left == right)
+
+
+def property_probe(value, property_name):
+    source = "{0}.{1}".format(object_kind(value) or "object", property_name)
+    if value is None:
+        return unavailable(source, "Object is unavailable.")
     try:
-        return bool(getattr(value, property_name)), ""
+        result = getattr(value, property_name)
+    except AttributeError:
+        return unavailable(source, "Property is not exposed by this runtime object type.")
     except Exception as error:
-        return False, "{0}: {1}".format(property_name, error_text(error))
+        return failed(source, error)
+    try:
+        return observed(result() if callable(result) else result, source)
+    except Exception as error:
+        return failed(source, error)
+
+
+def method_probe(value, method_name, *args):
+    source = "{0}.{1}".format(object_kind(value) or "object", method_name)
+    if value is None:
+        return unavailable(source, "Object is unavailable.")
+    try:
+        method = getattr(value, method_name)
+    except AttributeError:
+        return unavailable(source, "Method is not exposed by this runtime object type.")
+    except Exception as error:
+        return failed(source, error)
+    try:
+        return observed(method(*args), source)
+    except Exception as error:
+        return failed(source, error)
 
 
 def get_string_attribute(nx_object, names):
     for name in names:
         try:
-            result = clean(nx_object.GetStringAttribute(name))
-            if result:
-                return result
+            text = clean(nx_object.GetStringAttribute(name))
+            if text:
+                return text
         except Exception:
             pass
         try:
             info = nx_object.GetUserAttribute(
-                name,
-                NXOpen.NXObject.AttributeType.String,
-                -1,
+                name, NXOpen.NXObject.AttributeType.String, -1
             )
-            result = clean(getattr(info, "StringValue", ""))
-            if result:
-                return result
+            text = clean(getattr(info, "StringValue", ""))
+            if text:
+                return text
         except Exception:
             pass
     return ""
+
+
+def layer_state_probe(work_part, layer):
+    source = "work_part.Layers.GetState({0})".format(clean(layer))
+    try:
+        raw = work_part.Layers.GetState(int(layer))
+        text = enum_text(raw)
+        numeric = clean(raw)
+        if text == numeric:
+            text = {"0": "WorkLayer", "1": "Selectable", "2": "Visible", "3": "Hidden"}.get(
+                numeric, text
+            )
+        return observed(text, source)
+    except Exception as error:
+        return failed(source, error)
+
+
+def list_probe(value, property_name):
+    source = "{0}.{1}".format(object_kind(value) or "object", property_name)
+    try:
+        return observed(list(getattr(value, property_name)), source)
+    except AttributeError:
+        return unavailable(source, "Collection is not exposed by this runtime object type.")
+    except Exception as error:
+        return failed(source, error)
+
+
+def collection_items(value):
+    try:
+        return list(value)
+    except Exception:
+        pass
+    try:
+        return list(value.ToArray())
+    except Exception:
+        return []
 
 
 def log_line(session, message):
@@ -215,9 +258,7 @@ def log_line(session, message):
     try:
         window = session.ListingWindow
         window.Open()
-        writer = getattr(window, "WriteFullline", None)
-        if not callable(writer):
-            writer = getattr(window, "WriteLine", None)
+        writer = getattr(window, "WriteFullline", None) or getattr(window, "WriteLine", None)
         if callable(writer):
             for line in text.splitlines() or [""]:
                 writer(line)
@@ -229,886 +270,799 @@ def log_line(session, message):
         pass
 
 
-def desktop_folder():
-    profile = clean(os.environ.get("USERPROFILE"))
-    if profile:
-        return os.path.join(profile, "Desktop")
-    fallback = os.path.expanduser("~")
-    if fallback and fallback != "~":
-        return os.path.join(fallback, "Desktop")
-    return os.getcwd()
-
-
 def io_root():
     configured = clean(os.environ.get("NX_JOURNALS_IO_DIR"))
-    return os.path.abspath(os.path.expanduser(configured or desktop_folder()))
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    profile = clean(os.environ.get("USERPROFILE"))
+    return os.path.join(profile, "Desktop") if profile else os.getcwd()
 
 
 def filename_token(value):
     text = clean(value) or "UNKNOWN"
-    result = "".join(char if char.isalnum() or char in "-_" else "_" for char in text)
-    return result[:80] or "UNKNOWN"
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in text)[:80]
 
 
-def get_layer_state(part, layer):
-    try:
-        number = int(layer)
-        return enum_text(part.Layers.GetState(number)), ""
-    except Exception as error:
-        return "", "Layer {0}: {1}".format(clean(layer), error_text(error))
+class EvidenceLedger:
+    def __init__(self):
+        self.items = []
+
+    def add(self, category, statement, source, value=None, status=OBSERVED):
+        item = {
+            "id": "F{0:03d}".format(len(self.items) + 1),
+            "status": status,
+            "category": category,
+            "statement": statement,
+            "source": source,
+            "value": value,
+        }
+        self.items.append(item)
+        return item["id"]
 
 
-def collection_items(value):
-    if value is None:
-        return []
-    try:
-        return list(value)
-    except Exception:
-        pass
-    try:
-        return list(value.ToArray())
-    except Exception:
-        return []
-
-
-def direct_bodies(prototype):
-    try:
-        return list(prototype.Bodies), ""
-    except Exception as error:
-        return [], "Prototype.Bodies: {0}".format(error_text(error))
-
-
-def direct_child_count(prototype):
-    try:
-        root = prototype.ComponentAssembly.RootComponent
-        if root is None:
-            return 0, ""
-        return len(list(root.GetChildren())), ""
-    except Exception as error:
-        return 0, "Prototype child components: {0}".format(error_text(error))
-
-
-def reference_set_details(prototype, selected_name, bodies):
-    """Return the selected reference-set members without modifying it."""
-    result = {
-        "found": False,
-        "members": [],
-        "body_count": 0,
-        "component_count": 0,
-        "errors": [],
+def component_identity(component, prototype, path, level, parent_tag):
+    return {
+        "assembly_path": path,
+        "level": level,
+        "component_tag": object_tag(component),
+        "component_name": safe_name(component, "<component>"),
+        "parent_component_tag": parent_tag,
+        "prototype_tag": object_tag(prototype),
+        "prototype_type": object_kind(prototype),
+        "prototype_name": safe_name(prototype, "<unavailable>"),
+        "part_number": get_string_attribute(
+            prototype, ("DB_PART_NO", "ITEM_ID", "PART_NUMBER")
+        ) if prototype is not None else "",
+        "revision": get_string_attribute(
+            prototype, ("DB_PART_REV", "ITEM_REVISION", "REVISION")
+        ) if prototype is not None else "",
+        "reference_set": clean(safe_value(component, "ReferenceSet")),
     }
-    normalized = clean(selected_name).upper()
-    entire_name = clean(safe_value(prototype, "EntirePartRefsetName")).upper()
-    empty_name = clean(safe_value(prototype, "EmptyPartRefsetName")).upper()
 
-    if normalized in ENTIRE_REFSET_NAMES or (entire_name and normalized == entire_name):
-        result["found"] = True
-        result["members"] = list(bodies)
-        result["body_count"] = len(bodies)
-        return result
-    if normalized in EMPTY_REFSET_NAMES or (empty_name and normalized == empty_name):
-        result["found"] = True
-        return result
 
-    try:
-        reference_sets = list(prototype.GetAllReferenceSets())
-    except Exception as error:
-        result["errors"].append(
-            "Prototype.GetAllReferenceSets: {0}".format(error_text(error))
-        )
-        return result
-
-    selected = None
-    for reference_set in reference_sets:
-        if safe_name(reference_set, "").upper() == normalized:
-            selected = reference_set
+def collect_nodes(work_part):
+    root = work_part.ComponentAssembly.RootComponent
+    children_probe = method_probe(root, "GetChildren")
+    if children_probe["status"] != OBSERVED:
+        raise RuntimeError("Cannot read HLA root children: " + children_probe["error"])
+    root_name = safe_name(work_part, "<HLA>")
+    stack = [
+        (child, 1, root_name, [], "")
+        for child in reversed(list(children_probe["value"]))
+    ]
+    nodes, errors = [], []
+    while stack:
+        if len(nodes) >= MAX_OCCURRENCES:
+            errors.append("Safety limit reached: {0}".format(MAX_OCCURRENCES))
             break
-    if selected is None:
-        return result
+        component, level, parent_path, ancestor_tags, parent_tag = stack.pop()
+        name = safe_name(component, "<component>")
+        path = "{0} / {1}".format(parent_path, name)
+        prototype_probe = property_probe(component, "Prototype")
+        prototype = prototype_probe["value"] if prototype_probe["status"] == OBSERVED else None
+        node = {
+            "_component": component,
+            "_prototype": prototype,
+            "_ancestor_tags": list(ancestor_tags),
+            "identity": component_identity(component, prototype, path, level, parent_tag),
+            "prototype_probe": prototype_probe,
+        }
+        nodes.append(node)
+        child_probe = method_probe(component, "GetChildren")
+        if child_probe["status"] != OBSERVED:
+            errors.append("{0}: {1}".format(path, child_probe["error"]))
+            children = []
+        else:
+            children = list(child_probe["value"])
+        next_ancestors = ancestor_tags + [object_tag(component)]
+        for child in reversed(children):
+            stack.append((child, level + 1, path, next_ancestors, object_tag(component)))
+    return nodes, errors
 
-    result["found"] = True
+
+def preselected_component():
     try:
-        result["members"] = list(selected.AskMembersInReferenceSet())
-    except Exception as error:
-        result["errors"].append(
-            "ReferenceSet.AskMembersInReferenceSet: {0}".format(error_text(error))
-        )
-        try:
-            result["members"] = list(selected.AskAllDirectMembers())
-        except Exception as fallback_error:
-            result["errors"].append(
-                "ReferenceSet.AskAllDirectMembers: {0}".format(
-                    error_text(fallback_error)
-                )
-            )
-    result["body_count"] = sum(1 for item in result["members"] if is_body(item))
-    result["component_count"] = sum(
-        1 for item in result["members"] if is_component(item)
-    )
-    return result
-
-
-def expression_text(expression):
-    if expression is None:
-        return ""
-    pieces = []
-    for property_name in ("Name", "RightHandSide", "Equation", "Value"):
-        value = clean(safe_value(expression, property_name))
-        if value and value not in pieces:
-            pieces.append(value)
-    return " | ".join(pieces) or safe_name(expression, "")
-
-
-def suppression_details(component_assembly, component):
-    result = {"state": "", "expression": "", "error": ""}
-    try:
-        result["state"] = enum_text(
-            component_assembly.GetSuppressedState(component, False)
-        )
-    except Exception as error:
-        result["error"] = "GetSuppressedState: {0}".format(error_text(error))
-    try:
-        result["expression"] = expression_text(
-            component_assembly.GetSuppressionExpression(component)
-        )
+        manager = NXOpen.UI.GetUI().SelectionManager
+        count = int(manager.GetNumSelectedObjects())
     except Exception:
-        # Most ordinary components have no controlling expression.
-        pass
-    return result
+        return None
+    candidates = []
+    for index in range(count):
+        try:
+            selected = manager.GetSelectedTaggedObject(index)
+        except Exception:
+            continue
+        if is_component(selected):
+            candidates.append(selected)
+            continue
+        owner = safe_value(selected, "OwningComponent", None)
+        if owner is not None and is_component(owner):
+            candidates.append(owner)
+    unique = {object_tag(item): item for item in candidates if object_tag(item)}
+    return list(unique.values())[0] if len(unique) == 1 else None
 
 
-def work_view_snapshot(work_part):
+def resolve_targets(nodes):
+    selected = preselected_component()
+    if selected is not None:
+        tag = object_tag(selected)
+        matches = [node for node in nodes if node["identity"]["component_tag"] == tag]
+        if matches:
+            return {"source": "ASSEMBLY_NAVIGATOR_PRESELECTION", "value": tag}, matches
+    requested = clean(os.environ.get("NX_J23_TARGET") or USER_TARGET).upper()
+    if not requested:
+        raise RuntimeError(
+            "Select one missing component in Assembly Navigator or set NX_J23_TARGET."
+        )
+    exact = [
+        node for node in nodes
+        if node["identity"]["part_number"].upper() == requested
+    ]
+    if exact:
+        return {"source": "EXACT_PART_NUMBER", "value": requested}, exact
+    fallback = [
+        node for node in nodes
+        if requested in node["identity"]["assembly_path"].upper()
+        or requested in node["identity"]["prototype_name"].upper()
+    ]
+    return {"source": "NAME_OR_PATH_SUBSTRING", "value": requested}, fallback
+
+
+def component_state(component, work_part):
+    suppressed = property_probe(component, "IsSuppressed")
+    blanked = property_probe(component, "IsBlanked")
+    layer = property_probe(component, "Layer")
+    layer_state = (
+        layer_state_probe(work_part, layer["value"])
+        if layer["status"] == OBSERVED
+        else unavailable("work_part.Layers.GetState", "Component layer is unknown.")
+    )
+    non_geometric = method_probe(component, "GetNonGeometricState")
+    representation = method_probe(component, "GetComponentRepresentationMode")
+    if representation["status"] == OBSERVED:
+        representation["value"] = enum_text(representation["value"])
+    return {
+        "suppressed": suppressed,
+        "blanked": blanked,
+        "layer": layer,
+        "layer_state": layer_state,
+        "non_geometric": non_geometric,
+        "representation": representation,
+    }
+
+
+def prototype_state(prototype):
+    load_state = property_probe(prototype, "PartLoadState")
+    if load_state["status"] == OBSERVED:
+        load_state["value"] = enum_text(load_state["value"])
+    fully_loaded = property_probe(prototype, "IsFullyLoaded")
+    bodies = list_probe(prototype, "Bodies")
+    child_probe = unavailable("Prototype.ComponentAssembly.RootComponent.GetChildren", "Prototype is unavailable.")
+    if prototype is not None:
+        assembly = safe_value(prototype, "ComponentAssembly", None)
+        root = safe_value(assembly, "RootComponent", None)
+        if root is None:
+            child_probe = observed([], "Prototype has no component root")
+        else:
+            child_probe = method_probe(root, "GetChildren")
+            if child_probe["status"] == OBSERVED:
+                child_probe["value"] = list(child_probe["value"])
+    return {
+        "runtime_type": object_kind(prototype),
+        "load_state": load_state,
+        "fully_loaded": fully_loaded,
+        "bodies": bodies,
+        "direct_children": child_probe,
+    }
+
+
+def reference_set_probe(component, prototype, prototype_info):
+    selected = clean(safe_value(component, "ReferenceSet")).upper()
     result = {
-        "available": False,
-        "name": "",
-        "visible_object_count": 0,
-        "visible_tags": set(),
+        "status": OBSERVED,
+        "source": "Component.ReferenceSet + Prototype.GetAllReferenceSets",
+        "selected": selected,
+        "found": False,
+        "kind": "NAMED",
+        "members": [],
+        "body_members": [],
+        "component_members": [],
         "error": "",
     }
-    try:
-        view = work_part.ModelingViews.WorkView
-        result["name"] = safe_name(view, "<work view>")
-        objects = list(view.AskVisibleObjects())
-        result["available"] = True
-        result["visible_object_count"] = len(objects)
-        result["visible_tags"] = set(
-            tag for tag in (object_tag(item) for item in objects) if tag
-        )
-    except Exception as error:
-        result["error"] = "WorkView.AskVisibleObjects: {0}".format(error_text(error))
-    return result
-
-
-def dynamic_section_snapshot(work_part):
-    result = {"defined_count": 0, "clip_enabled_count": 0, "sections": [], "errors": []}
-    try:
-        collection = work_part.DynamicSections
-        sections = collection_items(collection)
-    except Exception as error:
-        result["errors"].append("DynamicSections: {0}".format(error_text(error)))
+    if selected in EMPTY_REFSETS:
+        result.update({"found": True, "kind": "EMPTY"})
         return result
-    result["defined_count"] = len(sections)
-    try:
-        view = work_part.ModelingViews.WorkView
-    except Exception:
-        view = None
-    for section in sections:
-        item = {"name": safe_name(section, "<dynamic section>"), "show_clip": "UNKNOWN"}
-        builder = None
-        try:
-            builder = collection.CreateSectionBuilder(section, view)
-            show_clip = bool(safe_value(builder, "ShowClip", False))
-            item["show_clip"] = yes_no(show_clip)
-            if show_clip:
-                result["clip_enabled_count"] += 1
-        except Exception as error:
-            result["errors"].append(
-                "Dynamic section {0}: {1}".format(item["name"], error_text(error))
-            )
-        finally:
-            if builder is not None:
-                try:
-                    builder.Destroy()
-                except Exception:
-                    pass
-        result["sections"].append(item)
+    entire_name = clean(safe_value(prototype, "EntirePartRefsetName")).upper()
+    if selected in ENTIRE_REFSETS or (entire_name and selected == entire_name):
+        result.update({"found": True, "kind": "ENTIRE_PART"})
+        bodies = prototype_info["bodies"]
+        children = prototype_info["direct_children"]
+        if bodies["status"] != OBSERVED or children["status"] != OBSERVED:
+            result["status"] = UNAVAILABLE
+            result["error"] = "Entire Part members require both body and child-component probes."
+            return result
+        result["body_members"] = list(bodies["value"])
+        result["component_members"] = list(children["value"])
+        result["members"] = result["body_members"] + result["component_members"]
+        return result
+    refs_probe = method_probe(prototype, "GetAllReferenceSets")
+    if refs_probe["status"] != OBSERVED:
+        result.update({"status": refs_probe["status"], "error": refs_probe["error"]})
+        return result
+    selected_ref = None
+    for refset in list(refs_probe["value"]):
+        if safe_name(refset, "").upper() == selected:
+            selected_ref = refset
+            break
+    if selected_ref is None:
+        return result
+    result["found"] = True
+    members_probe = method_probe(selected_ref, "AskMembersInReferenceSet")
+    if members_probe["status"] != OBSERVED:
+        result.update({"status": members_probe["status"], "error": members_probe["error"]})
+        return result
+    result["members"] = list(members_probe["value"])
+    result["body_members"] = [item for item in result["members"] if is_body(item)]
+    result["component_members"] = [item for item in result["members"] if is_component(item)]
     return result
 
 
-def prototype_geometry(prototype):
+def map_occurrence_members(component, refset):
     result = {
-        "bodies": [],
-        "body_count": 0,
-        "solid_count": 0,
-        "blanked_count": 0,
-        "hidden_layer_count": 0,
-        "child_count": 0,
+        "status": OBSERVED,
+        "source": "Component.FindOccurrence(reference-set member)",
+        "body_occurrence_tags": [],
+        "component_occurrence_tags": [],
+        "body_blanked": [],
         "errors": [],
-    }
-    bodies, error = direct_bodies(prototype)
-    result["bodies"] = bodies
-    result["body_count"] = len(bodies)
-    if error:
-        result["errors"].append(error)
-    child_count, child_error = direct_child_count(prototype)
-    result["child_count"] = child_count
-    if child_error:
-        result["errors"].append(child_error)
-
-    for body in bodies:
-        try:
-            if bool(body.IsSolidBody):
-                result["solid_count"] += 1
-        except Exception:
-            pass
-        try:
-            if bool(body.IsBlanked):
-                result["blanked_count"] += 1
-        except Exception as error:
-            result["errors"].append("Body.IsBlanked: {0}".format(error_text(error)))
-        layer = safe_value(body, "Layer", "")
-        state, layer_error = get_layer_state(prototype, layer)
-        if state.upper() in HIDDEN_LAYER_STATES:
-            result["hidden_layer_count"] += 1
-        if layer_error:
-            result["errors"].append(layer_error)
-    return result
-
-
-def occurrence_geometry(component, members, view_snapshot):
-    result = {
-        "probed": 0,
-        "found": 0,
-        "blanked": 0,
-        "view_tested": 0,
-        "visible": 0,
         "limit_reached": False,
-        "errors": [],
     }
-    candidates = [item for item in members if is_body(item) or is_component(item)]
-    if len(candidates) > MAX_MEMBER_PROBES_PER_OCCURRENCE:
+    members = list(refset.get("members", []))
+    if refset.get("status") != OBSERVED:
+        result.update({"status": UNAVAILABLE, "source": refset.get("source", "reference set")})
+        return result
+    if len(members) > MAX_MEMBER_PROBES:
+        members = members[:MAX_MEMBER_PROBES]
         result["limit_reached"] = True
-        candidates = candidates[:MAX_MEMBER_PROBES_PER_OCCURRENCE]
-    for member in candidates:
-        result["probed"] += 1
-        try:
-            occurrence = component.FindOccurrence(member)
-        except Exception as error:
-            result["errors"].append(
-                "Component.FindOccurrence({0}): {1}".format(
-                    object_kind(member), error_text(error)
-                )
-            )
+    for member in members:
+        mapped = method_probe(component, "FindOccurrence", member)
+        if mapped["status"] != OBSERVED:
+            result["errors"].append(mapped["error"])
             continue
+        occurrence = mapped["value"]
         if occurrence is None:
             continue
-        result["found"] += 1
-        try:
-            if bool(occurrence.IsBlanked):
-                result["blanked"] += 1
-        except Exception:
-            pass
         tag = object_tag(occurrence)
-        if view_snapshot["available"] and tag and is_body(member):
-            result["view_tested"] += 1
-            if tag in view_snapshot["visible_tags"]:
-                result["visible"] += 1
+        if is_body(member):
+            if tag:
+                result["body_occurrence_tags"].append(tag)
+            result["body_blanked"].append(property_probe(occurrence, "IsBlanked"))
+        elif is_component(member) and tag:
+            result["component_occurrence_tags"].append(tag)
+    if result["errors"]:
+        result["status"] = ERROR
     return result
 
 
-CAUSE_GUIDANCE = {
-    "ANCESTOR_SUPPRESSED": (
-        "HIGH",
-        "A parent occurrence is suppressed in the active assembly state.",
-        "Inspect the first suppressed parent in the reported path and its active-arrangement suppression control.",
-    ),
-    "SUPPRESSED_CURRENT_ARRANGEMENT": (
-        "HIGH",
-        "The occurrence is suppressed in the active arrangement.",
-        "Review the active arrangement and the reported suppression expression/arrangement; unsuppress only after confirming design intent.",
-    ),
-    "NON_GEOMETRIC_OCCURRENCE": (
-        "HIGH",
-        "The occurrence is marked non-geometric, so NX does not display model geometry at HLA level.",
-        "In Assembly Navigator, review the component's non-geometric state and restore geometric status if this was unintended.",
-    ),
-    "ANCESTOR_BLANKED": (
-        "HIGH",
-        "A parent occurrence is blanked, which hides its complete subtree.",
-        "Unblank/show the first blanked parent occurrence in the reported assembly path.",
-    ),
-    "COMPONENT_BLANKED": (
-        "HIGH",
-        "The component occurrence itself is blanked in the HLA display.",
-        "Show the occurrence in the HLA window and verify no parent remains blanked.",
-    ),
-    "ANCESTOR_LAYER_HIDDEN": (
-        "HIGH",
-        "A parent occurrence is on a hidden HLA layer.",
-        "Make the parent component layer visible/selectable in the top-level assembly layer settings.",
-    ),
-    "COMPONENT_LAYER_HIDDEN": (
-        "HIGH",
-        "The occurrence is placed on a hidden layer in the top-level assembly.",
-        "Change the HLA layer state for the reported component layer; prototype-window layer settings are separate.",
-    ),
-    "EMPTY_REFERENCE_SET": (
-        "HIGH",
-        "The occurrence explicitly uses the Empty reference set.",
-        "Assign the intended MODEL or Entire Part reference set to this occurrence.",
-    ),
-    "REFERENCE_SET_NOT_FOUND": (
-        "HIGH",
-        "The occurrence names a reference set that is not present on the resolved prototype.",
-        "Correct the occurrence reference set or restore the same-named reference set on the exact loaded revision.",
-    ),
-    "REFERENCE_SET_HAS_NO_GEOMETRY": (
-        "HIGH",
-        "The selected reference set has no body/component members although the prototype contains geometry.",
-        "Add the intended geometry to that reference set or use the correct populated reference set.",
-    ),
-    "PROTOTYPE_UNAVAILABLE": (
-        "HIGH",
-        "NX could not resolve a prototype object for this occurrence.",
-        "Check Teamcenter access, revision rule, dataset availability, and assembly load/search options.",
-    ),
-    "NO_PROTOTYPE_GEOMETRY": (
-        "HIGH",
-        "The resolved prototype has neither direct bodies nor direct child components.",
-        "Confirm that the occurrence resolves to the intended Item Revision and model dataset.",
-    ),
-    "NO_OCCURRENCE_GEOMETRY": (
-        "HIGH",
-        "Reference-set geometry exists in the prototype but NX returned no mapped HLA occurrences.",
-        "This indicates stale/corrupt occurrence or representation data; replace/re-add only after reviewing this evidence and the exact revision.",
-    ),
-    "ALL_OCCURRENCE_GEOMETRY_BLANKED": (
-        "HIGH",
-        "All mapped HLA geometry members are blanked.",
-        "Use Show in the HLA window on the mapped occurrence geometry and check for view-dependent hiding.",
-    ),
-    "NOT_VISIBLE_IN_WORK_VIEW": (
-        "MEDIUM",
-        "Mapped occurrence geometry is absent from the active work view's visible-object inventory.",
-        "Clear any isolate/view-dependent hide state or test a new modeling work view, then rerun J23.",
-    ),
-    "ALL_PROTOTYPE_BODY_LAYERS_HIDDEN": (
-        "MEDIUM",
-        "Every direct prototype body is on a hidden prototype layer.",
-        "Compare layer states between the standalone part window and the HLA display context.",
-    ),
-    "PROTOTYPE_BODIES_BLANKED": (
-        "MEDIUM",
-        "Every direct prototype body reports blanked.",
-        "Check body-level blanking inside the prototype and reference set, then update the HLA display.",
-    ),
-    "PROTOTYPE_NOT_FULLY_LOADED": (
-        "MEDIUM",
-        "The component prototype does not report fully loaded.",
-        "Review J20/load-status evidence for this exact prototype even if assembly-wide Full Load was already requested.",
-    ),
-    "LIGHTWEIGHT_OR_PARTIAL_REPRESENTATION": (
-        "MEDIUM",
-        "The occurrence uses a lightweight or partial representation.",
-        "Display the component Exact and rerun J23; if geometry remains absent, use the higher-ranked evidence.",
-    ),
-    "ACTIVE_DYNAMIC_SECTION": (
-        "LOW",
-        "At least one dynamic-section definition reports clipping enabled in the active work view.",
-        "Temporarily deactivate dynamic section clipping and rerun J23 to confirm or eliminate it.",
-    ),
-}
-
-
-def diagnose_record(row, dynamic_sections):
-    issues = []
-    refset = clean(row["REFERENCE_SET"]).upper()
-    suppressed_state = clean(row["SUPPRESSED_STATE"]).upper()
-    representation = clean(row["REPRESENTATION_MODE"]).upper()
-
-    if row["ANCESTOR_SUPPRESSED"] == "YES":
-        issues.append("ANCESTOR_SUPPRESSED")
-    if row["SUPPRESSED"] == "YES" or suppressed_state in (
-        "SUPPRESSED",
-        "SUPPRESSEDBYEXP",
-    ):
-        issues.append("SUPPRESSED_CURRENT_ARRANGEMENT")
-    if row["NON_GEOMETRIC"] == "YES":
-        issues.append("NON_GEOMETRIC_OCCURRENCE")
-    if row["ANCESTOR_BLANKED"] == "YES":
-        issues.append("ANCESTOR_BLANKED")
-    if row["IS_BLANKED"] == "YES":
-        issues.append("COMPONENT_BLANKED")
-    if row["ANCESTOR_HIDDEN_LAYER"] == "YES":
-        issues.append("ANCESTOR_LAYER_HIDDEN")
-    if clean(row["COMPONENT_LAYER_STATE"]).upper() in HIDDEN_LAYER_STATES:
-        issues.append("COMPONENT_LAYER_HIDDEN")
-    if refset in EMPTY_REFSET_NAMES:
-        issues.append("EMPTY_REFERENCE_SET")
-    elif (
-        row["REFERENCE_SET_FOUND"] == "NO"
-        and row["PROTOTYPE_NAME"] != "<unavailable>"
-    ):
-        issues.append("REFERENCE_SET_NOT_FOUND")
-    elif (
-        int(row["REFERENCE_SET_BODY_COUNT"])
-        + int(row["REFERENCE_SET_COMPONENT_COUNT"])
-        == 0
-        and int(row["PROTOTYPE_BODY_COUNT"]) + int(row["PROTOTYPE_CHILD_COMPONENT_COUNT"]) > 0
-        and refset not in ENTIRE_REFSET_NAMES
-    ):
-        issues.append("REFERENCE_SET_HAS_NO_GEOMETRY")
-    if row["PROTOTYPE_NAME"] == "<unavailable>":
-        issues.append("PROTOTYPE_UNAVAILABLE")
-    elif (
-        int(row["PROTOTYPE_BODY_COUNT"]) == 0
-        and int(row["PROTOTYPE_CHILD_COMPONENT_COUNT"]) == 0
-    ):
-        issues.append("NO_PROTOTYPE_GEOMETRY")
-    if (
-        int(row["GEOMETRY_MEMBERS_PROBED"]) > 0
-        and int(row["OCCURRENCE_MEMBERS_FOUND"]) == 0
-    ):
-        issues.append("NO_OCCURRENCE_GEOMETRY")
-    if (
-        int(row["OCCURRENCE_MEMBERS_FOUND"]) > 0
-        and int(row["OCCURRENCE_MEMBERS_FOUND"])
-        == int(row["OCCURRENCE_MEMBERS_BLANKED"])
-    ):
-        issues.append("ALL_OCCURRENCE_GEOMETRY_BLANKED")
-    if (
-        int(row["OCCURRENCE_BODY_TAGS_TESTED_IN_WORK_VIEW"]) > 0
-        and int(row["OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW"]) == 0
-    ):
-        issues.append("NOT_VISIBLE_IN_WORK_VIEW")
-    if (
-        int(row["PROTOTYPE_BODY_COUNT"]) > 0
-        and int(row["PROTOTYPE_BODY_COUNT"])
-        == int(row["PROTOTYPE_HIDDEN_LAYER_BODY_COUNT"])
-    ):
-        issues.append("ALL_PROTOTYPE_BODY_LAYERS_HIDDEN")
-    if (
-        int(row["PROTOTYPE_BODY_COUNT"]) > 0
-        and int(row["PROTOTYPE_BODY_COUNT"])
-        == int(row["PROTOTYPE_BLANKED_BODY_COUNT"])
-    ):
-        issues.append("PROTOTYPE_BODIES_BLANKED")
-    if row["PROTOTYPE_FULLY_LOADED"] == "NO":
-        issues.append("PROTOTYPE_NOT_FULLY_LOADED")
-    if "LIGHTWEIGHT" in representation or "PARTIAL" in representation:
-        issues.append("LIGHTWEIGHT_OR_PARTIAL_REPRESENTATION")
-    if int(dynamic_sections.get("clip_enabled_count", 0)) > 0:
-        issues.append("ACTIVE_DYNAMIC_SECTION")
-
-    # Preserve ranking order and remove duplicates.
-    issues = list(dict.fromkeys(issues))
-    row["ISSUE_CODES"] = " | ".join(issues) if issues else "NO_DIRECT_CAUSE_FOUND"
-    if issues:
-        confidence, cause, recommendation = CAUSE_GUIDANCE[issues[0]]
-    else:
-        confidence = "LOW"
-        cause = "No direct visibility cause was exposed by the read-only NXOpen probes."
-        recommendation = (
-            "Use the target filter, confirm the exact occurrence path, capture a screenshot, "
-            "and return the J23 JSON so the next probe can focus on view/isolate or corrupt display data."
-        )
-    row["ROOT_CAUSE"] = cause
-    row["CONFIDENCE"] = confidence
-    row["RECOMMENDATION"] = recommendation
-    return row
-
-
-def initial_row(root_name, timestamp, component, parent_name, path, level, target):
-    component_name = safe_name(component, "<component unavailable>")
-    full_path = "{0} / {1}".format(path, component_name)
-    row = {column: "" for column in CSV_COLUMNS}
-    row.update(
-        {
-            "RUN_TIMESTAMP": timestamp,
-            "JOURNAL_BUILD": BUILD,
-            "ROOT_ASSEMBLY": root_name,
-            "LEVEL": level,
-            "ASSEMBLY_PATH": full_path,
-            "COMPONENT_NAME": component_name,
-            "PARENT_COMPONENT": parent_name,
-            "REFERENCE_SET_MEMBER_COUNT": 0,
-            "REFERENCE_SET_BODY_COUNT": 0,
-            "REFERENCE_SET_COMPONENT_COUNT": 0,
-            "PROTOTYPE_BODY_COUNT": 0,
-            "PROTOTYPE_SOLID_BODY_COUNT": 0,
-            "PROTOTYPE_CHILD_COMPONENT_COUNT": 0,
-            "PROTOTYPE_BLANKED_BODY_COUNT": 0,
-            "PROTOTYPE_HIDDEN_LAYER_BODY_COUNT": 0,
-            "GEOMETRY_MEMBERS_PROBED": 0,
-            "OCCURRENCE_MEMBERS_FOUND": 0,
-            "OCCURRENCE_MEMBERS_BLANKED": 0,
-            "OCCURRENCE_BODY_TAGS_TESTED_IN_WORK_VIEW": 0,
-            "OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW": 0,
-            "PROBE_LIMIT_REACHED": "NO",
-            "TARGET_MATCH": "YES" if target and target in full_path.upper() else "NO",
+def view_snapshots(work_part, mapped_tags):
+    current = work_part.ModelingViews.WorkView
+    views = collection_items(work_part.ModelingViews)
+    if not any(same_object(view, current) for view in views):
+        views.insert(0, current)
+    snapshots = []
+    for view in views:
+        visible = method_probe(view, "AskVisibleObjects")
+        row = {
+            "name": safe_name(view, "<view>"),
+            "tag": object_tag(view),
+            "is_work_view": same_object(view, current),
+            "probe_status": visible["status"],
+            "visible_object_count": None,
+            "mapped_target_tags_visible": [],
+            "error": visible["error"],
         }
-    )
-    return row
+        if visible["status"] == OBSERVED:
+            objects = list(visible["value"])
+            visible_tags = {object_tag(item) for item in objects if object_tag(item)}
+            row["visible_object_count"] = len(objects)
+            row["mapped_target_tags_visible"] = sorted(set(mapped_tags) & visible_tags)
+        snapshots.append(row)
+    return snapshots
 
 
-def inspect_occurrence(
-    work_part,
-    component_assembly,
-    component,
-    row,
-    inherited,
-    view_snapshot,
-    prototype_cache,
-    dynamic_sections,
-    target,
-):
+def dynamic_section_evidence(work_part):
+    view = work_part.ModelingViews.WorkView
+    sections = collection_items(safe_value(work_part, "DynamicSections", None))
+    rows = []
+    for section in sections:
+        state = method_probe(view, "IsDynamicSectionVisible", section)
+        rows.append(
+            {
+                "name": safe_name(section, "<section>"),
+                "status": state["status"],
+                "visible_in_work_view": bool(state["value"]) if state["status"] == OBSERVED else None,
+                "source": state["source"],
+                "error": state["error"],
+            }
+        )
+    return rows
+
+
+def analyze_node(node, work_part, current_visible_tags):
+    component, prototype = node["_component"], node["_prototype"]
+    state = component_state(component, work_part)
+    proto = prototype_state(prototype)
+    refset = reference_set_probe(component, prototype, proto)
+    mapping = map_occurrence_members(component, refset)
+    body_tags = mapping["body_occurrence_tags"]
+    visible = sorted(set(body_tags) & current_visible_tags)
     errors = []
-    suppressed, error = bool_property(component, "IsSuppressed")
-    if error:
-        errors.append(error)
-    blanked, error = bool_property(component, "IsBlanked")
-    if error:
-        errors.append(error)
-    layer = safe_value(component, "Layer", "")
-    layer_state, error = get_layer_state(work_part, layer)
-    if error:
-        errors.append(error)
-    layer_hidden = layer_state.upper() in HIDDEN_LAYER_STATES
-
-    suppression = suppression_details(component_assembly, component)
-    if suppression["error"]:
-        errors.append(suppression["error"])
-    try:
-        non_geometric = bool(component_assembly.GetNonGeometricState(component))
-    except Exception as error:
-        non_geometric = False
-        errors.append("GetNonGeometricState: {0}".format(error_text(error)))
-    try:
-        representation = enum_text(component.GetComponentRepresentationMode())
-    except Exception as error:
-        representation = ""
-        errors.append("GetComponentRepresentationMode: {0}".format(error_text(error)))
-
-    row.update(
-        {
-            "REFERENCE_SET": clean(safe_value(component, "ReferenceSet")),
-            "SUPPRESSED": yes_no(suppressed),
-            "SUPPRESSED_STATE": suppression["state"],
-            "SUPPRESSION_EXPRESSION": suppression["expression"],
-            "SUPPRESSING_ARRANGEMENT": safe_name(
-                safe_value(component, "SuppressingArrangement", None), ""
-            ),
-            "ANCESTOR_SUPPRESSED": yes_no(inherited["suppressed"]),
-            "IS_BLANKED": yes_no(blanked),
-            "ANCESTOR_BLANKED": yes_no(inherited["blanked"]),
-            "COMPONENT_LAYER": clean(layer),
-            "COMPONENT_LAYER_STATE": layer_state,
-            "ANCESTOR_HIDDEN_LAYER": yes_no(inherited["hidden_layer"]),
-            "NON_GEOMETRIC": yes_no(non_geometric),
-            "REPRESENTATION_MODE": representation,
-            "USED_ARRANGEMENT": safe_name(
-                safe_value(component, "UsedArrangement", None), ""
-            ),
-        }
-    )
-
-    try:
-        prototype = component.Prototype
-    except Exception as error:
-        prototype = None
-        errors.append("Component.Prototype: {0}".format(error_text(error)))
-    row["PROTOTYPE_NAME"] = safe_name(prototype, "<unavailable>")
-    if prototype is not None:
-        row["PART_NUMBER"] = get_string_attribute(
-            prototype, ("DB_PART_NO", "ITEM_ID", "PART_NUMBER")
-        )
-        row["REVISION"] = get_string_attribute(
-            prototype, ("DB_PART_REV", "ITEM_REVISION", "REVISION")
-        )
-        if target:
-            target_fields = " | ".join(
-                (
-                    row["ASSEMBLY_PATH"],
-                    row["COMPONENT_NAME"],
-                    row["PROTOTYPE_NAME"],
-                    row["PART_NUMBER"],
-                    row["REVISION"],
-                )
-            ).upper()
-            if target in target_fields:
-                row["TARGET_MATCH"] = "YES"
-        row["PROTOTYPE_LOAD_STATE"] = enum_text(
-            safe_value(prototype, "PartLoadState")
-        )
-        fully_loaded, error = bool_property(prototype, "IsFullyLoaded")
-        row["PROTOTYPE_FULLY_LOADED"] = yes_no(fully_loaded)
-        if error:
-            errors.append(error)
-
-        key = object_tag(prototype) or safe_name(prototype)
-        if key not in prototype_cache:
-            prototype_cache[key] = prototype_geometry(prototype)
-        geometry = prototype_cache[key]
-        errors.extend(geometry["errors"])
-        row.update(
-            {
-                "PROTOTYPE_BODY_COUNT": geometry["body_count"],
-                "PROTOTYPE_SOLID_BODY_COUNT": geometry["solid_count"],
-                "PROTOTYPE_CHILD_COMPONENT_COUNT": geometry["child_count"],
-                "PROTOTYPE_BLANKED_BODY_COUNT": geometry["blanked_count"],
-                "PROTOTYPE_HIDDEN_LAYER_BODY_COUNT": geometry["hidden_layer_count"],
-            }
-        )
-
-        refset = reference_set_details(
-            prototype, row["REFERENCE_SET"], geometry["bodies"]
-        )
-        errors.extend(refset["errors"])
-        row.update(
-            {
-                "REFERENCE_SET_FOUND": yes_no(refset["found"]),
-                "REFERENCE_SET_MEMBER_COUNT": len(refset["members"]),
-                "REFERENCE_SET_BODY_COUNT": refset["body_count"],
-                "REFERENCE_SET_COMPONENT_COUNT": refset["component_count"],
-            }
-        )
-        occurrence = occurrence_geometry(component, refset["members"], view_snapshot)
-        errors.extend(occurrence["errors"])
-        row.update(
-            {
-                "GEOMETRY_MEMBERS_PROBED": occurrence["probed"],
-                "OCCURRENCE_MEMBERS_FOUND": occurrence["found"],
-                "OCCURRENCE_MEMBERS_BLANKED": occurrence["blanked"],
-                "OCCURRENCE_BODY_TAGS_TESTED_IN_WORK_VIEW": occurrence[
-                    "view_tested"
-                ],
-                "OCCURRENCE_MEMBERS_VISIBLE_IN_WORK_VIEW": occurrence["visible"],
-                "PROBE_LIMIT_REACHED": yes_no(occurrence["limit_reached"]),
-            }
-        )
-    else:
-        row["REFERENCE_SET_FOUND"] = "NO"
-        row["PROTOTYPE_FULLY_LOADED"] = "NO"
-
-    row["PROBE_ERRORS"] = " | ".join(list(dict.fromkeys(errors)))
-    diagnose_record(row, dynamic_sections)
-    child_inherited = {
-        "suppressed": inherited["suppressed"] or suppressed,
-        "blanked": inherited["blanked"] or blanked,
-        "hidden_layer": inherited["hidden_layer"] or layer_hidden,
+    for item in list(state.values()) + [proto["load_state"], proto["fully_loaded"], proto["bodies"], proto["direct_children"]]:
+        if item.get("status") == ERROR:
+            errors.append(item.get("error", ""))
+    errors.extend(mapping["errors"])
+    if refset["status"] == ERROR:
+        errors.append(refset["error"])
+    return {
+        "identity": node["identity"],
+        "component_state": state,
+        "prototype": {
+            "runtime_type": proto["runtime_type"],
+            "load_state": proto["load_state"],
+            "fully_loaded": proto["fully_loaded"],
+            "direct_body_count": len(proto["bodies"]["value"]) if proto["bodies"]["status"] == OBSERVED else None,
+            "direct_child_count": len(proto["direct_children"]["value"]) if proto["direct_children"]["status"] == OBSERVED else None,
+            "body_probe_status": proto["bodies"]["status"],
+            "child_probe_status": proto["direct_children"]["status"],
+        },
+        "reference_set": {
+            "status": refset["status"],
+            "selected": refset["selected"],
+            "found": refset["found"] if refset["status"] == OBSERVED else None,
+            "kind": refset["kind"],
+            "member_count": len(refset["members"]),
+            "body_member_count": len(refset["body_members"]),
+            "component_member_count": len(refset["component_members"]),
+            "error": refset["error"],
+        },
+        "mapping": {
+            "status": mapping["status"],
+            "mapped_body_occurrence_tags": body_tags,
+            "mapped_component_occurrence_tags": mapping["component_occurrence_tags"],
+            "mapped_body_count": len(body_tags),
+            "mapped_component_count": len(mapping["component_occurrence_tags"]),
+            "mapped_bodies_visible_current_view": visible,
+            "mapped_bodies_visible_current_view_count": len(visible),
+            "body_blanked_probes": mapping["body_blanked"],
+            "limit_reached": mapping["limit_reached"],
+        },
+        "probe_errors": list(dict.fromkeys(error for error in errors if error)),
     }
-    return row, child_inherited
 
 
-def collect_records(work_part, timestamp, target, view_snapshot, dynamic_sections):
-    component_assembly = work_part.ComponentAssembly
-    root = component_assembly.RootComponent
-    if root is None:
-        raise RuntimeError("The active work part has no assembly root component.")
-    root_name = safe_name(work_part, "<HLA assembly>")
-    try:
-        children = list(root.GetChildren())
-    except Exception as error:
-        raise RuntimeError("Cannot read HLA root children: {0}".format(error_text(error)))
+def boolean_observed(item, expected):
+    return item["status"] == OBSERVED and bool(item["value"]) is expected
 
-    records = []
-    traversal_errors = []
-    prototype_cache = {}
-    stack = [
-        (child, 1, root_name, root_name, {"suppressed": False, "blanked": False, "hidden_layer": False})
-        for child in reversed(children)
+
+def layer_hidden(item):
+    return item["status"] == OBSERVED and clean(item["value"]).upper() in HIDDEN_LAYER_NAMES
+
+
+def hypothesis(code, verdict, statement, evidence, missing=None):
+    return {
+        "code": code,
+        "verdict": verdict,
+        "statement": statement,
+        "evidence_ids": list(evidence),
+        "missing_evidence": list(missing or []),
+    }
+
+
+def build_hypotheses(target, subtree, views, sections, controls, ledger):
+    hypotheses = []
+    mapped = sum(row["mapping"]["mapped_body_count"] for row in subtree)
+    visible_current = sum(row["mapping"]["mapped_bodies_visible_current_view_count"] for row in subtree)
+    unsuppressed_absent = [
+        row for row in subtree
+        if boolean_observed(row["component_state"]["suppressed"], False)
+        and row["mapping"]["mapped_body_count"] > 0
+        and row["mapping"]["mapped_bodies_visible_current_view_count"] == 0
     ]
-    while stack:
-        if len(records) >= MAX_OCCURRENCES:
-            traversal_errors.append(
-                "Traversal stopped at the safety limit of {0} occurrences.".format(
-                    MAX_OCCURRENCES
-                )
-            )
-            break
-        component, level, parent_name, parent_path, inherited = stack.pop()
-        row = initial_row(
-            root_name, timestamp, component, parent_name, parent_path, level, target
-        )
-        row, child_inherited = inspect_occurrence(
-            work_part,
-            component_assembly,
-            component,
-            row,
-            inherited,
-            view_snapshot,
-            prototype_cache,
-            dynamic_sections,
-            target,
-        )
-        records.append(row)
-        try:
-            children = list(component.GetChildren())
-        except Exception as error:
-            traversal_errors.append(
-                "{0}: Component.GetChildren: {1}".format(
-                    row["ASSEMBLY_PATH"], error_text(error)
-                )
-            )
-            children = []
-        for child in reversed(children):
-            stack.append(
-                (
-                    child,
-                    level + 1,
-                    row["COMPONENT_NAME"],
-                    row["ASSEMBLY_PATH"],
-                    child_inherited,
-                )
-            )
-    return records, traversal_errors
-
-
-def public_view_snapshot(snapshot):
-    return {
-        "available": snapshot["available"],
-        "name": snapshot["name"],
-        "visible_object_count": snapshot["visible_object_count"],
-        "visible_tag_count": len(snapshot["visible_tags"]),
-        "error": snapshot["error"],
-    }
-
-
-def build_report(work_part, timestamp, target, records, traversal_errors, view, sections):
-    active_arrangement = safe_name(
-        safe_value(work_part.ComponentAssembly, "ActiveArrangement", None), ""
+    unblanked_absent = [
+        row for row in subtree
+        if boolean_observed(row["component_state"]["blanked"], False)
+        and row["mapping"]["mapped_body_count"] > 0
+        and row["mapping"]["mapped_bodies_visible_current_view_count"] == 0
+    ]
+    mapped_id = ledger.add(
+        "OCCURRENCE_MAPPING",
+        "Reference-set body geometry mapped to HLA occurrence objects.",
+        "Component.FindOccurrence across target subtree",
+        mapped,
     )
-    suspects = sorted(
-        records,
-        key=lambda row: (
-            0 if row["TARGET_MATCH"] == "YES" else 1,
-            {"HIGH": 0, "MEDIUM": 1, "LOW": 2}.get(row["CONFIDENCE"], 3),
-            row["LEVEL"],
-            row["ASSEMBLY_PATH"],
+    current_id = ledger.add(
+        "CURRENT_VIEW",
+        "Mapped target-subtree body occurrences present in the current work view.",
+        "WorkView.AskVisibleObjects tag intersection",
+        visible_current,
+    )
+    hypotheses.append(hypothesis(
+        "OCCURRENCE_MAPPING_FAILURE",
+        "RULED_OUT" if mapped > 0 else "INCONCLUSIVE",
+        "Occurrence mapping is not the cause." if mapped > 0 else "No mapped bodies were proven.",
+        [mapped_id],
+    ))
+
+    suppression_id = ledger.add(
+        "SUPPRESSION",
+        "Unsuppressed subtree occurrences with mapped geometry are still absent.",
+        "Component.IsSuppressed + current-view intersection",
+        len(unsuppressed_absent),
+    )
+    hypotheses.append(hypothesis(
+        "SUPPRESSION_AS_PRIMARY_CAUSE",
+        "RULED_OUT" if unsuppressed_absent else "INCONCLUSIVE",
+        "Suppression cannot explain the whole missing subtree." if unsuppressed_absent else "Suppression evidence is incomplete.",
+        [suppression_id],
+    ))
+    blanking_id = ledger.add(
+        "BLANKING",
+        "Unblanked subtree occurrences with mapped geometry are still absent.",
+        "Component.IsBlanked + current-view intersection",
+        len(unblanked_absent),
+    )
+    hypotheses.append(hypothesis(
+        "BLANKING_AS_PRIMARY_CAUSE",
+        "RULED_OUT" if unblanked_absent else "INCONCLUSIVE",
+        "Blanking cannot explain the whole missing subtree." if unblanked_absent else "Blanking evidence is incomplete.",
+        [blanking_id],
+    ))
+
+    valid_refsets = [
+        row for row in subtree
+        if row["reference_set"]["status"] == OBSERVED
+        and row["reference_set"]["found"] is True
+        and row["mapping"]["mapped_body_count"] > 0
+    ]
+    refset_id = ledger.add(
+        "REFERENCE_SET",
+        "Subtree occurrences have found reference sets whose bodies map into the HLA.",
+        "ReferenceSet members + Component.FindOccurrence",
+        len(valid_refsets),
+    )
+    hypotheses.append(hypothesis(
+        "REFERENCE_SET_AS_PRIMARY_CAUSE",
+        "RULED_OUT" if valid_refsets else "INCONCLUSIVE",
+        "Reference-set failure cannot explain the mapped-but-absent bodies." if valid_refsets else "Reference-set evidence is incomplete.",
+        [refset_id, mapped_id],
+    ))
+
+    hidden_layers = [row for row in subtree if layer_hidden(row["component_state"]["layer_state"])]
+    known_layers = [row for row in subtree if row["component_state"]["layer_state"]["status"] == OBSERVED]
+    layer_id = ledger.add(
+        "HLA_LAYER",
+        "Hidden component layers among target-subtree occurrence rows.",
+        "Displayed HLA work_part.Layers.GetState(component.Layer)",
+        len(hidden_layers),
+    )
+    layer_verdict = "RULED_OUT" if known_layers and not hidden_layers else ("CONFIRMED" if hidden_layers else "INCONCLUSIVE")
+    hypotheses.append(hypothesis(
+        "HIDDEN_HLA_COMPONENT_LAYER",
+        layer_verdict,
+        "No target-subtree component is on a hidden HLA layer." if layer_verdict == "RULED_OUT" else "Hidden HLA component-layer evidence exists." if hidden_layers else "Layer evidence is unavailable.",
+        [layer_id],
+    ))
+
+    section_visible = [row for row in sections if row["status"] == OBSERVED and row["visible_in_work_view"]]
+    section_known = all(row["status"] == OBSERVED for row in sections)
+    section_id = ledger.add(
+        "DYNAMIC_SECTION",
+        "Dynamic sections visible in the current work view.",
+        "ModelingView.IsDynamicSectionVisible",
+        [row["name"] for row in section_visible],
+    )
+    hypotheses.append(hypothesis(
+        "DYNAMIC_SECTION_CLIPPING",
+        "RULED_OUT" if section_known and not section_visible else ("POSSIBLE" if section_visible else "INCONCLUSIVE"),
+        "No dynamic section is visible in the current work view." if section_known and not section_visible else "Dynamic-section evidence does not rule clipping out.",
+        [section_id],
+    ))
+
+    other_visible = [
+        view for view in views
+        if not view["is_work_view"] and len(view["mapped_target_tags_visible"]) > 0
+    ]
+    alternate_id = ledger.add(
+        "VIEW_COMPARISON",
+        "Non-work modeling views containing mapped target-body occurrence tags.",
+        "ModelingView.AskVisibleObjects across saved views",
+        [{"name": row["name"], "count": len(row["mapped_target_tags_visible"])} for row in other_visible],
+    )
+    control_id = ledger.add(
+        "SAME_PROTOTYPE_CONTROL",
+        "Same part/revision controls outside the target subtree visible in the current view.",
+        "Current WorkView tag intersection",
+        len(controls),
+    )
+    view_confirmed = mapped > 0 and visible_current == 0 and bool(other_visible)
+    view_supported = mapped > 0 and visible_current == 0 and bool(controls)
+    verdict = "CONFIRMED" if view_confirmed else ("STRONGLY_SUPPORTED" if view_supported else "INCONCLUSIVE")
+    hypotheses.append(hypothesis(
+        "CURRENT_WORK_VIEW_EXCLUSION",
+        verdict,
+        "Mapped target geometry is absent from the work view but present in another modeling view." if view_confirmed else "Mapped target geometry is absent while same-prototype controls are visible in the work view." if view_supported else "The current view excludes mapped target geometry, but no independent view/control completed the proof.",
+        [mapped_id, current_id, alternate_id, control_id],
+        [] if verdict == "CONFIRMED" else ["A readable alternate modeling view containing the exact target occurrence tags."],
+    ))
+
+    work_view = next((row for row in views if row["is_work_view"]), None)
+    isolate_named = bool(work_view and clean(work_view["name"]).upper() == "ISOLATE")
+    isolate_id = ledger.add(
+        "ISOLATE_CONTEXT",
+        "The active NX work-view name is exactly 'Isolate'.",
+        "work_part.ModelingViews.WorkView.Name",
+        isolate_named,
+    )
+    isolate_verdict = "STRONGLY_SUPPORTED" if isolate_named and verdict in ("CONFIRMED", "STRONGLY_SUPPORTED") else "INCONCLUSIVE"
+    hypotheses.append(hypothesis(
+        "ISOLATE_VIEW_MECHANISM",
+        isolate_verdict,
+        "Isolation is strongly supported by the work-view name plus independent view-exclusion evidence; the public read API does not expose isolate membership directly." if isolate_verdict == "STRONGLY_SUPPORTED" else "A view name alone cannot prove isolate membership.",
+        [isolate_id, mapped_id, current_id, alternate_id, control_id],
+        ["NXOpen exposes commands to create/change isolate membership but no corresponding read-only membership query."],
+    ))
+
+    # Mapped geometry proves that incomplete loading is not the reason those exact objects are absent.
+    load_id = ledger.add(
+        "LOAD_STATE",
+        "Mapped occurrence bodies exist even where load-state properties are partial or unavailable.",
+        "Component.FindOccurrence",
+        mapped,
+    )
+    hypotheses.append(hypothesis(
+        "INCOMPLETE_LOAD_AS_PRIMARY_CAUSE",
+        "RULED_OUT" if mapped > 0 else "INCONCLUSIVE",
+        "Incomplete loading cannot explain absence of the already-mapped occurrence bodies." if mapped > 0 else "Load evidence is incomplete.",
+        [load_id, mapped_id],
+    ))
+
+    confirmed = next((item for item in hypotheses if item["code"] == "CURRENT_WORK_VIEW_EXCLUSION" and item["verdict"] == "CONFIRMED"), None)
+    supported = next((item for item in hypotheses if item["code"] == "CURRENT_WORK_VIEW_EXCLUSION" and item["verdict"] == "STRONGLY_SUPPORTED"), None)
+    if confirmed:
+        conclusion = {
+            "status": "CONFIRMED",
+            "root_cause_code": "CURRENT_WORK_VIEW_EXCLUSION",
+            "statement": confirmed["statement"],
+            "evidence_ids": confirmed["evidence_ids"],
+        }
+    elif supported:
+        conclusion = {
+            "status": "STRONGLY_SUPPORTED",
+            "root_cause_code": "CURRENT_WORK_VIEW_OR_OCCURRENCE_DISPLAY_EXCLUSION",
+            "statement": supported["statement"],
+            "evidence_ids": supported["evidence_ids"],
+        }
+    else:
+        conclusion = {
+            "status": "INCONCLUSIVE",
+            "root_cause_code": "UNRESOLVED",
+            "statement": "The available read-only probes do not yet prove one root cause.",
+            "evidence_ids": [mapped_id, current_id],
+        }
+    return hypotheses, conclusion
+
+
+def analyze_target(target, nodes, work_part):
+    ledger = EvidenceLedger()
+    target_tag = target["identity"]["component_tag"]
+    subtree_nodes = [
+        node for node in nodes
+        if node is target or target_tag in node["_ancestor_tags"]
+    ]
+    current_view = work_part.ModelingViews.WorkView
+    current_probe = method_probe(current_view, "AskVisibleObjects")
+    if current_probe["status"] != OBSERVED:
+        raise RuntimeError("Cannot inventory current work view: " + current_probe["error"])
+    current_objects = list(current_probe["value"])
+    current_tags = {object_tag(item) for item in current_objects if object_tag(item)}
+    subtree = [analyze_node(node, work_part, current_tags) for node in subtree_nodes]
+    mapped_tags = sorted({
+        tag for row in subtree for tag in row["mapping"]["mapped_body_occurrence_tags"]
+    })
+    views = view_snapshots(work_part, mapped_tags)
+    sections = dynamic_section_evidence(work_part)
+
+    subtree_keys = {
+        (row["identity"]["part_number"], row["identity"]["revision"])
+        for row in subtree if row["identity"]["part_number"]
+    }
+    subtree_component_tags = {row["identity"]["component_tag"] for row in subtree}
+    controls = []
+    for node in nodes:
+        identity = node["identity"]
+        key = (identity["part_number"], identity["revision"])
+        if identity["component_tag"] in subtree_component_tags or key not in subtree_keys:
+            continue
+        control = analyze_node(node, work_part, current_tags)
+        if control["mapping"]["mapped_bodies_visible_current_view_count"] > 0:
+            controls.append({
+                "assembly_path": identity["assembly_path"],
+                "part_number": identity["part_number"],
+                "revision": identity["revision"],
+                "visible_mapped_body_count": control["mapping"]["mapped_bodies_visible_current_view_count"],
+            })
+    hypotheses, conclusion = build_hypotheses(
+        target, subtree, views, sections, controls, ledger
+    )
+    summary = {
+        "occurrence_rows": len(subtree),
+        "mapped_body_occurrences": len(mapped_tags),
+        "mapped_bodies_visible_current_view": len(
+            set(mapped_tags) & current_tags
         ),
-    )
+        "suppressed_rows": sum(
+            1 for row in subtree if boolean_observed(row["component_state"]["suppressed"], True)
+        ),
+        "blanked_rows": sum(
+            1 for row in subtree if boolean_observed(row["component_state"]["blanked"], True)
+        ),
+        "unsuppressed_mapped_absent_rows": sum(
+            1 for row in subtree
+            if boolean_observed(row["component_state"]["suppressed"], False)
+            and row["mapping"]["mapped_body_count"] > 0
+            and row["mapping"]["mapped_bodies_visible_current_view_count"] == 0
+        ),
+        "unblanked_mapped_absent_rows": sum(
+            1 for row in subtree
+            if boolean_observed(row["component_state"]["blanked"], False)
+            and row["mapping"]["mapped_body_count"] > 0
+            and row["mapping"]["mapped_bodies_visible_current_view_count"] == 0
+        ),
+    }
     return {
-        "journal_build": BUILD,
-        "run_timestamp": timestamp,
-        "scope": "READ_ONLY_HLA_VISIBILITY_DIAGNOSTIC",
-        "root_assembly": safe_name(work_part, "<HLA assembly>"),
-        "active_arrangement": active_arrangement,
-        "target_filter": target,
-        "work_view": public_view_snapshot(view),
+        "target": target["identity"],
+        "subtree_summary": summary,
+        "current_work_view": {
+            "name": safe_name(current_view, "<work view>"),
+            "tag": object_tag(current_view),
+            "visible_object_count": len(current_objects),
+        },
+        "subtree_occurrences": subtree,
+        "view_comparison": views,
         "dynamic_sections": sections,
-        "occurrence_count": len(records),
-        "high_confidence_count": sum(1 for row in records if row["CONFIDENCE"] == "HIGH"),
-        "target_match_count": sum(1 for row in records if row["TARGET_MATCH"] == "YES"),
-        "traversal_errors": traversal_errors,
-        "ranked_occurrences": suspects,
+        "same_prototype_controls": controls,
+        "evidence_ledger": ledger.items,
+        "hypotheses": hypotheses,
+        "conclusion": conclusion,
     }
 
 
-def write_csv(path, records):
-    with open(path, "w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+def csv_row(role, row, current_view_name):
+    state, proto, refset, mapping = (
+        row["component_state"], row["prototype"], row["reference_set"], row["mapping"]
+    )
+    identity = row["identity"]
+    values = {
+        "ROLE": role,
+        "ASSEMBLY_PATH": identity["assembly_path"],
+        "LEVEL": identity["level"],
+        "COMPONENT_TAG": identity["component_tag"],
+        "PART_NUMBER": identity["part_number"],
+        "REVISION": identity["revision"],
+        "REFERENCE_SET": identity["reference_set"],
+        "SUPPRESSED_STATUS": state["suppressed"]["status"],
+        "SUPPRESSED_VALUE": state["suppressed"]["value"],
+        "BLANKED_STATUS": state["blanked"]["status"],
+        "BLANKED_VALUE": state["blanked"]["value"],
+        "NON_GEOMETRIC_STATUS": state["non_geometric"]["status"],
+        "NON_GEOMETRIC_VALUE": state["non_geometric"]["value"],
+        "COMPONENT_LAYER": state["layer"]["value"],
+        "COMPONENT_LAYER_STATE_STATUS": state["layer_state"]["status"],
+        "COMPONENT_LAYER_STATE_VALUE": state["layer_state"]["value"],
+        "PROTOTYPE_TYPE": proto["runtime_type"],
+        "LOAD_STATUS": proto["load_state"]["status"],
+        "FULLY_LOADED_STATUS": proto["fully_loaded"]["status"],
+        "FULLY_LOADED_VALUE": proto["fully_loaded"]["value"],
+        "REFSET_PROBE_STATUS": refset["status"],
+        "REFSET_FOUND": refset["found"],
+        "REFSET_BODY_MEMBERS": refset["body_member_count"],
+        "REFSET_COMPONENT_MEMBERS": refset["component_member_count"],
+        "MAPPED_BODY_OCCURRENCES": mapping["mapped_body_count"],
+        "MAPPED_COMPONENT_OCCURRENCES": mapping["mapped_component_count"],
+        "MAPPED_BODIES_VISIBLE_CURRENT_VIEW": mapping["mapped_bodies_visible_current_view_count"],
+        "CURRENT_VIEW_NAME": current_view_name,
+        "PROBE_ERRORS": " | ".join(row["probe_errors"]),
+    }
+    return values
+
+
+def write_outputs(folder, stem, report):
+    csv_path = os.path.join(folder, stem + ".csv")
+    json_path = os.path.join(folder, stem + ".json")
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
         writer.writeheader()
-        for row in records:
-            writer.writerow({column: row.get(column, "") for column in CSV_COLUMNS})
-
-
-def write_json(path, report):
-    with open(path, "w", encoding="utf-8") as handle:
+        for analysis in report["target_analyses"]:
+            for index, row in enumerate(analysis["subtree_occurrences"]):
+                writer.writerow(csv_row(
+                    "TARGET" if index == 0 else "TARGET_DESCENDANT",
+                    row,
+                    analysis["current_work_view"]["name"],
+                ))
+    with open(json_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, ensure_ascii=False)
+    return csv_path, json_path
 
 
 def run(session, run_datetime=None):
     now = run_datetime or datetime.datetime.now().astimezone()
-    timestamp = now.isoformat(timespec="seconds")
-    file_timestamp = now.strftime("%Y%m%d_%H%M%S")
     try:
-        work_part = session.Parts.Work
-        display_part = session.Parts.Display
+        work_part, display_part = session.Parts.Work, session.Parts.Display
     except Exception:
-        work_part = None
-        display_part = None
+        work_part, display_part = None, None
     if work_part is None:
-        raise RuntimeError("Open the affected top-level HLA assembly first.")
-    if not same_nx_object(display_part, work_part):
-        raise RuntimeError(
-            "Make the affected HLA both the displayed part and work part, then rerun J23."
-        )
-    root = safe_value(safe_value(work_part, "ComponentAssembly", None), "RootComponent", None)
-    if root is None:
-        raise RuntimeError("The active work/display part is not an HLA assembly.")
+        raise RuntimeError("Open the affected top-level HLA first.")
+    if not same_object(work_part, display_part):
+        raise RuntimeError("Make the affected HLA both work and displayed part.")
+    if safe_value(safe_value(work_part, "ComponentAssembly", None), "RootComponent", None) is None:
+        raise RuntimeError("The active part is not an HLA assembly.")
 
-    target = clean(os.environ.get("NX_J23_TARGET")).upper()
-    view = work_view_snapshot(work_part)
-    sections = dynamic_section_snapshot(work_part)
-    records, traversal_errors = collect_records(
-        work_part, timestamp, target, view, sections
-    )
-    report = build_report(
-        work_part, timestamp, target, records, traversal_errors, view, sections
-    )
-
+    nodes, traversal_errors = collect_nodes(work_part)
+    request, targets = resolve_targets(nodes)
+    if not targets:
+        raise RuntimeError("J23 target was not found: {0}".format(request["value"]))
+    analyses = [analyze_target(target, nodes, work_part) for target in targets]
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "journal_build": BUILD,
+        "run_timestamp": now.isoformat(timespec="seconds"),
+        "scope": "READ_ONLY_EXACT_TARGET_ROOT_CAUSE_PROOF",
+        "root_assembly": safe_name(work_part, "<HLA>"),
+        "target_request": request,
+        "target_match_count": len(targets),
+        "assembly_occurrence_count": len(nodes),
+        "traversal_errors": traversal_errors,
+        "truth_policy": {
+            "OBSERVED": "NX returned a value successfully.",
+            "ERROR": "NX exposed the probe but it failed; no boolean default is inferred.",
+            "UNAVAILABLE": "The runtime object does not expose the required probe.",
+            "RULED_OUT": "Observed counter-evidence disproves the hypothesis as the primary cause.",
+            "CONFIRMED": "An independent comparison completes the causal evidence chain.",
+            "STRONGLY_SUPPORTED": "Evidence points to the cause, but a named missing read API prevents direct confirmation.",
+        },
+        "target_analyses": analyses,
+    }
     folder = os.path.join(io_root(), OUTPUT_FOLDER)
     os.makedirs(folder, exist_ok=True)
-    root_token = filename_token(
-        get_string_attribute(work_part, ("DB_PART_NO", "ITEM_ID", "PART_NUMBER"))
-        or safe_name(work_part)
-    )
-    stem = "J23_HLA_VISIBILITY_{0}_{1}".format(root_token, file_timestamp)
-    csv_path = os.path.join(folder, stem + ".csv")
-    json_path = os.path.join(folder, stem + ".json")
-    write_csv(csv_path, records)
-    write_json(json_path, report)
+    token = filename_token(request["value"])
+    stem = "J23_EVIDENCE_{0}_{1}".format(token, now.strftime("%Y%m%d_%H%M%S"))
+    csv_path, json_path = write_outputs(folder, stem, report)
     return csv_path, json_path, report
 
 
 def main():
     session = NXOpen.Session.GetSession()
     log_line(session, "=" * 72)
-    log_line(session, "J23 HLA ASSEMBLY VISIBILITY DIAGNOSTIC")
+    log_line(session, "J23 V2 TARGET-FOCUSED HLA VISIBILITY EVIDENCE")
     log_line(session, "Build: " + BUILD)
-    log_line(session, "Scope: read-only; no visibility, assembly, load, or save changes.")
+    log_line(session, "Read-only: no display, view, load, assembly, or save changes.")
     log_line(session, "=" * 72)
     try:
         csv_path, json_path, report = run(session)
-        log_line(
-            session,
-            "HLA: {0} | active arrangement: {1}".format(
-                report["root_assembly"], report["active_arrangement"] or "<none>"
-            ),
-        )
-        log_line(
-            session,
-            "Occurrences: {0} | high-confidence flags: {1} | target matches: {2}".format(
-                report["occurrence_count"],
-                report["high_confidence_count"],
-                report["target_match_count"],
-            ),
-        )
-        ranked = report["ranked_occurrences"]
-        priority = [
-            row
-            for row in ranked
-            if row["TARGET_MATCH"] == "YES" or row["CONFIDENCE"] == "HIGH"
-        ][:20]
-        if not priority:
-            priority = ranked[:10]
-        for row in priority:
-            log_line(
-                session,
-                "[{0}] {1}\n  Issues: {2}\n  Root cause: {3}".format(
-                    row["CONFIDENCE"],
-                    row["ASSEMBLY_PATH"],
-                    row["ISSUE_CODES"],
-                    row["ROOT_CAUSE"],
-                ),
-            )
-        if report["traversal_errors"]:
-            log_line(session, "Traversal warnings: " + " | ".join(report["traversal_errors"]))
+        for analysis in report["target_analyses"]:
+            conclusion = analysis["conclusion"]
+            log_line(session, "Target: " + analysis["target"]["assembly_path"])
+            log_line(session, "Conclusion: {0} / {1}".format(
+                conclusion["status"], conclusion["root_cause_code"]
+            ))
+            log_line(session, conclusion["statement"])
+            for item in analysis["hypotheses"]:
+                log_line(session, "  {0}: {1}".format(item["code"], item["verdict"]))
         log_line(session, "CSV: " + csv_path)
         log_line(session, "JSON: " + json_path)
-        log_line(session, "Return the JSON plus the exact missing component name/path.")
+        log_line(session, "Return the JSON; every conclusion cites its fact IDs.")
     except Exception as error:
-        log_line(session, "J23 FAILED: " + error_text(error))
+        log_line(session, "J23 V2 FAILED: " + error_text(error))
         log_line(session, traceback.format_exc())
         raise
 
