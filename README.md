@@ -349,6 +349,7 @@ it opened.
 | J21 | `NX_MASS_SURFACE_UPDATE\J21_MASS_SURFACE_<root>_<timestamp>.csv` |
 | J22 | `NX_MASS_SURFACE_UPDATE\J22_DIAGNOSTIC_<root>_<timestamp>.csv` and `.json` |
 | J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_EVIDENCE_<target>_<timestamp>.csv` and `.json` |
+| J25 | `NX_TC_SINGLE_DRAWING_CLEANUP\<timestamp>\` with CSV, JSON, log, and `BACKUP\` |
 
 ## Notes
 
@@ -365,3 +366,4 @@ it opened.
 - J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.
 - J21 measures every direct traditional solid body of each unique BoM-visible 3D master (work part + unique child prototypes, same filter as `NXOpenBoMExtended.py`/J04) with the classic, verified NX measure APIs (`NewFaceProperties` for roll-up area in m^2, `NewMassProperties` for roll-up mass in kg) and writes the standard `NX_MassPropRollupMass` (kg) and `NX_MassPropRollupArea` (mm^2) Number attributes via `AttributePropertiesBuilder` - the write path verified working on NX 2506. The category defaults to the NX-native `Rolled-Up Mass Properties` and falls back to `Materials` if the PDM template rejects the write; each part is saved and verified by reading the attributes back. `WRITE_MODE` defaults to `APPLY`; `NX_J21_MODE=DRY_RUN` computes and reports without writing, `NX_J21_MODE=SMOKE` runs the active work part only. Teamcenter parts must be writable (checked out) for the save to succeed.
 - J22 is a fast one-part diagnostic (run on a disposable part): it tests the classic compute APIs, the native mass-properties builder (CreateMassPropertiesBuilder + UpdateOnSave + UpdateNow + Commit), and per-category AttributePropertiesBuilder writes, and dumps all attributes before/after so the working mechanism and category on a given NX build are visible.
+- J25 reduces an exact 3D Item/Revision to one explicitly retained `dwg<n>` specification. It defaults to `DRY_RUN`; apply requires approval, an exact live extra-index list, and backup of every removed payload. NXOpen has no relation-only detach in this API boundary, so J25 removes each extra empty drawing dataset with `DeleteExistingAttachedFiles(..., False)` and then verifies that only the retained drawing remains.

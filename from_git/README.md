@@ -39,6 +39,7 @@ Available production journals:
 20_diagnose_assembly_full_load.py Component-by-component Full Load failure diagnostic
 21_mass_surface_attribute_updater.py Measures roll-up area/mass, writes standard attributes
 22_diagnose_mass_attribute_write.py One-part write-mechanism diagnostic
+25_tc_single_drawing_cleanup.py Guarded reduction to one drawing specification
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -151,5 +152,14 @@ comparison PDFs. Close the drawing completely and rerun J12 to create the
 matching `CLOSED_AUTO` matrix through `Parts.OpenDisplay`. Results are written
 under `NX_PDF_DIAGNOSTIC`. J12 does not change layer states, update or save the
 drawing, and closes only the drawing it opened.
+
+J25 handles the migration case where one 3D Item/Revision has `dwg1`, `dwg2`,
+and other non-master drawing specifications but only one final DWG may remain.
+It defaults to `DRY_RUN` and requires an explicit keep index plus an exact live
+extra-index list. `APPLY_APPROVED` backs up and hashes every extra drawing's
+associated files, then uses `DeleteExistingAttachedFiles(..., False)` to remove
+the files and empty drawing dataset. This is destructive dataset removal, not a
+relation-only detach. See `docs/J25_SINGLE_DRAWING_CLEANUP.md` and start from
+`templates/NX_TC_SINGLE_DRAWING_SCOPE_TEMPLATE.csv`.
 
 No third-party Python packages are required.
