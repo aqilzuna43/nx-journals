@@ -102,9 +102,12 @@ CSV, and a text log.
 
 Every J07 PDF page receives the native NX watermark
 `DRAFT_<revision>.<WAE_VERSION>`. The value is read from the already-loaded
-model first and then the drawing. Missing `WAE_VERSION` produces a
-revision-only watermark such as `DRAFT_A` plus a report warning; filenames do
-not change. Drawing words, numbers, and the run-level
+model first and then the drawing; STEP reads it from the master part. Output
+filenames embed the version after the revision —
+`<number>_REV<revision>.<WAE_VERSION>` for both PDF (multi-drawing PDFs
+append `_DWG<n>`) and STEP (`.stp`). Missing `WAE_VERSION` produces a
+revision-only watermark such as `DRAFT_A`, keeps the revision-only filenames,
+and records a report warning. Drawing words, numbers, and the run-level
 `EXPORTED: YYYY-MM-DD HH:MM MYT` footer remain searchable/selectable PDF text.
 The large draft value uses the normal NX PDF watermark and may also be
 searchable. J07 creates the footer as a temporary drafting note, exports one

@@ -94,6 +94,192 @@ class StepValidationTests(unittest.TestCase):
         self.assertNotIn("exporter.InputFile", source)
         self.assertIn('"FAILED_ZERO_GEOMETRY"', source)
 
+    def test_build_versioned_base_preserves_dots(self):
+        self.assertEqual(
+            self.journal.build_versioned_base(
+                "264MN020016A01",
+                "A",
+                "2",
+            ),
+            "264MN020016A01_REVA.2",
+        )
+        self.assertEqual(
+            self.journal.build_versioned_base(
+                "264MN020016A01",
+                "A",
+                "2.0",
+            ),
+            "264MN020016A01_REVA.2.0",
+        )
+        self.assertEqual(
+            self.journal.build_versioned_base(
+                "264MN020016A01",
+                "A",
+                "",
+            ),
+            "264MN020016A01_REVA",
+        )
+
+    def test_step_filename_includes_wae_version(self):
+        class Exporter:
+            def __init__(self):
+                self.OutputFile = None
+                self.ExportFrom = None
+                self.ExportSelectionBlock = types.SimpleNamespace(
+                    SelectionScope=None
+                )
+                self.LayerMask = None
+                self.ObjectTypes = types.SimpleNamespace(
+                    Solids=False,
+                    Surfaces=False,
+                    Curves=False,
+                )
+                self.ExportAs = None
+                self.ProcessHoldFlag = None
+                self.committed = False
+                self.destroyed = False
+
+            def Commit(self):
+                self.committed = True
+
+            def Destroy(self):
+                self.destroyed = True
+
+        exporter = Exporter()
+        self.journal.NXOpen.StepCreator = types.SimpleNamespace(
+            ExportFromOption=types.SimpleNamespace(
+                DisplayPart="DisplayPart"
+            ),
+            ExportAsOption=types.SimpleNamespace(Ap214="Ap214"),
+        )
+        self.journal.NXOpen.ObjectSelector = types.SimpleNamespace(
+            Scope=types.SimpleNamespace(EntirePart="EntirePart")
+        )
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(SetWork=mock.Mock()),
+            DexManager=types.SimpleNamespace(
+                CreateStepCreator=lambda: exporter
+            ),
+        )
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+
+        with mock.patch.object(
+            self.journal,
+            "set_display_part",
+        ), mock.patch.object(
+            self.journal,
+            "VERIFY_OUTPUT_FILES",
+            False,
+        ):
+            exported = self.journal.export_step_from_part(
+                session,
+                object(),
+                folder.name,
+                "264MN020016A01",
+                "A",
+                "2",
+            )
+
+        self.assertEqual(exported["result"], "SUCCESS")
+        self.assertEqual(
+            Path(exported["path"]).name,
+            "264MN020016A01_REVA.2.stp",
+        )
+        self.assertTrue(exporter.committed)
+        self.assertTrue(exporter.destroyed)
+
+    def test_step_missing_wae_version_keeps_revision_name_with_warning(self):
+        master = types.SimpleNamespace(
+            GetStringAttribute=lambda name: ""
+        )
+        candidate = {
+            "part": master,
+            "opened_by_journal": False,
+        }
+
+        with mock.patch.object(
+            self.journal,
+            "resolve_master_candidate",
+            return_value=(candidate, []),
+        ), mock.patch.object(
+            self.journal,
+            "export_step_from_part",
+            return_value={
+                "result": "SUCCESS",
+                "path": "264MN020016A01_REVA.stp",
+                "size": 1,
+                "message": "",
+            },
+        ) as step_exporter, mock.patch.object(
+            self.journal,
+            "restore_parts",
+        ), mock.patch.object(
+            self.journal,
+            "close_part_best_effort",
+        ):
+            exported = self.journal.export_step_for_instruction(
+                types.SimpleNamespace(),
+                "out",
+                "264MN020016A01",
+                "A",
+                object(),
+                object(),
+                [],
+            )
+
+        self.assertEqual(exported["result"], "SUCCESS")
+        self.assertIn(
+            "WAE_VERSION is blank or unavailable",
+            exported["message"],
+        )
+        self.assertEqual(step_exporter.call_args.args[5], "")
+
+    def test_step_wae_version_is_read_from_master_part(self):
+        master = types.SimpleNamespace(
+            GetStringAttribute=lambda name: (
+                "7" if name == "WAE_VERSION" else ""
+            )
+        )
+        candidate = {
+            "part": master,
+            "opened_by_journal": False,
+        }
+
+        with mock.patch.object(
+            self.journal,
+            "resolve_master_candidate",
+            return_value=(candidate, []),
+        ), mock.patch.object(
+            self.journal,
+            "export_step_from_part",
+            return_value={
+                "result": "SUCCESS",
+                "path": "264MN020016A01_REVA.7.stp",
+                "size": 1,
+                "message": "",
+            },
+        ) as step_exporter, mock.patch.object(
+            self.journal,
+            "restore_parts",
+        ), mock.patch.object(
+            self.journal,
+            "close_part_best_effort",
+        ):
+            exported = self.journal.export_step_for_instruction(
+                types.SimpleNamespace(),
+                "out",
+                "264MN020016A01",
+                "A",
+                object(),
+                object(),
+                [],
+            )
+
+        self.assertEqual(exported["result"], "SUCCESS")
+        self.assertEqual(exported["message"], "")
+        self.assertEqual(step_exporter.call_args.args[5], "7")
+
 
 class PdfGroupingTests(unittest.TestCase):
     @classmethod
@@ -131,26 +317,52 @@ class PdfGroupingTests(unittest.TestCase):
             )
         return result, session, note_creator, note_cleanup
 
-    def test_single_drawing_uses_plain_part_revision_name(self):
+    def test_single_drawing_includes_wae_version_in_filename(self):
         self.assertEqual(
             self.journal.build_pdf_filename(
                 "264MN020016A01",
                 "A",
+                "2",
+                "DWG1",
+                1,
+            ),
+            "264MN020016A01_REVA.2.pdf",
+        )
+
+    def test_single_drawing_without_wae_version_keeps_revision_name(self):
+        self.assertEqual(
+            self.journal.build_pdf_filename(
+                "264MN020016A01",
+                "A",
+                "",
                 "DWG1",
                 1,
             ),
             "264MN020016A01_REVA.pdf",
         )
 
-    def test_multiple_drawings_receive_dwg_suffixes(self):
+    def test_filename_version_preserves_dots_like_the_watermark(self):
         self.assertEqual(
             self.journal.build_pdf_filename(
                 "264MN020016A01",
                 "A",
+                "2.0",
+                "DWG1",
+                1,
+            ),
+            "264MN020016A01_REVA.2.0.pdf",
+        )
+
+    def test_multiple_drawings_place_version_before_dwg_suffix(self):
+        self.assertEqual(
+            self.journal.build_pdf_filename(
+                "264MN020016A01",
+                "A",
+                "2",
                 "DWG2",
                 2,
             ),
-            "264MN020016A01_REVA_DWG2.pdf",
+            "264MN020016A01_REVA.2_DWG2.pdf",
         )
 
     def test_draft_watermark_combines_revision_and_exact_wae_version(self):
@@ -179,7 +391,7 @@ class PdfGroupingTests(unittest.TestCase):
             "loaded_master_candidate",
             return_value=model,
         ):
-            watermark, source, warning = (
+            watermark, wae_version, source, warning = (
                 self.journal.resolve_pdf_watermark(
                     types.SimpleNamespace(),
                     "264MN020016A01",
@@ -189,6 +401,7 @@ class PdfGroupingTests(unittest.TestCase):
             )
 
         self.assertEqual(watermark, "DRAFT_A.2")
+        self.assertEqual(wae_version, "2")
         self.assertEqual(source, "loaded model WAE_VERSION")
         self.assertEqual(warning, "")
 
@@ -203,7 +416,7 @@ class PdfGroupingTests(unittest.TestCase):
             "loaded_master_candidate",
             return_value=None,
         ):
-            watermark, source, warning = (
+            watermark, wae_version, source, warning = (
                 self.journal.resolve_pdf_watermark(
                     types.SimpleNamespace(),
                     "264MN020016A01",
@@ -213,6 +426,7 @@ class PdfGroupingTests(unittest.TestCase):
             )
 
         self.assertEqual(watermark, "DRAFT_A.3")
+        self.assertEqual(wae_version, "3")
         self.assertEqual(source, "drawing WAE_VERSION")
         self.assertEqual(warning, "")
 
@@ -222,7 +436,7 @@ class PdfGroupingTests(unittest.TestCase):
             "loaded_master_candidate",
             return_value=None,
         ):
-            watermark, source, warning = (
+            watermark, wae_version, source, warning = (
                 self.journal.resolve_pdf_watermark(
                     types.SimpleNamespace(),
                     "264MN020016A01",
@@ -232,6 +446,7 @@ class PdfGroupingTests(unittest.TestCase):
             )
 
         self.assertEqual(watermark, "DRAFT_A")
+        self.assertEqual(wae_version, "")
         self.assertEqual(source, "revision-only fallback")
         self.assertIn("WAE_VERSION is blank or unavailable", warning)
 
@@ -1052,7 +1267,7 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(len(result["paths"]), 1)
         self.assertTrue(
             result["paths"][0].endswith(
-                "264MN020016A01_REVA.pdf"
+                "264MN020016A01_REVA.2.pdf"
             )
         )
         self.assertEqual(exporter.call_count, 1)
@@ -1082,6 +1297,9 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(result["watermark"], "DRAFT_A")
         self.assertIn("WAE_VERSION is blank or unavailable", result["message"])
         self.assertEqual(exporter.call_args.args[4], "DRAFT_A")
+        self.assertTrue(
+            result["paths"][0].endswith("264MN020016A01_REVA.pdf")
+        )
 
     def test_two_drawings_return_two_suffixed_pdf_paths(self):
         candidates = [
@@ -1110,8 +1328,8 @@ class PdfGroupingTests(unittest.TestCase):
         self.assertEqual(
             [Path(path).name for path in result["paths"]],
             [
-                "264MN020016A01_REVA_DWG1.pdf",
-                "264MN020016A01_REVA_DWG2.pdf",
+                "264MN020016A01_REVA.2_DWG1.pdf",
+                "264MN020016A01_REVA.2_DWG2.pdf",
             ],
         )
 

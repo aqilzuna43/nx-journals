@@ -18,6 +18,11 @@ For STEP:
 - Otherwise open the Teamcenter master directly from the CSV identity.
 - Make the master the active display/work part before AP214 export.
 
+Output names:
+- PDF and STEP files are named <number>_REV<revision>.<WAE_VERSION>.
+- Multi-drawing PDFs append _DWG<n> after the version.
+- Missing WAE_VERSION keeps the revision-only name and records a warning.
+
 Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
 """
@@ -1029,15 +1034,34 @@ def unique_drawing_tokens(candidates):
     return result
 
 
+def build_versioned_base(number, revision, wae_version):
+    base = "{0}_REV{1}".format(
+        clean_filename_token(number),
+        clean_filename_token(revision, fallback=""),
+    )
+
+    if wae_version:
+        cleaned_version = clean_filename_token(
+            wae_version,
+            fallback="",
+        )
+        if cleaned_version:
+            base += "." + cleaned_version
+
+    return base
+
+
 def build_pdf_filename(
     number,
     revision,
+    wae_version,
     token,
     drawing_count,
 ):
-    filename = "{0}_REV{1}".format(
-        clean_filename_token(number),
-        clean_filename_token(revision, fallback=""),
+    filename = build_versioned_base(
+        number,
+        revision,
+        wae_version,
     )
 
     if drawing_count > 1:
@@ -1069,6 +1093,7 @@ def resolve_pdf_watermark(session, number, revision, candidates):
         if wae_version:
             return (
                 build_pdf_watermark(revision, wae_version),
+                wae_version,
                 "loaded model {0}".format(WAE_VERSION_ATTRIBUTE),
                 "",
             )
@@ -1082,6 +1107,7 @@ def resolve_pdf_watermark(session, number, revision, candidates):
         if wae_version:
             return (
                 build_pdf_watermark(revision, wae_version),
+                wae_version,
                 "drawing {0}".format(WAE_VERSION_ATTRIBUTE),
                 "",
             )
@@ -1091,7 +1117,7 @@ def resolve_pdf_watermark(session, number, revision, candidates):
         "{0} is blank or unavailable; PDF exported with revision-only "
         "watermark {1}."
     ).format(WAE_VERSION_ATTRIBUTE, watermark)
-    return watermark, "revision-only fallback", warning
+    return watermark, "", "revision-only fallback", warning
 
 
 def sheet_uses_inches(sheet):
@@ -1460,7 +1486,7 @@ def export_pdfs_for_instruction(
     messages = []
     drawing_count = len(candidates)
     output_tokens = unique_drawing_tokens(candidates)
-    watermark, watermark_source, watermark_warning = (
+    watermark, wae_version, watermark_source, watermark_warning = (
         resolve_pdf_watermark(
             session,
             number,
@@ -1542,6 +1568,7 @@ def export_pdfs_for_instruction(
             filename = build_pdf_filename(
                 number,
                 revision,
+                wae_version,
                 token,
                 drawing_count,
             )
@@ -1812,16 +1839,19 @@ def export_step_from_part(
     output_folder,
     number,
     revision,
+    wae_version,
 ):
     set_display_part(session, part)
     session.Parts.SetWork(part)
 
     output_path = os.path.join(
         output_folder,
-        "{0}_REV{1}.stp".format(
-            clean_filename_token(number),
-            clean_filename_token(revision, fallback=""),
-        ),
+        build_versioned_base(
+            number,
+            revision,
+            wae_version,
+        )
+        + ".stp",
     )
 
     if os.path.exists(output_path):
@@ -1920,6 +1950,20 @@ def export_step_for_instruction(
             "attempts": attempts,
         }
 
+    wae_version = get_string_attribute(
+        candidate["part"],
+        WAE_VERSION_ATTRIBUTE,
+    )
+    if not wae_version:
+        log_line(
+            session,
+            (
+                "  WARNING: {0} is blank or unavailable on the master; "
+                "STEP exported with a revision-only filename."
+            ).format(WAE_VERSION_ATTRIBUTE),
+            log_buffer,
+        )
+
     try:
         exported = export_step_from_part(
             session,
@@ -1927,7 +1971,17 @@ def export_step_for_instruction(
             output_folder,
             number,
             revision,
+            wae_version,
         )
+        if not wae_version:
+            warning = (
+                "{0} is blank or unavailable on the master; STEP "
+                "exported with a revision-only filename."
+            ).format(WAE_VERSION_ATTRIBUTE)
+            message = exported.get("message") or ""
+            exported["message"] = (
+                warning if not message else message + " | " + warning
+            )
         if exported.get("result") == "SUCCESS":
             log_line(
                 session,

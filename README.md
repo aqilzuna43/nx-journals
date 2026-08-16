@@ -276,11 +276,15 @@ cleanup timings. A timestamp-cleanup failure stops later PDF work but does not
 prevent independently requested STEP exports.
 
 Journal 07 reads `WAE_VERSION` from the already-loaded model first and then
-from the drawing. If it is unavailable, the PDF is still exported with a
-revision-only watermark such as `DRAFT_A`, and the result report records a
-warning. PDF filenames are unchanged. Journal 07 keeps drawing text as PDF
-text, so drawing words, numbers, and the export footer are searchable and
-selectable without OCR. The large `DRAFT_<revision>.<WAE_VERSION>` value uses
+from the drawing (STEP reads it from the master part). Output filenames embed
+the version after the revision: `<number>_REV<revision>.<WAE_VERSION>.pdf`
+(for example `264MN021888A01_REVA.2.pdf`), with multi-drawing PDFs appending
+`_DWG<n>` after the version; STEP files use the same pattern with a `.stp`
+extension. If `WAE_VERSION` is unavailable, the PDF is still exported with a
+revision-only watermark such as `DRAFT_A`, both outputs keep their
+revision-only filenames, and the result report records a warning. Journal 07
+keeps drawing text as PDF text, so drawing words, numbers, and the export
+footer are searchable and selectable without OCR. The large `DRAFT_<revision>.<WAE_VERSION>` value uses
 the normal NX PDF watermark feature and may also be searchable.
 `CustomSymbolsInForeground` is enabled so drawing symbols remain visible.
 
@@ -341,7 +345,7 @@ it opened.
 | J04 | `NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.csv` and matching `.baseline.json` |
 | J05 | `J05_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 | J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
-| J07 | `NX_BULK_EXPORT\<timestamp>\PDF`, `STEP`, `REPORTS`, and `LOGS` |
+| J07 | `NX_BULK_EXPORT\<timestamp>\PDF\<number>_REV<rev>.<WAE_VERSION>.pdf`, `STEP\<number>_REV<rev>.<WAE_VERSION>.stp`, plus `REPORTS` and `LOGS` |
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
