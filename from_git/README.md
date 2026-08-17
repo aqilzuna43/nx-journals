@@ -47,12 +47,14 @@ package/import path problems. They read
 `config/attribute_reconciliation.json`; J05 production saving remains
 J21 is also self-contained and follows the same BoM visibility filter as
 `NXOpenBoMExtended.py` (suppressed, reference-only, and keyword-named
-occurrences are excluded). APPLY first requires the complete target subtree
-to be fully loaded, then drives NX's native Mass Properties update separately
-on each unique prototype from deepest leaf to active assembly. J21 performs no
-checkout and no direct reserved-attribute write; non-writable targets are
-skipped and reported while writable targets are saved and verified. NX stores
-area in mm^2; the J21 report also presents converted m^2 values.
+occurrences are excluded). APPLY fully loads that target subtree in memory,
+re-traverses for newly exposed descendants, and proceeds only when every
+required prototype is loaded. A load failure writes a diagnostic J21 CSV and
+aborts all mass updates cleanly. After the gate passes, NX's native Mass
+Properties update runs on each unique prototype from deepest leaf to active
+assembly. J21 performs no checkout and no direct reserved-attribute write;
+non-writable targets are skipped and reported while writable targets are saved
+and verified. NX stores area in mm^2; the report also presents converted m^2.
 The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder

@@ -99,10 +99,40 @@ class FakeBuilder:
         self.manager.commit_calls += 1
 
 
+class FakeLoadStatus:
+    def __init__(self, failures=None):
+        self.failures = list(failures or [])
+        self.disposed = False
+
+    @property
+    def NumberUnloadedParts(self):
+        return len(self.failures)
+
+    def GetPartName(self, index):
+        return self.failures[index][0]
+
+    def GetStatus(self, index):
+        return self.failures[index][1]
+
+    def GetStatusDescription(self, index):
+        return self.failures[index][2]
+
+    def Dispose(self):
+        self.disposed = True
+
+
 class FakePart:
     _tag = 0
 
-    def __init__(self, name, component_children=(), save_error=False):
+    def __init__(
+        self,
+        name,
+        component_children=(),
+        save_error=False,
+        fully_loaded=True,
+        load_behavior="success",
+        load_failures=None,
+    ):
         FakePart._tag += 1
         self.Name = name
         self.Leaf = name
@@ -111,8 +141,10 @@ class FakePart:
         self.PropertiesManager = FakeManagerFactory("PropertiesManager")
         self.MeasureManager = FakeManagerFactory("MeasureManager")
         self.ComponentAssembly = types.SimpleNamespace(RootComponent=None)
-        self.IsFullyLoaded = True
-        self.PartLoadState = "FullyLoaded"
+        self.IsFullyLoaded = fully_loaded
+        self.PartLoadState = (
+            "FullyLoaded" if fully_loaded else "MinimallyLoaded"
+        )
         self.IsReadOnly = False
         self.PDMPart = None
         self.real_attributes = {}
@@ -120,6 +152,9 @@ class FakePart:
         self.save_error = save_error
         self.saved = False
         self.events = None
+        self.load_behavior = load_behavior
+        self.load_status = FakeLoadStatus(load_failures)
+        self.load_calls = 0
         if component_children:
             self.ComponentAssembly.RootComponent = FakeComponent(
                 "ROOT-" + name,
@@ -150,6 +185,22 @@ class FakePart:
             NumberUnsavedParts=0, NumberUnsavedObjects=0
         )
 
+    def LoadThisPartFully(self):
+        self.load_calls += 1
+        if self.events is not None:
+            self.events.append("load:" + self.Name)
+        if self.load_behavior == "invalid":
+            raise RuntimeError(
+                "IM0541: invalid or unsuitable OM object"
+            )
+        if (
+            self.load_behavior == "success"
+            and not self.load_status.NumberUnloadedParts
+        ):
+            self.IsFullyLoaded = True
+            self.PartLoadState = "FullyLoaded"
+        return self.load_status
+
 
 class FakeComponent:
     _tag = 0
@@ -159,6 +210,8 @@ class FakeComponent:
         name,
         prototype=None,
         children=(),
+        revealed_children=(),
+        reveal_after=None,
         suppressed=False,
         string_attributes=None,
     ):
@@ -167,12 +220,20 @@ class FakeComponent:
         self.DisplayName = name
         self.Prototype = prototype
         self._children = list(children)
+        self._revealed_children = list(revealed_children)
+        self._reveal_after = reveal_after
         self.IsSuppressed = suppressed
         self.string_attributes = dict(string_attributes or {})
         self.Tag = FakeComponent._tag
 
     def GetChildren(self):
-        return list(self._children)
+        children = list(self._children)
+        if (
+            self._reveal_after is None
+            or self._reveal_after.IsFullyLoaded
+        ):
+            children.extend(self._revealed_children)
+        return children
 
     def GetStringAttribute(self, title):
         if title not in self.string_attributes:
@@ -199,9 +260,13 @@ class FakeSession:
         self.IsManagedMode = managed
         self.PdmSession = FakePdmSession(user)
         if work_part is not None:
-            root = work_part.ComponentAssembly.RootComponent
-            targets = list(walk_prototypes(root)) if root is not None else [work_part]
-            for part in targets:
+            pending = [work_part]
+            seen = set()
+            while pending:
+                part = pending.pop()
+                if id(part) in seen:
+                    continue
+                seen.add(id(part))
                 part.events = self.events
                 part.PropertiesManager = FakeManagerFactory(
                     "PropertiesManager", self.events
@@ -209,6 +274,24 @@ class FakeSession:
                 part.MeasureManager = FakeManagerFactory(
                     "MeasureManager", self.events
                 )
+                root = part.ComponentAssembly.RootComponent
+                if root is None:
+                    continue
+                components = list(root._children) + list(
+                    root._revealed_children
+                )
+                while components:
+                    component = components.pop()
+                    try:
+                        prototype = component.Prototype
+                    except Exception:
+                        prototype = None
+                    if prototype is not None:
+                        pending.append(prototype)
+                    components.extend(getattr(component, "_children", []))
+                    components.extend(
+                        getattr(component, "_revealed_children", [])
+                    )
 
 
 class FakePartCollection:
@@ -247,7 +330,16 @@ def rows_by_part_number(rows):
     return {
         row["DB_PART_NO"] or row["PART_NAME"]: row
         for row in rows
+        if row.get("ROW_TYPE") == "PART"
     }
+
+
+def only_part_rows(rows):
+    return [row for row in rows if row.get("ROW_TYPE") == "PART"]
+
+
+def run_summary(rows):
+    return next(row for row in rows if row.get("ROW_TYPE") == "RUN_SUMMARY")
 
 
 class J21Tests(unittest.TestCase):
@@ -319,10 +411,14 @@ class J21Tests(unittest.TestCase):
         )
         self.assertIs(root, session.Parts.Work)
         self.assertIs(root, session.Parts.Display)
+        self.assertTrue(
+            all(part.load_calls == 0 for part in (root, children[0], children[1]))
+        )
 
         self.assertFalse(diagnostics)
         by_number = rows_by_part_number(rows)
-        self.assertEqual(3, len(rows))
+        self.assertEqual(3, len(only_part_rows(rows)))
+        self.assertEqual("SUCCESS", run_summary(rows)["STATUS"])
         for part, number in (
             (root, "264MN000001A01"),
             (children[0], "264MN000002A01"),
@@ -367,14 +463,15 @@ class J21Tests(unittest.TestCase):
         os.environ.pop("NX_J21_MODE", None)
         _path, rows, _diagnostics = self.j21.run(session)
 
+        part_rows = only_part_rows(rows)
         self.assertEqual(
             ["LEAF", "SUB", "TOP"],
-            [row["DB_PART_NO"] for row in rows],
+            [row["DB_PART_NO"] for row in part_rows],
         )
-        self.assertEqual([2, 1, 0], [row["LEVEL"] for row in rows])
+        self.assertEqual([2, 1, 0], [row["LEVEL"] for row in part_rows])
         self.assertEqual(
             ["LEAF", "ASSEMBLY", "ASSEMBLY"],
-            [row["PART_KIND"] for row in rows],
+            [row["PART_KIND"] for row in part_rows],
         )
         self.assertEqual(
             [
@@ -389,7 +486,7 @@ class J21Tests(unittest.TestCase):
         )
 
     def test_shared_prototype_is_updated_once_at_its_deepest_level(self):
-        shared = FakePart("SHARED")
+        shared = FakePart("SHARED", fully_loaded=False)
         shared.string_attributes = {
             "DB_PART_NO": "SHARED",
             "DB_PART_REV": "A",
@@ -420,23 +517,214 @@ class J21Tests(unittest.TestCase):
         shared_rows = [row for row in rows if row["DB_PART_NO"] == "SHARED"]
         self.assertEqual(1, len(shared_rows))
         self.assertEqual(2, shared_rows[0]["LEVEL"])
+        self.assertEqual(1, shared.load_calls)
         self.assertEqual(1, len(shared.PropertiesManager.builder_calls))
 
-    def test_apply_aborts_before_any_change_when_target_is_not_fully_loaded(self):
+    def test_apply_auto_loads_target_before_mass_update(self):
         root, children = self.make_assembly()
         children[1].IsFullyLoaded = False
         children[1].PartLoadState = "MinimallyLoaded"
         session = FakeSession(root)
 
         os.environ.pop("NX_J21_MODE", None)
-        with self.assertRaisesRegex(RuntimeError, "FULL_LOAD_REQUIRED"):
-            self.j21.run(session)
+        _path, rows, diagnostics = self.j21.run(session)
 
+        self.assertFalse(diagnostics)
+        self.assertEqual(1, children[1].load_calls)
+        self.assertTrue(children[1].IsFullyLoaded)
+        row = rows_by_part_number(rows)["264MN000003A01"]
+        self.assertEqual("MinimallyLoaded", row["INITIAL_LOAD_STATE"])
+        self.assertEqual("LOAD_THIS_PART_FULLY", row["LOAD_ACTION"])
+        self.assertEqual("FullyLoaded", row["FINAL_LOAD_STATE"])
+        self.assertEqual("SUCCESS", row["LOAD_STATUS"])
+        self.assertTrue(children[1].load_status.disposed)
+        self.assertEqual("UPDATED", row["UPDATE"])
+        self.assertLess(
+            session.events.index("load:264MN000003A01"),
+            session.events.index("update:264MN000003A01"),
+        )
+
+    def test_apply_retraverses_and_loads_newly_revealed_descendant(self):
+        leaf = FakePart("LEAF", fully_loaded=False)
+        leaf.string_attributes = {"DB_PART_NO": "LEAF", "DB_PART_REV": "A"}
+        leaf_occurrence = FakeComponent("LEAF-1", leaf)
+        subassembly = FakePart(
+            "SUB",
+            component_children=[leaf_occurrence],
+            fully_loaded=False,
+        )
+        subassembly.string_attributes = {
+            "DB_PART_NO": "SUB",
+            "DB_PART_REV": "A",
+        }
+        sub_occurrence = FakeComponent(
+            "SUB-1",
+            subassembly,
+            revealed_children=[leaf_occurrence],
+            reveal_after=subassembly,
+        )
+        root = FakePart("TOP", component_children=[sub_occurrence])
+        root.string_attributes = {"DB_PART_NO": "TOP", "DB_PART_REV": "A"}
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(1, subassembly.load_calls)
+        self.assertEqual(1, leaf.load_calls)
+        self.assertEqual(
+            ["LEAF", "SUB", "TOP"],
+            [row["DB_PART_NO"] for row in only_part_rows(rows)],
+        )
+        self.assertLess(
+            session.events.index("load:LEAF"),
+            session.events.index("update:LEAF"),
+        )
+
+    def test_missing_file_aborts_all_mass_updates_and_writes_csv(self):
+        root, children = self.make_assembly()
+        failed = children[1]
+        failed.IsFullyLoaded = False
+        failed.PartLoadState = "MinimallyLoaded"
+        failed.load_status = FakeLoadStatus(
+            [
+                (
+                    "MISSING.prt",
+                    641044,
+                    "Failed to find file using current search options",
+                )
+            ]
+        )
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        path, rows, diagnostics = self.j21.run(session)
+
+        self.assertTrue(Path(path).exists())
+        self.assertEqual("MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"])
+        self.assertEqual("FAILED", run_summary(rows)["LOAD_STATUS"])
+        failed_row = rows_by_part_number(rows)["264MN000003A01"]
+        self.assertEqual("MISSING_FILE", failed_row["LOAD_STATUS"])
+        self.assertEqual("NOT_RUN_LOAD_FAILED", failed_row["UPDATE"])
+        self.assertEqual("NOT_RUN_LOAD_FAILED", failed_row["SAVED"])
+        self.assertEqual("NOT_READ", failed_row["ROLLUP_MASS_ATTRIBUTE"])
+        self.assertTrue(failed.load_status.disposed)
+        self.assertTrue(any(item["code"] == "MISSING_FILE" for item in diagnostics))
+        self.assertFalse(any("update:" in event for event in session.events))
+        self.assertFalse(any(part.saved for part in (root, *children)))
+
+    def test_unresolved_component_creates_diagnostic_and_clean_abort(self):
+        root = FakePart(
+            "TOP",
+            component_children=[FakeComponent("MISSING-1", None)],
+        )
+        root.string_attributes = {"DB_PART_NO": "TOP", "DB_PART_REV": "A"}
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        path, rows, diagnostics = self.j21.run(session)
+
+        self.assertTrue(Path(path).exists())
+        self.assertEqual("MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"])
+        diagnostic_rows = [
+            row for row in rows if row["ROW_TYPE"] == "LOAD_DIAGNOSTIC"
+        ]
+        self.assertEqual(1, len(diagnostic_rows))
+        self.assertEqual("MISSING_MODEL", diagnostic_rows[0]["LOAD_STATUS"])
+        self.assertIn("TOP / MISSING-1", diagnostic_rows[0]["COMPONENT_PATH"])
+        self.assertTrue(any(item["code"] == "MISSING_MODEL" for item in diagnostics))
         self.assertEqual([], session.events)
-        self.assertEqual([], session.Parts.work_history)
-        for part in (root, children[0], children[1]):
-            self.assertFalse(part.saved)
-            self.assertEqual(0, len(part.PropertiesManager.builder_calls))
+
+    def test_invalid_prototype_access_is_reported_without_traceback(self):
+        class InvalidPrototypeComponent:
+            Name = "INVALID-1"
+            DisplayName = "INVALID-1"
+            IsSuppressed = False
+            _children = []
+            _revealed_children = []
+
+            @property
+            def Prototype(self):
+                raise RuntimeError(
+                    "IM0541: invalid or unsuitable OM object"
+                )
+
+            def GetChildren(self):
+                return []
+
+            def GetStringAttribute(self, _title):
+                raise AttributeError("unavailable")
+
+        root = FakePart(
+            "TOP",
+            component_children=[InvalidPrototypeComponent()],
+        )
+        root.string_attributes = {"DB_PART_NO": "TOP", "DB_PART_REV": "A"}
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertEqual("MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"])
+        self.assertTrue(any(item["code"] == "INVALID_OBJECT" for item in diagnostics))
+        self.assertEqual([], session.events)
+
+    def test_invalid_and_still_unloaded_are_clean_load_failures(self):
+        cases = (
+            ("invalid", "INVALID_OBJECT"),
+            ("unloaded", "UNLOADED"),
+        )
+        for behavior, expected in cases:
+            with self.subTest(behavior=behavior):
+                root, children = self.make_assembly()
+                failed = children[0]
+                failed.IsFullyLoaded = False
+                failed.PartLoadState = "MinimallyLoaded"
+                failed.load_behavior = behavior
+                session = FakeSession(root)
+
+                os.environ.pop("NX_J21_MODE", None)
+                _path, rows, diagnostics = self.j21.run(session)
+
+                self.assertEqual(
+                    "MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"]
+                )
+                row = rows_by_part_number(rows)["264MN000002A01"]
+                self.assertEqual(expected, row["LOAD_STATUS"])
+                self.assertTrue(any(item["code"] == expected for item in diagnostics))
+                self.assertFalse(any("update:" in event for event in session.events))
+
+    def test_dry_run_reports_load_required_without_loading(self):
+        root, children = self.make_assembly()
+        children[0].IsFullyLoaded = False
+        children[0].PartLoadState = "MinimallyLoaded"
+        session = FakeSession(root)
+
+        _path, rows, _diagnostics = self.j21.run(session)
+
+        row = rows_by_part_number(rows)["264MN000002A01"]
+        self.assertEqual("WOULD_LOAD", row["LOAD_ACTION"])
+        self.assertEqual("LOAD_REQUIRED", row["LOAD_STATUS"])
+        self.assertEqual(0, children[0].load_calls)
+        self.assertEqual([], session.events)
+
+    def test_smoke_loads_only_active_part(self):
+        root, children = self.make_assembly()
+        root.IsFullyLoaded = False
+        root.PartLoadState = "MinimallyLoaded"
+        for child in children:
+            child.IsFullyLoaded = False
+            child.PartLoadState = "MinimallyLoaded"
+        session = FakeSession(root)
+
+        os.environ["NX_J21_MODE"] = "SMOKE"
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(1, root.load_calls)
+        self.assertTrue(all(child.load_calls == 0 for child in children))
+        self.assertEqual("SUCCESS", run_summary(rows)["STATUS"])
 
     def test_part_checked_out_by_other_user_is_skipped_and_run_continues(self):
         root, children = self.make_assembly()
@@ -444,6 +732,8 @@ class J21Tests(unittest.TestCase):
         children[0].PDMPart = FakePdmPart(True, "aqil")
         children[1].PDMPart = FakePdmPart(True, "other.user")
         children[1].IsReadOnly = True
+        children[1].IsFullyLoaded = False
+        children[1].PartLoadState = "MinimallyLoaded"
         session = FakeSession(root, managed=True, user="aqil")
 
         os.environ.pop("NX_J21_MODE", None)
@@ -456,6 +746,8 @@ class J21Tests(unittest.TestCase):
         self.assertEqual("NOT_SAVED", blocked["SAVED"])
         self.assertEqual("SKIPPED", blocked["STATUS"])
         self.assertIn("another user", blocked["MESSAGE"])
+        self.assertEqual(1, children[1].load_calls)
+        self.assertEqual("SUCCESS", blocked["LOAD_STATUS"])
         self.assertFalse(children[1].saved)
         self.assertTrue(children[0].saved)
         self.assertTrue(root.saved)
@@ -509,10 +801,11 @@ class J21Tests(unittest.TestCase):
         )
         self.assertTrue(manager.builder_calls[0].UpdateNow_called)
         self.assertTrue(manager.builder_calls[0].Commit_called)
-        self.assertEqual(1, len(rows))
-        self.assertEqual("264MN000001A01", rows[0]["DB_PART_NO"])
-        self.assertEqual("POPULATED", rows[0]["ROLLUP_MASS_ATTRIBUTE"])
-        self.assertEqual("SAVED", rows[0]["SAVED"])
+        part_rows = only_part_rows(rows)
+        self.assertEqual(1, len(part_rows))
+        self.assertEqual("264MN000001A01", part_rows[0]["DB_PART_NO"])
+        self.assertEqual("POPULATED", part_rows[0]["ROLLUP_MASS_ATTRIBUTE"])
+        self.assertEqual("SAVED", part_rows[0]["SAVED"])
         self.assertTrue(root.saved)
         self.assertFalse(children[0].saved)
         self.assertFalse(children[1].saved)
@@ -537,7 +830,7 @@ class J21Tests(unittest.TestCase):
         self.assertEqual("0.0100", row["ROLLUP_AREA_M2"])
         self.assertEqual("STORED", row["ROLLUP_MASS_ATTRIBUTE"])
         self.assertEqual("DRY_RUN", row["SAVED"])
-        self.assertEqual("SUCCESS", row["STATUS"])
+        self.assertEqual("DRY_RUN", row["STATUS"])
 
     def test_boM_visibility_filters_noise_from_scope(self):
         child_a = FakePart("264MN000002A01")
@@ -546,16 +839,25 @@ class J21Tests(unittest.TestCase):
             "DB_PART_REV": "A",
         }
         suppressed = FakePart("264MN000003A01")
+        suppressed.IsFullyLoaded = False
+        suppressed.PartLoadState = "MinimallyLoaded"
+        suppressed.load_behavior = "invalid"
         suppressed.string_attributes = {
             "DB_PART_NO": "264MN000003A01",
             "DB_PART_REV": "A",
         }
         reference = FakePart("264MN000004A01")
+        reference.IsFullyLoaded = False
+        reference.PartLoadState = "MinimallyLoaded"
+        reference.load_behavior = "invalid"
         reference.string_attributes = {
             "DB_PART_NO": "264MN000004A01",
             "DB_PART_REV": "A",
         }
         csys = FakePart("264MN000005A01")
+        csys.IsFullyLoaded = False
+        csys.PartLoadState = "MinimallyLoaded"
+        csys.load_behavior = "invalid"
         csys.string_attributes = {
             "DB_PART_NO": "264MN000005A01",
             "DB_PART_REV": "A",
@@ -582,12 +884,15 @@ class J21Tests(unittest.TestCase):
         os.environ.pop("NX_J21_MODE", None)
         _path, rows, _diagnostics = self.j21.run(session)
 
-        numbers = [row["DB_PART_NO"] for row in rows]
+        numbers = [row["DB_PART_NO"] for row in only_part_rows(rows)]
         self.assertEqual(["264MN000002A01", "264MN000001A01"], numbers)
         self.assertTrue(child_a.saved)
         self.assertFalse(suppressed.saved)
         self.assertFalse(reference.saved)
         self.assertFalse(csys.saved)
+        self.assertEqual(0, suppressed.load_calls)
+        self.assertEqual(0, reference.load_calls)
+        self.assertEqual(0, csys.load_calls)
 
     def test_blank_attributes_report_partial(self):
         root, children = self.make_assembly()
@@ -675,7 +980,7 @@ class J21Tests(unittest.TestCase):
         self.assertIn("GetCheckedoutStatusAndUser", source)
         self.assertNotIn(".Checkout(", source)
         self.assertNotIn("CheckoutParts", source)
-        self.assertNotIn("LoadThisPartFully", source)
+        self.assertIn("LoadThisPartFully", source)
         self.assertNotIn(".LoadFully(", source)
 
 

@@ -8,9 +8,9 @@ computes and writes its standard attributes on every component:
     NX_MassPropRollupArea  roll-up area (mm^2)    [Rolled-Up Mass Properties]
 
 The journal does NOT create, compute, or write attributes itself.  It:
-  1. confirms the complete BoM-visible subtree is already fully loaded (same
-     filter as NXOpenBoMExtended.py / Journal 04: suppressed, reference-only,
-     and keyword-named occurrences are excluded),
+  1. fully loads the complete BoM-visible subtree in memory (same filter as
+     NXOpenBoMExtended.py / Journal 04: suppressed, reference-only, and
+     keyword-named occurrences are excluded),
   2. processes every unique prototype bottom-up: leaf parts first,
      subassemblies next, and the active assembly last,
   3. makes each target the work part and triggers NX's native mass-properties
@@ -18,16 +18,20 @@ The journal does NOT create, compute, or write attributes itself.  It:
      with UpdateOnSave=Yes, then UpdateNow and Commit),
   4. saves every writable target and reads the reserved attributes back.
 
+The load phase never checks out, saves, or updates mass.  If any required
+prototype cannot fully load, J21 writes a diagnostic CSV and aborts all mass
+updates cleanly.  Successfully loaded parts remain loaded in memory.
+
 J21 never checks a part out.  In Teamcenter managed mode it reports checkout
 state and owner, skips parts that are checked in, checked out by somebody
 else, or read-only, and continues with everything it can update.  The
 original display/work context is restored after the run.
 
-WRITE_MODE defaults to "APPLY".  Set WRITE_MODE = "DRY_RUN" (or the
-NX_J21_MODE environment variable) to report the current stored attribute
-values and scope without updating or saving anything.  Set WRITE_MODE =
-"SMOKE" to run the native update on the active work part only (fast
-iteration to verify the mechanism before a full-assembly run).  Set
+WRITE_MODE defaults to "APPLY".  APPLY loads, verifies, updates, and saves in
+one run.  Set WRITE_MODE = "DRY_RUN" (or the NX_J21_MODE environment variable)
+to report current load/access/attribute state without loading, updating, or
+saving.  Set WRITE_MODE = "SMOKE" to fully load and update the active work
+part only (fast iteration before a full-assembly run).  Set
 WRITE_MODE = "PROBE" to dump the PropertiesManager/MeasureManager and
 builder API surface of this NX build to the Listing Window (useful once,
 to confirm option names).
@@ -53,7 +57,7 @@ import traceback
 import NXOpen
 
 
-BUILD = "J21-NX2506-BOTTOM-UP-MASS-PROP-UPDATE-V4"
+BUILD = "J21-NX2506-AUTO-LOAD-BOTTOM-UP-MASS-PROP-UPDATE-V5"
 WRITE_MODE = "APPLY"  # APPLY / DRY_RUN / SMOKE / PROBE; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
@@ -63,6 +67,22 @@ AREA_M2_DECIMAL_PLACES = 4
 # NX stores the roll-up area in square millimetres (PDM template); the report
 # also presents it in square metres for readability on large systems.
 SQUARE_METRES_PER_SQUARE_MILLIMETRE = 1e-6
+MAX_OCCURRENCES = 100000
+MAX_LOAD_PASSES = 100
+
+INVALID_OBJECT_TOKENS = (
+    "im0541",
+    "invalid or unsuitable om object",
+    "invalid om object",
+)
+MISSING_FILE_TOKENS = (
+    "failed to find file",
+    "file not found",
+    "cannot find the file",
+    "could not find file",
+    "not found using current search options",
+    "no such file",
+)
 
 # Standard NX roll-up attributes (category "Rolled-Up Mass Properties").
 ROLLUP_MASS_ATTRIBUTE = "NX_MassPropRollupMass"
@@ -76,15 +96,22 @@ BOM_REFERENCE_ATTRIBUTES = ("REFERENCE_COMPONENT", "PLIST_IGNORE_MEMBER")
 BOM_REFERENCE_FLAG_VALUES = ("", "YES", "1", "True", "true", "yes")
 
 RESULT_COLUMNS = (
+    "ROW_TYPE",
     "RUN_TIMESTAMP",
     "JOURNAL_BUILD",
     "WRITE_MODE",
     "DB_PART_NO",
     "DB_PART_REV",
     "PART_NAME",
+    "COMPONENT_PATH",
     "LEVEL",
     "PROCESS_ORDER",
     "PART_KIND",
+    "INITIAL_LOAD_STATE",
+    "LOAD_ACTION",
+    "FINAL_LOAD_STATE",
+    "LOAD_STATUS",
+    "LOAD_MESSAGE",
     "LOAD_STATE",
     "CHECKOUT_STATE",
     "CHECKOUT_OWNER",
@@ -116,6 +143,19 @@ def error_text(error):
     code = clean(getattr(error, "ErrorCode", ""))
     suffix = " [{0}]".format(code) if code else ""
     return "{0}{1}".format(clean(error) or type(error).__name__, suffix)
+
+
+def contains_token(value, tokens):
+    lowered = clean(value).lower()
+    return any(token in lowered for token in tokens)
+
+
+def classify_load_failure(details, default="LOAD_FAILED"):
+    if contains_token(details, INVALID_OBJECT_TOKENS):
+        return "INVALID_OBJECT"
+    if contains_token(details, MISSING_FILE_TOKENS):
+        return "MISSING_FILE"
+    return default
 
 
 def dispose(value):
@@ -286,28 +326,46 @@ def _is_active_visible(component):
 
 
 def collect_unique_parts(work_part):
-    """Return BoM-visible unique 3D masters and traversal diagnostics.
+    """Return BoM-visible unique targets and traversal diagnostics.
 
-    The work part is always included.  Each unique child prototype is included
-    once, at its first-seen level.  Suppressed, reference-flagged, and
-    keyword-named occurrences are excluded together with their subtrees.
+    Each target is ``(part, deepest_level, first_path_at_that_level)``.  The
+    work part is always included. Suppressed, reference-flagged, and
+    keyword-named occurrences are excluded with their subtrees.
     """
     unique = {}
     diagnostics = []
+    occurrence_count = 0
+    root_identity = part_identity(work_part)
+    root_path = root_identity["number"] or root_identity["name"]
 
-    def add_part(part, level):
+    def add_part(part, level, path):
         key = _object_key(part)
         if key not in unique:
-            unique[key] = (part, level)
+            unique[key] = (part, level, path)
         elif level > unique[key][1]:
             # Shared prototypes are processed once, at their deepest observed
             # level, so sorting by descending level remains bottom-up.
-            unique[key] = (part, level)
+            unique[key] = (part, level, path)
 
-    add_part(work_part, 0)
-    root_component = getattr(
-        getattr(work_part, "ComponentAssembly", None), "RootComponent", None
-    )
+    add_part(work_part, 0, root_path)
+    try:
+        root_component = getattr(
+            getattr(work_part, "ComponentAssembly", None),
+            "RootComponent",
+            None,
+        )
+    except Exception as error:
+        diagnostics.append(
+            {
+                "code": classify_load_failure(
+                    error_text(error), "ROOT_COMPONENT_UNREADABLE"
+                ),
+                "message": "Assembly root could not be read: " + error_text(error),
+                "component_path": root_path,
+                "level": 0,
+            }
+        )
+        return list(unique.values()), diagnostics
     if root_component is None:
         return list(unique.values()), diagnostics
 
@@ -317,19 +375,57 @@ def collect_unique_parts(work_part):
             {
                 "code": "CHILDREN_UNREADABLE",
                 "message": "Assembly root children could not be read: " + root_error,
+                "component_path": root_path,
+                "level": 0,
             }
         )
         return list(unique.values()), diagnostics
 
-    stack = [(component, 1) for component in reversed(root_children)]
+    stack = [
+        (component, 1, root_path)
+        for component in reversed(root_children)
+    ]
     while stack:
-        component, level = stack.pop()
+        component, level, parent_path = stack.pop()
+        occurrence_count += 1
+        component_path = "{0} / {1}".format(
+            parent_path, _component_name(component)
+        )
+        if occurrence_count > MAX_OCCURRENCES:
+            diagnostics.append(
+                {
+                    "code": "OCCURRENCE_LIMIT",
+                    "message": "Traversal exceeded {0} occurrences.".format(
+                        MAX_OCCURRENCES
+                    ),
+                    "component_path": component_path,
+                    "level": level,
+                }
+            )
+            break
         if not _is_active_visible(component):
             continue
         if not _is_bom_visible(component):
             continue
-        prototype = getattr(component, "Prototype", None)
-        if prototype is None:
+        prototype_error = ""
+        try:
+            prototype = getattr(component, "Prototype", None)
+        except Exception as error:
+            prototype = None
+            prototype_error = error_text(error)
+        if prototype_error:
+            diagnostics.append(
+                {
+                    "code": classify_load_failure(
+                        prototype_error, "PROTOTYPE_UNAVAILABLE"
+                    ),
+                    "message": "Component prototype could not be read: "
+                    + prototype_error,
+                    "component_path": component_path,
+                    "level": level,
+                }
+            )
+        elif prototype is None:
             diagnostics.append(
                 {
                     "code": "MISSING_MODEL",
@@ -338,10 +434,12 @@ def collect_unique_parts(work_part):
                             _component_name(component)
                         )
                     ),
+                    "component_path": component_path,
+                    "level": level,
                 }
             )
         else:
-            add_part(prototype, level)
+            add_part(prototype, level, component_path)
 
         children, children_error = _children(component)
         if children_error:
@@ -353,10 +451,12 @@ def collect_unique_parts(work_part):
                             _component_name(component), children_error
                         )
                     ),
+                    "component_path": component_path,
+                    "level": level,
                 }
             )
         stack.extend(
-            (child, level + 1)
+            (child, level + 1, component_path)
             for child in reversed(children)
         )
     return list(unique.values()), diagnostics
@@ -365,48 +465,194 @@ def collect_unique_parts(work_part):
 def part_load_state(part):
     fully_loaded = _safe_property(part, "IsFullyLoaded")
     state = clean(_safe_property(part, "PartLoadState"))
-    if fully_loaded is True:
-        return "FULLY_LOADED", state
-    if fully_loaded is False:
-        return "NOT_FULLY_LOADED", state
-    return "UNKNOWN", state
+    if fully_loaded is None:
+        return "UNKNOWN", state
+    try:
+        return (
+            "FULLY_LOADED" if bool(fully_loaded) else "NOT_FULLY_LOADED",
+            state,
+        )
+    except Exception:
+        return "UNKNOWN", state
 
 
-def full_load_preflight(parts, traversal_diagnostics):
-    """Return every issue that must abort APPLY before the first mutation."""
-    issues = list(traversal_diagnostics)
-    for part, _level in parts:
-        load_status, raw_state = part_load_state(part)
-        if load_status == "FULLY_LOADED":
-            continue
-        identity = part_identity(part)
-        label = identity["number"] or identity["name"]
-        issues.append(
+def load_state_text(part):
+    status, raw_state = part_load_state(part)
+    return raw_state or status
+
+
+def unwrap_load_status(value):
+    if isinstance(value, (tuple, list)):
+        return value[0] if value else None
+    return value
+
+
+def part_load_status_details(load_status):
+    if load_status is None:
+        return [], 0
+    details = []
+    try:
+        count = int(load_status.NumberUnloadedParts)
+    except Exception:
+        count = 0
+    details.append("NumberUnloadedParts={0}".format(count))
+    for index in range(count):
+        try:
+            name = clean(load_status.GetPartName(index))
+        except Exception:
+            name = "<unavailable>"
+        try:
+            code = clean(load_status.GetStatus(index))
+        except Exception:
+            code = "<unavailable>"
+        try:
+            description = clean(load_status.GetStatusDescription(index))
+        except Exception:
+            description = "<unavailable>"
+        details.append(
+            "part={0}; status={1}; description={2}".format(
+                name, code, description
+            )
+        )
+    return details, count
+
+
+def load_target(part, level, component_path, logger=None):
+    identity = part_identity(part)
+    label = identity["number"] or identity["name"]
+    initial_status, initial_raw = part_load_state(part)
+    record = {
+        "part": part,
+        "level": level,
+        "component_path": component_path,
+        "initial_load_state": initial_raw or initial_status,
+        "load_action": "NOT_REQUIRED",
+        "final_load_state": initial_raw or initial_status,
+        "load_status": "SUCCESS",
+        "load_message": "Part was already fully loaded.",
+    }
+    if initial_status == "FULLY_LOADED":
+        return record
+
+    method = getattr(part, "LoadThisPartFully", None)
+    if not callable(method):
+        record.update(
             {
-                "code": load_status,
-                "message": "{0}: IsFullyLoaded is {1}; PartLoadState={2}".format(
-                    label,
-                    "False" if load_status == "NOT_FULLY_LOADED" else "unavailable",
-                    raw_state or "<unavailable>",
-                ),
+                "load_action": "LOAD_THIS_PART_FULLY",
+                "load_status": "API_UNAVAILABLE",
+                "load_message": "BasePart.LoadThisPartFully is unavailable.",
             }
         )
-    return issues
+        return record
+
+    if logger:
+        logger("FULL LOAD {0}: {1}".format(label, component_path))
+    record["load_action"] = "LOAD_THIS_PART_FULLY"
+    load_status = None
+    try:
+        load_status = unwrap_load_status(method())
+        details, unloaded_count = part_load_status_details(load_status)
+        final_status, final_raw = part_load_state(part)
+        record["final_load_state"] = final_raw or final_status
+        if unloaded_count:
+            detail_text = " | ".join(details)
+            record["load_status"] = classify_load_failure(
+                detail_text, "PROTOTYPE_UNAVAILABLE"
+            )
+            record["load_message"] = detail_text
+        elif final_status != "FULLY_LOADED":
+            record["load_status"] = "UNLOADED"
+            record["load_message"] = (
+                "LoadThisPartFully returned, but IsFullyLoaded is not True. "
+                + " | ".join(details)
+            ).strip()
+        else:
+            record["load_status"] = "SUCCESS"
+            record["load_message"] = " | ".join(details) or "Fully loaded."
+    except Exception as error:
+        details = error_text(error)
+        record["final_load_state"] = load_state_text(part)
+        record["load_status"] = classify_load_failure(details)
+        record["load_message"] = details
+    finally:
+        dispose(load_status)
+    return record
 
 
-def require_fully_loaded(parts, traversal_diagnostics):
-    issues = full_load_preflight(parts, traversal_diagnostics)
-    if not issues:
-        return
-    details = " | ".join(
-        "{0}: {1}".format(item["code"], item["message"])
-        for item in issues
-    )
-    raise RuntimeError(
-        "FULL_LOAD_REQUIRED: no parts were changed. Fully load the complete "
-        "BoM-visible subtree (J20 can diagnose load failures), then rerun J21. "
-        + details
-    )
+def auto_load_bom_visible(work_part, logger=None):
+    """Load visible unique targets, re-traversing until scope is stable."""
+    records = {}
+    final_parts = []
+    final_diagnostics = []
+
+    for pass_index in range(1, MAX_LOAD_PASSES + 1):
+        parts, _diagnostics = collect_unique_parts(work_part)
+        attempted = False
+        for part, level, component_path in parts:
+            key = _object_key(part)
+            if key in records:
+                if level > records[key]["level"]:
+                    records[key]["level"] = level
+                    records[key]["component_path"] = component_path
+                continue
+            record = load_target(
+                part, level, component_path, logger=logger
+            )
+            records[key] = record
+            if record["load_action"] == "LOAD_THIS_PART_FULLY":
+                attempted = True
+
+        final_parts, final_diagnostics = collect_unique_parts(work_part)
+        final_keys = {_object_key(part) for part, _level, _path in final_parts}
+        known_keys = set(records)
+        all_recorded = final_keys.issubset(known_keys)
+        all_loaded = all(
+            records[key]["load_status"] == "SUCCESS"
+            and part_load_state(records[key]["part"])[0] == "FULLY_LOADED"
+            for key in final_keys
+            if key in records
+        )
+        if all_recorded and all_loaded and not final_diagnostics:
+            return True, final_parts, records, []
+
+        new_targets_exist = not all_recorded
+        if not attempted and not new_targets_exist:
+            break
+
+        if logger:
+            logger(
+                "FULL LOAD PASS {0}: targets={1}; new_targets={2}".format(
+                    pass_index, len(final_parts), "YES" if new_targets_exist else "NO"
+                )
+            )
+    else:
+        final_diagnostics.append(
+            {
+                "code": "LOAD_PASS_LIMIT",
+                "message": "Full-load discovery exceeded {0} passes.".format(
+                    MAX_LOAD_PASSES
+                ),
+                "component_path": "",
+                "level": "",
+            }
+        )
+
+    failures = []
+    for record in records.values():
+        if record["load_status"] != "SUCCESS":
+            identity = part_identity(record["part"])
+            label = identity["number"] or identity["name"]
+            failures.append(
+                {
+                    "code": record["load_status"],
+                    "message": "{0}: {1}".format(
+                        label, record["load_message"]
+                    ),
+                    "component_path": record["component_path"],
+                    "level": record["level"],
+                }
+            )
+    return False, final_parts, records, final_diagnostics + failures
 
 
 def _update_on_save_yes(builder):
@@ -813,24 +1059,79 @@ def save_part(part):
         dispose(status)
 
 
+def empty_access():
+    return {
+        "checkout_state": "NOT_INSPECTED",
+        "checkout_owner": "",
+        "current_user": "",
+        "read_only": None,
+    }
+
+
+def current_load_record(part, level, component_path, dry_run=False):
+    status, raw_state = part_load_state(part)
+    fully_loaded = status == "FULLY_LOADED"
+    return {
+        "part": part,
+        "level": level,
+        "component_path": component_path,
+        "initial_load_state": raw_state or status,
+        "load_action": (
+            "NOT_REQUIRED" if fully_loaded else
+            "WOULD_LOAD" if dry_run else
+            "NOT_RUN"
+        ),
+        "final_load_state": raw_state or status,
+        "load_status": (
+            "SUCCESS" if fully_loaded else
+            "LOAD_REQUIRED" if dry_run else
+            status
+        ),
+        "load_message": (
+            "Part is fully loaded." if fully_loaded else
+            "APPLY would call LoadThisPartFully. Descendants may be hidden "
+            "until this part is loaded." if dry_run else
+            "Load was not run."
+        ),
+    }
+
+
 def _result_row(
     timestamp,
     mode,
     part,
     level,
+    component_path,
     process_order,
     access,
+    load_record,
     update,
     saved,
     status,
     messages,
     stored_label="POPULATED",
+    read_attributes=True,
 ):
     identity = part_identity(part)
-    attributes = read_rollup_attributes(part)
-    mass_status = stored_label if attributes["mass"] is not None else "BLANK"
-    area_status = stored_label if attributes["area"] is not None else "BLANK"
-    if status == "SUCCESS" and (mass_status == "BLANK" or area_status == "BLANK"):
+    attributes = (
+        read_rollup_attributes(part)
+        if read_attributes else
+        {"mass": None, "area": None}
+    )
+    mass_status = (
+        stored_label if attributes["mass"] is not None else
+        "BLANK" if read_attributes else
+        "NOT_READ"
+    )
+    area_status = (
+        stored_label if attributes["area"] is not None else
+        "BLANK" if read_attributes else
+        "NOT_READ"
+    )
+    if (
+        status == "SUCCESS"
+        and (mass_status == "BLANK" or area_status == "BLANK")
+    ):
         status = "PARTIAL"
     if update == "UPDATED":
         if mass_status == "BLANK":
@@ -846,18 +1147,24 @@ def _result_row(
                 )
             )
 
-    load_status, raw_load_state = part_load_state(part)
     return {
+        "ROW_TYPE": "PART",
         "RUN_TIMESTAMP": timestamp,
         "JOURNAL_BUILD": BUILD,
         "WRITE_MODE": mode,
         "DB_PART_NO": identity["number"],
         "DB_PART_REV": identity["revision"],
         "PART_NAME": identity["name"],
+        "COMPONENT_PATH": component_path,
         "LEVEL": level,
         "PROCESS_ORDER": process_order,
         "PART_KIND": part_kind(part),
-        "LOAD_STATE": raw_load_state or load_status,
+        "INITIAL_LOAD_STATE": load_record["initial_load_state"],
+        "LOAD_ACTION": load_record["load_action"],
+        "FINAL_LOAD_STATE": load_record["final_load_state"],
+        "LOAD_STATUS": load_record["load_status"],
+        "LOAD_MESSAGE": load_record["load_message"],
+        "LOAD_STATE": load_record["final_load_state"],
         "CHECKOUT_STATE": access["checkout_state"],
         "CHECKOUT_OWNER": access["checkout_owner"],
         "CURRENT_USER": access["current_user"],
@@ -890,32 +1197,151 @@ def bottom_up_parts(parts):
     return sorted(parts, key=lambda item: -item[1])
 
 
-def build_dry_run_rows(session, timestamp, parts):
+def diagnostic_row(timestamp, mode, diagnostic):
+    dry_run = mode == "DRY_RUN"
+    row = {column: "" for column in RESULT_COLUMNS}
+    row.update(
+        {
+            "ROW_TYPE": "LOAD_DIAGNOSTIC",
+            "RUN_TIMESTAMP": timestamp,
+            "JOURNAL_BUILD": BUILD,
+            "WRITE_MODE": mode,
+            "COMPONENT_PATH": diagnostic.get("component_path", ""),
+            "LEVEL": diagnostic.get("level", ""),
+            "LOAD_ACTION": "NOT_RUN" if dry_run else "NOT_AVAILABLE",
+            "LOAD_STATUS": diagnostic.get("code", "LOAD_FAILED"),
+            "LOAD_MESSAGE": diagnostic.get("message", ""),
+            "UPDATE": "DRY_RUN" if dry_run else "NOT_RUN_LOAD_FAILED",
+            "SAVED": "DRY_RUN" if dry_run else "NOT_RUN_LOAD_FAILED",
+            "STATUS": "DRY_RUN_WARNING" if dry_run else "LOAD_FAILED",
+            "MESSAGE": diagnostic.get("message", ""),
+        }
+    )
+    return row
+
+
+def summary_row(timestamp, mode, rows, load_gate):
+    part_rows = [row for row in rows if row.get("ROW_TYPE") == "PART"]
+    updated = sum(row.get("UPDATE") == "UPDATED" for row in part_rows)
+    skipped = sum(row.get("STATUS") == "SKIPPED" for row in part_rows)
+    failed = sum(
+        row.get("STATUS") not in ("SUCCESS", "SKIPPED", "DRY_RUN")
+        for row in part_rows
+    )
+    row = {column: "" for column in RESULT_COLUMNS}
+    if load_gate == "FAILED":
+        status = "MASS_UPDATE_ABORTED"
+        update = "NOT_RUN_LOAD_FAILED"
+    elif mode == "DRY_RUN":
+        status = "DRY_RUN"
+        update = "DRY_RUN"
+    elif failed or skipped:
+        status = "PARTIAL"
+        update = "COMPLETED_WITH_EXCEPTIONS"
+    else:
+        status = "SUCCESS"
+        update = "COMPLETED"
+    row.update(
+        {
+            "ROW_TYPE": "RUN_SUMMARY",
+            "RUN_TIMESTAMP": timestamp,
+            "JOURNAL_BUILD": BUILD,
+            "WRITE_MODE": mode,
+            "LOAD_STATUS": load_gate,
+            "UPDATE": update,
+            "SAVED": "SUMMARY",
+            "STATUS": status,
+            "MESSAGE": (
+                "targets={0}; updated={1}; skipped={2}; failed_or_partial={3}".format(
+                    len(part_rows), updated, skipped, failed
+                )
+            ),
+        }
+    )
+    return row
+
+
+def build_dry_run_rows(session, timestamp, parts, diagnostics):
     rows = []
-    for process_order, (part, level) in enumerate(
+    for process_order, (part, level, component_path) in enumerate(
         bottom_up_parts(parts), start=1
     ):
         access = inspect_write_access(session, part)
         messages = [access["message"]] if access["message"] else []
+        load_record = current_load_record(
+            part, level, component_path, dry_run=True
+        )
         rows.append(
             _result_row(
                 timestamp,
                 "DRY_RUN",
                 part,
                 level,
+                component_path,
                 process_order,
                 access,
+                load_record,
                 "DRY_RUN",
                 "DRY_RUN",
-                "SUCCESS",
+                "DRY_RUN",
                 messages,
                 stored_label="STORED",
             )
         )
+    rows.extend(
+        diagnostic_row(timestamp, "DRY_RUN", item)
+        for item in diagnostics
+    )
+    rows.append(summary_row(timestamp, "DRY_RUN", rows, "NOT_RUN"))
     return rows
 
 
-def apply_parts_bottom_up(session, timestamp, mode, parts):
+def build_load_aborted_rows(timestamp, mode, parts, load_records, diagnostics):
+    rows = []
+    targets = list(parts)
+    target_keys = {_object_key(part) for part, _level, _path in targets}
+    for key, record in load_records.items():
+        if key not in target_keys:
+            targets.append(
+                (
+                    record["part"],
+                    record["level"],
+                    record["component_path"],
+                )
+            )
+    for process_order, (part, level, component_path) in enumerate(
+        bottom_up_parts(targets), start=1
+    ):
+        record = load_records.get(
+            _object_key(part),
+            current_load_record(part, level, component_path),
+        )
+        rows.append(
+            _result_row(
+                timestamp,
+                mode,
+                part,
+                level,
+                component_path,
+                process_order,
+                empty_access(),
+                record,
+                "NOT_RUN_LOAD_FAILED",
+                "NOT_RUN_LOAD_FAILED",
+                "LOAD_FAILED",
+                ["Mass update aborted because the full-load gate failed."],
+                read_attributes=False,
+            )
+        )
+    rows.extend(
+        diagnostic_row(timestamp, mode, item)
+        for item in diagnostics
+    )
+    rows.append(summary_row(timestamp, mode, rows, "FAILED"))
+    return rows
+
+
+def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
     rows = []
     diagnostics = []
     part_collection = getattr(session, "Parts", None)
@@ -924,11 +1350,17 @@ def apply_parts_bottom_up(session, timestamp, mode, parts):
 
     try:
         ordered = bottom_up_parts(parts)
-        for process_order, (part, level) in enumerate(ordered, start=1):
+        for process_order, (part, level, component_path) in enumerate(
+            ordered, start=1
+        ):
             identity = part_identity(part)
             label = identity["number"] or identity["name"]
             access = inspect_write_access(session, part)
             messages = [access["message"]] if access["message"] else []
+            load_record = load_records.get(
+                _object_key(part),
+                current_load_record(part, level, component_path),
+            )
 
             if not access["allowed"]:
                 log_line(
@@ -943,8 +1375,10 @@ def apply_parts_bottom_up(session, timestamp, mode, parts):
                         mode,
                         part,
                         level,
+                        component_path,
                         process_order,
                         access,
+                        load_record,
                         "SKIPPED_NOT_WRITABLE",
                         "NOT_SAVED",
                         "SKIPPED",
@@ -969,8 +1403,10 @@ def apply_parts_bottom_up(session, timestamp, mode, parts):
                         mode,
                         part,
                         level,
+                        component_path,
                         process_order,
                         access,
+                        load_record,
                         "UPDATE_FAILED",
                         "NOT_SAVED",
                         "UPDATE_FAILED",
@@ -990,8 +1426,10 @@ def apply_parts_bottom_up(session, timestamp, mode, parts):
                         mode,
                         part,
                         level,
+                        component_path,
                         process_order,
                         access,
+                        load_record,
                         "UPDATE_FAILED",
                         "NOT_SAVED",
                         "UPDATE_FAILED",
@@ -1009,8 +1447,10 @@ def apply_parts_bottom_up(session, timestamp, mode, parts):
                     mode,
                     part,
                     level,
+                    component_path,
                     process_order,
                     access,
+                    load_record,
                     "UPDATED",
                     "SAVED" if saved_ok else "SAVE_FAILED",
                     "SUCCESS" if saved_ok else "SAVE_FAILED",
@@ -1074,24 +1514,56 @@ def run(session, run_datetime=None):
     if mode == "PROBE":
         return None, probe_builder_api(work_part), []
 
+    path = output_path(part_identity(work_part), file_timestamp)
     parts, traversal_diagnostics = collect_unique_parts(work_part)
     if mode == "APPLY":
-        # Fail before the first builder/checkout/save operation when any
-        # BoM-visible branch is missing, unreadable, or not fully loaded.
-        require_fully_loaded(parts, traversal_diagnostics)
-        rows, diagnostics = apply_parts_bottom_up(
-            session, timestamp, mode, parts
+        load_ok, parts, load_records, diagnostics = auto_load_bom_visible(
+            work_part,
+            logger=lambda message: log_line(session, message),
         )
+        if not load_ok:
+            rows = build_load_aborted_rows(
+                timestamp, mode, parts, load_records, diagnostics
+            )
+        else:
+            rows, context_diagnostics = apply_parts_bottom_up(
+                session, timestamp, mode, parts, load_records
+            )
+            diagnostics.extend(context_diagnostics)
+            rows.append(summary_row(timestamp, mode, rows, "SUCCESS"))
     elif mode == "SMOKE":
-        smoke_parts = [(work_part, 0)]
-        require_fully_loaded(smoke_parts, [])
-        rows, diagnostics = apply_parts_bottom_up(
-            session, timestamp, mode, smoke_parts
+        root_identity = part_identity(work_part)
+        root_path = root_identity["number"] or root_identity["name"]
+        smoke_parts = [(work_part, 0, root_path)]
+        record = load_target(
+            work_part,
+            0,
+            root_path,
+            logger=lambda message: log_line(session, message),
         )
+        load_records = {_object_key(work_part): record}
+        if record["load_status"] != "SUCCESS":
+            diagnostics = [
+                {
+                    "code": record["load_status"],
+                    "message": record["load_message"],
+                    "component_path": root_path,
+                    "level": 0,
+                }
+            ]
+            rows = build_load_aborted_rows(
+                timestamp, mode, smoke_parts, load_records, diagnostics
+            )
+        else:
+            rows, diagnostics = apply_parts_bottom_up(
+                session, timestamp, mode, smoke_parts, load_records
+            )
+            rows.append(summary_row(timestamp, mode, rows, "SUCCESS"))
     else:
-        rows = build_dry_run_rows(session, timestamp, parts)
+        rows = build_dry_run_rows(
+            session, timestamp, parts, traversal_diagnostics
+        )
         diagnostics = traversal_diagnostics
-    path = output_path(part_identity(work_part), file_timestamp)
     write_csv(path, rows)
     return path, rows, diagnostics
 
@@ -1109,7 +1581,8 @@ def main():
     )
     log_line(
         session,
-        "APPLY order: deepest leaf first, active assembly last; checkout: inspect only",
+        "APPLY: auto-load BoM-visible targets, then deepest leaf first; "
+        "checkout: inspect only",
     )
     log_line(
         session,
@@ -1133,15 +1606,37 @@ def main():
             return
 
         for row in rows:
+            if row["ROW_TYPE"] == "RUN_SUMMARY":
+                log_line(
+                    session,
+                    "RUN SUMMARY | load={0} | update={1} | status={2}".format(
+                        row["LOAD_STATUS"], row["UPDATE"], row["STATUS"]
+                    ),
+                )
+                if row["MESSAGE"]:
+                    log_line(session, "    " + row["MESSAGE"])
+                continue
+            if row["ROW_TYPE"] == "LOAD_DIAGNOSTIC":
+                log_line(
+                    session,
+                    "LOAD DIAGNOSTIC | {0} | {1} | {2}".format(
+                        row["COMPONENT_PATH"] or "<path unavailable>",
+                        row["LOAD_STATUS"],
+                        row["LOAD_MESSAGE"],
+                    ),
+                )
+                continue
             log_line(
                 session,
-                "{0} | level={1} | order={2} | {3} | checkout={4} ({5}) | "
-                "update={6} | rollup mass={7} kg [{8}] | rollup area={9} m^2 [{10}] | "
-                "saved={11} | {12}".format(
+                "{0} | level={1} | order={2} | {3} | load={4}/{5} | "
+                "checkout={6} ({7}) | update={8} | rollup mass={9} kg [{10}] | "
+                "rollup area={11} m^2 [{12}] | saved={13} | {14}".format(
                     row["DB_PART_NO"] or row["PART_NAME"],
                     row["LEVEL"],
                     row["PROCESS_ORDER"],
                     row["PART_KIND"],
+                    row["LOAD_ACTION"],
+                    row["LOAD_STATUS"],
                     row["CHECKOUT_STATE"],
                     row["CHECKOUT_OWNER"] or "<blank>",
                     row["UPDATE"],
@@ -1157,12 +1652,14 @@ def main():
                 log_line(session, "    " + row["MESSAGE"])
         log_line(
             session,
-            "Parts reported: {0}".format(len(rows)),
+            "Parts reported: {0}".format(
+                sum(row["ROW_TYPE"] == "PART" for row in rows)
+            ),
         )
         if diagnostics:
             log_line(
                 session,
-                "Traversal diagnostics: {0}".format(len(diagnostics)),
+                "Diagnostics: {0}".format(len(diagnostics)),
             )
             for item in diagnostics:
                 log_line(
