@@ -7,34 +7,30 @@ computes and writes its standard attributes on every component:
     NX_MassPropRollupMass  roll-up mass (kg)      [Rolled-Up Mass Properties]
     NX_MassPropRollupArea  roll-up area (mm^2)    [Rolled-Up Mass Properties]
 
-The journal does NOT create, compute, or write attributes itself.  It:
+The journal does NOT create, compute, or write attributes itself.  In APPLY
+mode it:
   1. fully loads the complete BoM-visible subtree in memory (same filter as
      NXOpenBoMExtended.py / Journal 04: suppressed, reference-only, and
      keyword-named occurrences are excluded),
-  2. processes every unique prototype bottom-up: leaf parts first,
-     subassemblies next, and the active assembly last,
-  3. makes each target the work part and triggers NX's native mass-properties
-     update on that target (PropertiesManager.CreateMassPropertiesBuilder
-     with UpdateOnSave=Yes, then UpdateNow and Commit),
-  4. saves every writable target and reads the reserved attributes back.
+  2. scans every unique prototype for NX_MassPropRollupMass,
+  3. processes only prototypes where that attribute is absent, bottom-up,
+  4. makes each selected target the work part, triggers NX's native
+     mass-properties update, and saves that target.
 
-The load phase never checks out, saves, or updates mass.  If any required
-prototype cannot fully load, J21 writes a diagnostic CSV and aborts all mass
-updates cleanly.  Successfully loaded parts remain loaded in memory.
+The load phase never checks out, saves, or updates mass.  APPLY continues on
+independent branches when a prototype cannot load, while blocking a missing
+assembly whose roll-up depends on that failed branch.  REFRESH_ALL preserves
+the V5 all-or-nothing full rebuild.  Successfully loaded parts remain loaded.
 
 J21 never checks a part out.  In Teamcenter managed mode it reports checkout
 state and owner, skips parts that are checked in, checked out by somebody
 else, or read-only, and continues with everything it can update.  The
 original display/work context is restored after the run.
 
-WRITE_MODE defaults to "APPLY".  APPLY loads, verifies, updates, and saves in
-one run.  Set WRITE_MODE = "DRY_RUN" (or the NX_J21_MODE environment variable)
-to report current load/access/attribute state without loading, updating, or
-saving.  Set WRITE_MODE = "SMOKE" to fully load and update the active work
-part only (fast iteration before a full-assembly run).  Set
-WRITE_MODE = "PROBE" to dump the PropertiesManager/MeasureManager and
-builder API surface of this NX build to the Listing Window (useful once,
-to confirm option names).
+WRITE_MODE defaults to "APPLY".  APPLY fills missing roll-up mass only.  Use
+"REFRESH_ALL" for the V5 full bottom-up rebuild, "DRY_RUN" to report without
+loading/updating/saving, "SMOKE" to force one active-part update, or "PROBE"
+to dump the MassPropertiesBuilder API surface.
 
 Why native and not direct write: NX_MassPropRollupMass / NX_MassPropRollupArea
 are RESERVED NX attribute titles - a journal cannot write them with
@@ -42,8 +38,9 @@ AttributePropertiesBuilder (NX raises "This is a reserved attribute title.
 [512006]").  Only NX's own mass-properties update can populate them, so this
 journal only triggers that native update and reports what NX wrote.
 
-Note: SMOKE measures only the active work part.  APPLY is the recursive,
-bottom-up mode required to refresh both child parts and assembly roll-ups.
+Note: SMOKE measures only the active work part.  APPLY trusts every existing
+roll-up mass value, including 0.0; only an absent exact attribute title is
+selected.  Missing roll-up area alone never selects a target.
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
@@ -57,8 +54,8 @@ import traceback
 import NXOpen
 
 
-BUILD = "J21-NX2506-AUTO-LOAD-BOTTOM-UP-MASS-PROP-UPDATE-V5"
-WRITE_MODE = "APPLY"  # APPLY / DRY_RUN / SMOKE / PROBE; NX_J21_MODE overrides
+BUILD = "J21-NX2506-SCAN-MISSING-ROLLUP-MASS-V6"
+WRITE_MODE = "APPLY"  # APPLY / REFRESH_ALL / DRY_RUN / SMOKE / PROBE
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
@@ -118,6 +115,11 @@ RESULT_COLUMNS = (
     "CURRENT_USER",
     "READ_ONLY",
     "UPDATE",
+    "INITIAL_ROLLUP_MASS_KG",
+    "MASS_SCAN_STATUS",
+    "SELECTION",
+    "SELECTION_REASON",
+    "DEPENDENCY_STATUS",
     "ROLLUP_MASS_KG",
     "ROLLUP_AREA_MM2",
     "ROLLUP_AREA_M2",
@@ -325,21 +327,26 @@ def _is_active_visible(component):
         return False
 
 
-def collect_unique_parts(work_part):
-    """Return BoM-visible unique targets and traversal diagnostics.
+def collect_bom_scope(work_part):
+    """Return unique targets, diagnostics, and prototype dependencies.
 
-    Each target is ``(part, deepest_level, first_path_at_that_level)``.  The
-    work part is always included. Suppressed, reference-flagged, and
-    keyword-named occurrences are excluded with their subtrees.
+    ``dependencies[parent_key]`` contains the unique prototype keys directly
+    used by that assembly prototype.  Diagnostics carry ``blocked_keys`` for
+    the known assembly ancestors whose roll-up cannot be trusted when an
+    occurrence/prototype is unresolved.  This lets APPLY continue on sibling
+    branches without updating a dependent assembly.
     """
     unique = {}
     diagnostics = []
+    dependencies = {}
     occurrence_count = 0
     root_identity = part_identity(work_part)
     root_path = root_identity["number"] or root_identity["name"]
+    root_key = _object_key(work_part)
 
     def add_part(part, level, path):
         key = _object_key(part)
+        dependencies.setdefault(key, set())
         if key not in unique:
             unique[key] = (part, level, path)
         elif level > unique[key][1]:
@@ -365,9 +372,10 @@ def collect_unique_parts(work_part):
                 "level": 0,
             }
         )
-        return list(unique.values()), diagnostics
+        diagnostics[-1]["blocked_keys"] = [root_key]
+        return list(unique.values()), diagnostics, dependencies
     if root_component is None:
-        return list(unique.values()), diagnostics
+        return list(unique.values()), diagnostics, dependencies
 
     root_children, root_error = _children(root_component)
     if root_error:
@@ -379,14 +387,15 @@ def collect_unique_parts(work_part):
                 "level": 0,
             }
         )
-        return list(unique.values()), diagnostics
+        diagnostics[-1]["blocked_keys"] = [root_key]
+        return list(unique.values()), diagnostics, dependencies
 
     stack = [
-        (component, 1, root_path)
+        (component, 1, root_path, root_key, (root_key,))
         for component in reversed(root_children)
     ]
     while stack:
-        component, level, parent_path = stack.pop()
+        component, level, parent_path, parent_key, ancestor_keys = stack.pop()
         occurrence_count += 1
         component_path = "{0} / {1}".format(
             parent_path, _component_name(component)
@@ -400,6 +409,7 @@ def collect_unique_parts(work_part):
                     ),
                     "component_path": component_path,
                     "level": level,
+                    "blocked_keys": list(ancestor_keys),
                 }
             )
             break
@@ -423,8 +433,11 @@ def collect_unique_parts(work_part):
                     + prototype_error,
                     "component_path": component_path,
                     "level": level,
+                    "blocked_keys": list(ancestor_keys),
                 }
             )
+            child_parent_key = parent_key
+            child_ancestor_keys = ancestor_keys
         elif prototype is None:
             diagnostics.append(
                 {
@@ -436,10 +449,17 @@ def collect_unique_parts(work_part):
                     ),
                     "component_path": component_path,
                     "level": level,
+                    "blocked_keys": list(ancestor_keys),
                 }
             )
+            child_parent_key = parent_key
+            child_ancestor_keys = ancestor_keys
         else:
             add_part(prototype, level, component_path)
+            prototype_key = _object_key(prototype)
+            dependencies.setdefault(parent_key, set()).add(prototype_key)
+            child_parent_key = prototype_key
+            child_ancestor_keys = ancestor_keys + (prototype_key,)
 
         children, children_error = _children(component)
         if children_error:
@@ -453,13 +473,26 @@ def collect_unique_parts(work_part):
                     ),
                     "component_path": component_path,
                     "level": level,
+                    "blocked_keys": list(child_ancestor_keys),
                 }
             )
         stack.extend(
-            (child, level + 1, component_path)
+            (
+                child,
+                level + 1,
+                component_path,
+                child_parent_key,
+                child_ancestor_keys,
+            )
             for child in reversed(children)
         )
-    return list(unique.values()), diagnostics
+    return list(unique.values()), diagnostics, dependencies
+
+
+def collect_unique_parts(work_part):
+    """Compatibility wrapper returning BoM-visible targets and diagnostics."""
+    parts, diagnostics, _dependencies = collect_bom_scope(work_part)
+    return parts, diagnostics
 
 
 def part_load_state(part):
@@ -584,9 +617,12 @@ def auto_load_bom_visible(work_part, logger=None):
     records = {}
     final_parts = []
     final_diagnostics = []
+    final_dependencies = {}
 
     for pass_index in range(1, MAX_LOAD_PASSES + 1):
-        parts, _diagnostics = collect_unique_parts(work_part)
+        parts, _diagnostics, _dependencies = collect_bom_scope(work_part)
+        for parent_key, child_keys in _dependencies.items():
+            final_dependencies.setdefault(parent_key, set()).update(child_keys)
         attempted = False
         for part, level, component_path in parts:
             key = _object_key(part)
@@ -602,7 +638,13 @@ def auto_load_bom_visible(work_part, logger=None):
             if record["load_action"] == "LOAD_THIS_PART_FULLY":
                 attempted = True
 
-        final_parts, final_diagnostics = collect_unique_parts(work_part)
+        (
+            final_parts,
+            final_diagnostics,
+            current_dependencies,
+        ) = collect_bom_scope(work_part)
+        for parent_key, child_keys in current_dependencies.items():
+            final_dependencies.setdefault(parent_key, set()).update(child_keys)
         final_keys = {_object_key(part) for part, _level, _path in final_parts}
         known_keys = set(records)
         all_recorded = final_keys.issubset(known_keys)
@@ -613,7 +655,7 @@ def auto_load_bom_visible(work_part, logger=None):
             if key in records
         )
         if all_recorded and all_loaded and not final_diagnostics:
-            return True, final_parts, records, []
+            return True, final_parts, records, [], final_dependencies
 
         new_targets_exist = not all_recorded
         if not attempted and not new_targets_exist:
@@ -638,7 +680,7 @@ def auto_load_bom_visible(work_part, logger=None):
         )
 
     failures = []
-    for record in records.values():
+    for key, record in records.items():
         if record["load_status"] != "SUCCESS":
             identity = part_identity(record["part"])
             label = identity["number"] or identity["name"]
@@ -650,9 +692,28 @@ def auto_load_bom_visible(work_part, logger=None):
                     ),
                     "component_path": record["component_path"],
                     "level": record["level"],
+                    "blocked_keys": [key],
                 }
             )
-    return False, final_parts, records, final_diagnostics + failures
+    final_keys = {
+        _object_key(part) for part, _level, _path in final_parts
+    }
+    for key, record in records.items():
+        if key not in final_keys:
+            final_parts.append(
+                (
+                    record["part"],
+                    record["level"],
+                    record["component_path"],
+                )
+            )
+    return (
+        False,
+        final_parts,
+        records,
+        final_diagnostics + failures,
+        final_dependencies,
+    )
 
 
 def _update_on_save_yes(builder):
@@ -831,6 +892,67 @@ def read_rollup_attributes(part):
     }
 
 
+def scan_rollup_mass(part):
+    """Return a fail-closed tri-state scan of the reserved roll-up mass.
+
+    An exception from ``GetRealAttribute`` alone cannot distinguish a missing
+    attribute from an NX/API failure.  Enumerating attributes first makes
+    ``MISSING`` an affirmative result: enumeration succeeded and the exact
+    title was absent.  An existing numeric 0.0 is therefore ``PRESENT``.
+    """
+    iterator = None
+    try:
+        get_attributes = getattr(part, "GetUserAttributes", None)
+        if not callable(get_attributes):
+            raise RuntimeError("GetUserAttributes is unavailable.")
+
+        create_iterator = getattr(part, "CreateAttributeIterator", None)
+        if callable(create_iterator):
+            iterator = create_iterator()
+            try:
+                attributes = list(get_attributes(iterator))
+            except TypeError:
+                attributes = list(get_attributes())
+        else:
+            attributes = list(get_attributes())
+
+        matches = [
+            info
+            for info in attributes
+            if clean(getattr(info, "Title", "")) == ROLLUP_MASS_ATTRIBUTE
+        ]
+        if not matches:
+            return {
+                "status": "MISSING",
+                "value": None,
+                "message": "Exact roll-up mass attribute title is absent.",
+            }
+
+        info = matches[0]
+        if bool(getattr(info, "Unset", False)):
+            return {
+                "status": "READ_FAILED",
+                "value": None,
+                "message": "Roll-up mass attribute exists but is unset.",
+            }
+        value = getattr(info, "RealValue", None)
+        if value is None:
+            value = part.GetRealAttribute(ROLLUP_MASS_ATTRIBUTE)
+        return {
+            "status": "PRESENT",
+            "value": float(value),
+            "message": "Exact roll-up mass attribute exists.",
+        }
+    except Exception as error:
+        return {
+            "status": "READ_FAILED",
+            "value": None,
+            "message": "Roll-up mass scan failed: " + error_text(error),
+        }
+    finally:
+        dispose(iterator)
+
+
 def number_text(value, decimal_places):
     if value is None:
         return ""
@@ -981,9 +1103,12 @@ def read_only_text(value):
 
 
 def measurement_objects(part):
-    root_component = getattr(
-        getattr(part, "ComponentAssembly", None), "RootComponent", None
-    )
+    try:
+        root_component = getattr(
+            getattr(part, "ComponentAssembly", None), "RootComponent", None
+        )
+    except Exception:
+        root_component = None
     return [root_component] if root_component is not None else [part]
 
 
@@ -1111,6 +1236,12 @@ def _result_row(
     messages,
     stored_label="POPULATED",
     read_attributes=True,
+    initial_mass=None,
+    mass_scan_status="",
+    selection="",
+    selection_reason="",
+    dependency_status="",
+    require_area=True,
 ):
     identity = part_identity(part)
     attributes = (
@@ -1118,6 +1249,8 @@ def _result_row(
         if read_attributes else
         {"mass": None, "area": None}
     )
+    if mass_scan_status == "PRESENT" and attributes["mass"] is None:
+        attributes["mass"] = initial_mass
     mass_status = (
         stored_label if attributes["mass"] is not None else
         "BLANK" if read_attributes else
@@ -1130,7 +1263,10 @@ def _result_row(
     )
     if (
         status == "SUCCESS"
-        and (mass_status == "BLANK" or area_status == "BLANK")
+        and (
+            mass_status == "BLANK"
+            or (require_area and area_status == "BLANK")
+        )
     ):
         status = "PARTIAL"
     if update == "UPDATED":
@@ -1170,6 +1306,13 @@ def _result_row(
         "CURRENT_USER": access["current_user"],
         "READ_ONLY": read_only_text(access["read_only"]),
         "UPDATE": update,
+        "INITIAL_ROLLUP_MASS_KG": number_text(
+            initial_mass, MASS_DECIMAL_PLACES
+        ),
+        "MASS_SCAN_STATUS": mass_scan_status,
+        "SELECTION": selection,
+        "SELECTION_REASON": selection_reason,
+        "DEPENDENCY_STATUS": dependency_status,
         "ROLLUP_MASS_KG": number_text(
             attributes["mass"], MASS_DECIMAL_PLACES
         ),
@@ -1223,10 +1366,38 @@ def diagnostic_row(timestamp, mode, diagnostic):
 def summary_row(timestamp, mode, rows, load_gate):
     part_rows = [row for row in rows if row.get("ROW_TYPE") == "PART"]
     updated = sum(row.get("UPDATE") == "UPDATED" for row in part_rows)
-    skipped = sum(row.get("STATUS") == "SKIPPED" for row in part_rows)
-    failed = sum(
-        row.get("STATUS") not in ("SUCCESS", "SKIPPED", "DRY_RUN")
+    present = sum(
+        row.get("MASS_SCAN_STATUS") == "PRESENT" for row in part_rows
+    )
+    missing = sum(
+        row.get("MASS_SCAN_STATUS") == "MISSING" for row in part_rows
+    )
+    selected = sum(
+        row.get("SELECTION") == "SELECTED_MISSING_MASS" for row in part_rows
+    )
+    not_writable = sum(
+        row.get("UPDATE") == "SKIPPED_NOT_WRITABLE" for row in part_rows
+    )
+    blocked = sum(
+        row.get("UPDATE") == "BLOCKED_LOAD_DEPENDENCY" for row in part_rows
+    )
+    read_failed = sum(
+        row.get("MASS_SCAN_STATUS") in (
+            "READ_FAILED",
+            "NOT_SCANNED_LOAD_FAILED",
+        )
         for row in part_rows
+    )
+    update_failed = sum(
+        row.get("UPDATE") == "UPDATE_FAILED" for row in part_rows
+    )
+    save_failed = sum(
+        row.get("SAVED") == "SAVE_FAILED" for row in part_rows
+    )
+    partial_rows = sum(
+        row.get("STATUS") not in ("SUCCESS", "DRY_RUN")
+        for row in part_rows
+        if row.get("UPDATE") != "SKIPPED_MASS_PRESENT"
     )
     row = {column: "" for column in RESULT_COLUMNS}
     if load_gate == "FAILED":
@@ -1235,7 +1406,7 @@ def summary_row(timestamp, mode, rows, load_gate):
     elif mode == "DRY_RUN":
         status = "DRY_RUN"
         update = "DRY_RUN"
-    elif failed or skipped:
+    elif load_gate == "PARTIAL" or partial_rows:
         status = "PARTIAL"
         update = "COMPLETED_WITH_EXCEPTIONS"
     else:
@@ -1252,8 +1423,19 @@ def summary_row(timestamp, mode, rows, load_gate):
             "SAVED": "SUMMARY",
             "STATUS": status,
             "MESSAGE": (
-                "targets={0}; updated={1}; skipped={2}; failed_or_partial={3}".format(
-                    len(part_rows), updated, skipped, failed
+                "discovered={0}; present={1}; missing={2}; selected={3}; "
+                "updated={4}; not_writable={5}; blocked={6}; read_failed={7}; "
+                "update_failed={8}; save_failed={9}".format(
+                    len(part_rows),
+                    present,
+                    missing,
+                    selected,
+                    updated,
+                    not_writable,
+                    blocked,
+                    read_failed,
+                    update_failed,
+                    save_failed,
                 )
             ),
         }
@@ -1266,8 +1448,20 @@ def build_dry_run_rows(session, timestamp, parts, diagnostics):
     for process_order, (part, level, component_path) in enumerate(
         bottom_up_parts(parts), start=1
     ):
+        scan = scan_rollup_mass(part)
+        if scan["status"] == "PRESENT":
+            selection = "SKIPPED_MASS_PRESENT"
+            selection_reason = "Existing roll-up mass would be trusted."
+        elif scan["status"] == "MISSING":
+            selection = "WOULD_UPDATE_MISSING_MASS"
+            selection_reason = "Roll-up mass is absent."
+        else:
+            selection = "SKIPPED_READ_FAILED"
+            selection_reason = scan["message"]
         access = inspect_write_access(session, part)
         messages = [access["message"]] if access["message"] else []
+        if scan["status"] == "READ_FAILED":
+            messages.append(scan["message"])
         load_record = current_load_record(
             part, level, component_path, dry_run=True
         )
@@ -1286,6 +1480,12 @@ def build_dry_run_rows(session, timestamp, parts, diagnostics):
                 "DRY_RUN",
                 messages,
                 stored_label="STORED",
+                initial_mass=scan["value"],
+                mass_scan_status=scan["status"],
+                selection=selection,
+                selection_reason=selection_reason,
+                dependency_status="NOT_EVALUATED_DRY_RUN",
+                require_area=False,
             )
         )
     rows.extend(
@@ -1331,6 +1531,10 @@ def build_load_aborted_rows(timestamp, mode, parts, load_records, diagnostics):
                 "LOAD_FAILED",
                 ["Mass update aborted because the full-load gate failed."],
                 read_attributes=False,
+                mass_scan_status="NOT_SCANNED_LOAD_FAILED",
+                selection="NOT_RUN_LOAD_FAILED",
+                selection_reason="Full refresh requires a complete load gate.",
+                dependency_status="BLOCKED_BY_LOAD_FAILURE",
             )
         )
     rows.extend(
@@ -1339,6 +1543,311 @@ def build_load_aborted_rows(timestamp, mode, parts, load_records, diagnostics):
     )
     rows.append(summary_row(timestamp, mode, rows, "FAILED"))
     return rows
+
+
+def dependency_blocked_keys(parts, load_records, diagnostics, dependencies):
+    """Return failed prototypes plus every assembly prototype above them."""
+    all_keys = {_object_key(part) for part, _level, _path in parts}
+    blocked = {
+        key
+        for key, record in load_records.items()
+        if record.get("load_status") != "SUCCESS"
+    }
+    for diagnostic in diagnostics:
+        diagnostic_keys = diagnostic.get("blocked_keys", ())
+        if diagnostic_keys:
+            blocked.update(diagnostic_keys)
+        elif diagnostic.get("code") in (
+            "LOAD_PASS_LIMIT",
+            "OCCURRENCE_LIMIT",
+            "ROOT_COMPONENT_UNREADABLE",
+        ):
+            blocked.update(all_keys)
+
+    parents = {}
+    for parent_key, child_keys in dependencies.items():
+        for child_key in child_keys:
+            parents.setdefault(child_key, set()).add(parent_key)
+
+    pending = list(blocked)
+    while pending:
+        child_key = pending.pop()
+        for parent_key in parents.get(child_key, ()):
+            if parent_key not in blocked:
+                blocked.add(parent_key)
+                pending.append(parent_key)
+    return blocked
+
+
+def apply_missing_mass_bottom_up(
+    session,
+    timestamp,
+    parts,
+    load_records,
+    load_diagnostics,
+    dependencies,
+):
+    """Scan all targets and mutate only safe prototypes missing roll-up mass."""
+    rows = []
+    diagnostics = []
+    blocked_keys = dependency_blocked_keys(
+        parts, load_records, load_diagnostics, dependencies
+    )
+    part_collection = getattr(session, "Parts", None)
+    original_work = getattr(part_collection, "Work", None)
+    original_display = getattr(part_collection, "Display", None)
+
+    try:
+        ordered = bottom_up_parts(parts)
+        for process_order, (part, level, component_path) in enumerate(
+            ordered, start=1
+        ):
+            key = _object_key(part)
+            identity = part_identity(part)
+            label = identity["number"] or identity["name"]
+            load_record = load_records.get(
+                key, current_load_record(part, level, component_path)
+            )
+            dependency_status = (
+                "BLOCKED_BY_LOAD_FAILURE" if key in blocked_keys else "READY"
+            )
+
+            if load_record["load_status"] != "SUCCESS":
+                messages = [
+                    "Mass scan/update skipped because this prototype did not "
+                    "fully load: " + load_record["load_message"]
+                ]
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        empty_access(),
+                        load_record,
+                        "BLOCKED_LOAD_DEPENDENCY",
+                        "NOT_SAVED",
+                        "BLOCKED",
+                        messages,
+                        read_attributes=False,
+                        mass_scan_status="NOT_SCANNED_LOAD_FAILED",
+                        selection="BLOCKED_LOAD_DEPENDENCY",
+                        selection_reason="Prototype did not fully load.",
+                        dependency_status=dependency_status,
+                        require_area=False,
+                    )
+                )
+                continue
+
+            scan = scan_rollup_mass(part)
+            if scan["status"] == "PRESENT":
+                log_line(session, "SKIP PRESENT {0}".format(label))
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        empty_access(),
+                        load_record,
+                        "SKIPPED_MASS_PRESENT",
+                        "NOT_SAVED",
+                        "SUCCESS",
+                        [],
+                        stored_label="EXISTING",
+                        initial_mass=scan["value"],
+                        mass_scan_status="PRESENT",
+                        selection="SKIPPED_MASS_PRESENT",
+                        selection_reason="Existing roll-up mass is trusted.",
+                        dependency_status=dependency_status,
+                        require_area=False,
+                    )
+                )
+                continue
+
+            if scan["status"] == "READ_FAILED":
+                log_line(session, "SKIP READ FAILED {0}".format(label))
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        empty_access(),
+                        load_record,
+                        "SKIPPED_READ_FAILED",
+                        "NOT_SAVED",
+                        "READ_FAILED",
+                        [scan["message"]],
+                        read_attributes=False,
+                        mass_scan_status="READ_FAILED",
+                        selection="SKIPPED_READ_FAILED",
+                        selection_reason=scan["message"],
+                        dependency_status=dependency_status,
+                        require_area=False,
+                    )
+                )
+                continue
+
+            if key in blocked_keys:
+                log_line(session, "BLOCK DEPENDENCY {0}".format(label))
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        empty_access(),
+                        load_record,
+                        "BLOCKED_LOAD_DEPENDENCY",
+                        "NOT_SAVED",
+                        "BLOCKED",
+                        [
+                            "Missing mass was not updated because this assembly "
+                            "depends on an unresolved or unloaded branch."
+                        ],
+                        mass_scan_status="MISSING",
+                        selection="BLOCKED_LOAD_DEPENDENCY",
+                        selection_reason="A required descendant branch failed.",
+                        dependency_status=dependency_status,
+                        require_area=False,
+                    )
+                )
+                continue
+
+            access = inspect_write_access(session, part)
+            messages = [access["message"]] if access["message"] else []
+            if not access["allowed"]:
+                log_line(
+                    session,
+                    "SKIP {0}: {1}".format(
+                        label, access["message"] or "target is not writable"
+                    ),
+                )
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        access,
+                        load_record,
+                        "SKIPPED_NOT_WRITABLE",
+                        "NOT_SAVED",
+                        "SKIPPED",
+                        messages,
+                        mass_scan_status="MISSING",
+                        selection="SELECTED_MISSING_MASS",
+                        selection_reason="Roll-up mass is absent.",
+                        dependency_status="READY",
+                        require_area=False,
+                    )
+                )
+                continue
+
+            log_line(
+                session,
+                "UPDATE MISSING {0} ({1}/{2}, level {3}, {4})".format(
+                    label, process_order, len(ordered), level, part_kind(part)
+                ),
+            )
+            try:
+                set_work_part(session, part)
+            except Exception as error:
+                messages.append("SET WORK: " + error_text(error))
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        access,
+                        load_record,
+                        "UPDATE_FAILED",
+                        "NOT_SAVED",
+                        "UPDATE_FAILED",
+                        messages,
+                        mass_scan_status="MISSING",
+                        selection="SELECTED_MISSING_MASS",
+                        selection_reason="Roll-up mass is absent.",
+                        dependency_status="READY",
+                        require_area=False,
+                    )
+                )
+                continue
+
+            update_status = run_native_mass_property_update(
+                part, objects=measurement_objects(part)
+            )
+            if not update_status.startswith("NATIVE_UPDATE_OK"):
+                messages.append("UPDATE: " + update_status)
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        "APPLY",
+                        part,
+                        level,
+                        component_path,
+                        process_order,
+                        access,
+                        load_record,
+                        "UPDATE_FAILED",
+                        "NOT_SAVED",
+                        "UPDATE_FAILED",
+                        messages,
+                        mass_scan_status="MISSING",
+                        selection="SELECTED_MISSING_MASS",
+                        selection_reason="Roll-up mass is absent.",
+                        dependency_status="READY",
+                        require_area=False,
+                    )
+                )
+                continue
+
+            saved_ok, save_message = save_part(part)
+            if not saved_ok:
+                messages.append("SAVE: " + save_message)
+            rows.append(
+                _result_row(
+                    timestamp,
+                    "APPLY",
+                    part,
+                    level,
+                    component_path,
+                    process_order,
+                    access,
+                    load_record,
+                    "UPDATED",
+                    "SAVED" if saved_ok else "SAVE_FAILED",
+                    "SUCCESS" if saved_ok else "SAVE_FAILED",
+                    messages,
+                    mass_scan_status="MISSING",
+                    selection="SELECTED_MISSING_MASS",
+                    selection_reason="Roll-up mass is absent.",
+                    dependency_status="READY",
+                    require_area=False,
+                )
+            )
+    finally:
+        for message in restore_part_context(
+            session, original_display, original_work
+        ):
+            diagnostics.append(
+                {"code": "CONTEXT_RESTORE_FAILED", "message": message}
+            )
+    return rows, diagnostics
 
 
 def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
@@ -1355,6 +1864,10 @@ def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
         ):
             identity = part_identity(part)
             label = identity["number"] or identity["name"]
+            scan = scan_rollup_mass(part)
+            forced_selection = (
+                "REFRESH_ALL" if mode == "REFRESH_ALL" else "SMOKE_FORCED"
+            )
             access = inspect_write_access(session, part)
             messages = [access["message"]] if access["message"] else []
             load_record = load_records.get(
@@ -1383,6 +1896,11 @@ def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
                         "NOT_SAVED",
                         "SKIPPED",
                         messages,
+                        initial_mass=scan["value"],
+                        mass_scan_status=scan["status"],
+                        selection=forced_selection,
+                        selection_reason="Mode forces a native update.",
+                        dependency_status="READY",
                     )
                 )
                 continue
@@ -1411,6 +1929,11 @@ def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
                         "NOT_SAVED",
                         "UPDATE_FAILED",
                         messages,
+                        initial_mass=scan["value"],
+                        mass_scan_status=scan["status"],
+                        selection=forced_selection,
+                        selection_reason="Mode forces a native update.",
+                        dependency_status="READY",
                     )
                 )
                 continue
@@ -1434,6 +1957,11 @@ def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
                         "NOT_SAVED",
                         "UPDATE_FAILED",
                         messages,
+                        initial_mass=scan["value"],
+                        mass_scan_status=scan["status"],
+                        selection=forced_selection,
+                        selection_reason="Mode forces a native update.",
+                        dependency_status="READY",
                     )
                 )
                 continue
@@ -1455,6 +1983,11 @@ def apply_parts_bottom_up(session, timestamp, mode, parts, load_records):
                     "SAVED" if saved_ok else "SAVE_FAILED",
                     "SUCCESS" if saved_ok else "SAVE_FAILED",
                     messages,
+                    initial_mass=scan["value"],
+                    mass_scan_status=scan["status"],
+                    selection=forced_selection,
+                    selection_reason="Mode forces a native update.",
+                    dependency_status="READY",
                 )
             )
     finally:
@@ -1496,11 +2029,10 @@ def run(session, run_datetime=None):
     timestamp = now.isoformat(timespec="seconds")
     file_timestamp = now.strftime("%Y%m%d_%H%M%S")
     mode = clean(os.environ.get("NX_J21_MODE")) or WRITE_MODE
-    if mode not in ("APPLY", "DRY_RUN", "PROBE", "SMOKE"):
+    if mode not in ("APPLY", "REFRESH_ALL", "DRY_RUN", "PROBE", "SMOKE"):
         raise RuntimeError(
-            "NX_J21_MODE must be APPLY, DRY_RUN, PROBE, or SMOKE, got: {0}".format(
-                mode
-            )
+            "NX_J21_MODE must be APPLY, REFRESH_ALL, DRY_RUN, PROBE, or "
+            "SMOKE, got: {0}".format(mode)
         )
 
     try:
@@ -1517,7 +2049,42 @@ def run(session, run_datetime=None):
     path = output_path(part_identity(work_part), file_timestamp)
     parts, traversal_diagnostics = collect_unique_parts(work_part)
     if mode == "APPLY":
-        load_ok, parts, load_records, diagnostics = auto_load_bom_visible(
+        (
+            load_ok,
+            parts,
+            load_records,
+            diagnostics,
+            dependencies,
+        ) = auto_load_bom_visible(
+            work_part,
+            logger=lambda message: log_line(session, message),
+        )
+        rows, context_diagnostics = apply_missing_mass_bottom_up(
+            session,
+            timestamp,
+            parts,
+            load_records,
+            diagnostics,
+            dependencies,
+        )
+        diagnostics.extend(context_diagnostics)
+        rows.extend(diagnostic_row(timestamp, mode, item) for item in diagnostics)
+        rows.append(
+            summary_row(
+                timestamp,
+                mode,
+                rows,
+                "SUCCESS" if load_ok and not diagnostics else "PARTIAL",
+            )
+        )
+    elif mode == "REFRESH_ALL":
+        (
+            load_ok,
+            parts,
+            load_records,
+            diagnostics,
+            _dependencies,
+        ) = auto_load_bom_visible(
             work_part,
             logger=lambda message: log_line(session, message),
         )
@@ -1581,8 +2148,13 @@ def main():
     )
     log_line(
         session,
-        "APPLY: auto-load BoM-visible targets, then deepest leaf first; "
-        "checkout: inspect only",
+        "APPLY: auto-load and scan all BoM-visible targets; update/save only "
+        "missing roll-up mass; checkout: inspect selected targets only",
+    )
+    log_line(
+        session,
+        "REFRESH_ALL: force the V5 full bottom-up rebuild with an "
+        "all-or-nothing load gate",
     )
     log_line(
         session,
@@ -1629,14 +2201,18 @@ def main():
             log_line(
                 session,
                 "{0} | level={1} | order={2} | {3} | load={4}/{5} | "
-                "checkout={6} ({7}) | update={8} | rollup mass={9} kg [{10}] | "
-                "rollup area={11} m^2 [{12}] | saved={13} | {14}".format(
+                "scan={6} | selection={7} | dependency={8} | checkout={9} "
+                "({10}) | update={11} | rollup mass={12} kg [{13}] | "
+                "rollup area={14} m^2 [{15}] | saved={16} | {17}".format(
                     row["DB_PART_NO"] or row["PART_NAME"],
                     row["LEVEL"],
                     row["PROCESS_ORDER"],
                     row["PART_KIND"],
                     row["LOAD_ACTION"],
                     row["LOAD_STATUS"],
+                    row["MASS_SCAN_STATUS"],
+                    row["SELECTION"],
+                    row["DEPENDENCY_STATUS"],
                     row["CHECKOUT_STATE"],
                     row["CHECKOUT_OWNER"] or "<blank>",
                     row["UPDATE"],

@@ -1,3 +1,4 @@
+import csv
 import importlib.util
 import os
 import sys
@@ -19,7 +20,7 @@ JOURNAL = (
 def load_journal():
     nxopen = types.ModuleType("NXOpen")
     nxopen.NXObject = types.SimpleNamespace(
-        AttributeType=types.SimpleNamespace(String="String")
+        AttributeType=types.SimpleNamespace(String="String", Real="Real")
     )
     nxopen.BasePart = types.SimpleNamespace(
         SaveComponents=types.SimpleNamespace(FalseValue="FALSE"),
@@ -41,6 +42,22 @@ def load_journal():
             sys.modules.pop("NXOpen", None)
         else:
             sys.modules["NXOpen"] = prior
+
+
+class FakeAttributeIterator:
+    def __init__(self):
+        self.disposed = False
+
+    def Dispose(self):
+        self.disposed = True
+
+
+class FakeAttributeInfo:
+    def __init__(self, title, value):
+        self.Title = title
+        self.Type = "Real"
+        self.RealValue = value
+        self.Unset = False
 
 
 def walk_prototypes(obj):
@@ -149,6 +166,7 @@ class FakePart:
         self.PDMPart = None
         self.real_attributes = {}
         self.string_attributes = {}
+        self.attribute_read_error = None
         self.save_error = save_error
         self.saved = False
         self.events = None
@@ -169,6 +187,17 @@ class FakePart:
 
     def GetUserAttribute(self, *args):
         raise AttributeError("unavailable")
+
+    def CreateAttributeIterator(self):
+        return FakeAttributeIterator()
+
+    def GetUserAttributes(self, _iterator=None):
+        if self.attribute_read_error is not None:
+            raise self.attribute_read_error
+        return [
+            FakeAttributeInfo(title, value)
+            for title, value in self.real_attributes.items()
+        ]
 
     def GetRealAttribute(self, title):
         if title not in self.real_attributes:
@@ -444,6 +473,117 @@ class J21Tests(unittest.TestCase):
             self.j21.ROLLUP_AREA_ATTRIBUTE,
         )
 
+    def test_apply_skips_existing_mass_including_zero_without_access_or_save(self):
+        root, children = self.make_assembly()
+        root.real_attributes["NX_MassPropRollupMass"] = 1.5
+        children[0].real_attributes["NX_MassPropRollupMass"] = 0.0
+        children[1].real_attributes["NX_MassPropRollupMass"] = 2.5
+        children[1].PDMPart = FakePdmPart(True, "other.user")
+        children[1].IsReadOnly = True
+        session = FakeSession(root, managed=True, user="aqil")
+
+        os.environ.pop("NX_J21_MODE", None)
+        path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual([], session.events)
+        self.assertEqual([], session.Parts.work_history)
+        self.assertEqual("SUCCESS", run_summary(rows)["STATUS"])
+        for row in only_part_rows(rows):
+            self.assertEqual("PRESENT", row["MASS_SCAN_STATUS"])
+            self.assertEqual("SKIPPED_MASS_PRESENT", row["SELECTION"])
+            self.assertEqual("SKIPPED_MASS_PRESENT", row["UPDATE"])
+            self.assertEqual("NOT_INSPECTED", row["CHECKOUT_STATE"])
+            self.assertEqual("NOT_SAVED", row["SAVED"])
+            self.assertEqual("SUCCESS", row["STATUS"])
+        zero_row = rows_by_part_number(rows)["264MN000002A01"]
+        self.assertEqual("0.000000", zero_row["INITIAL_ROLLUP_MASS_KG"])
+        self.assertEqual("0.000000", zero_row["ROLLUP_MASS_KG"])
+        self.assertEqual("BLANK", zero_row["ROLLUP_AREA_ATTRIBUTE"])
+        self.assertIn(
+            "present=3; missing=0; selected=0; updated=0",
+            run_summary(rows)["MESSAGE"],
+        )
+        with open(path, encoding="utf-8-sig", newline="") as handle:
+            fieldnames = csv.DictReader(handle).fieldnames
+        self.assertTrue(
+            {
+                "INITIAL_ROLLUP_MASS_KG",
+                "MASS_SCAN_STATUS",
+                "SELECTION",
+                "SELECTION_REASON",
+                "DEPENDENCY_STATUS",
+            }.issubset(fieldnames)
+        )
+
+    def test_apply_mixed_scope_updates_only_missing_mass(self):
+        root, children = self.make_assembly()
+        root.real_attributes["NX_MassPropRollupMass"] = 10.0
+        children[0].real_attributes["NX_MassPropRollupMass"] = 0.0
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(
+            ["update:264MN000003A01", "save:264MN000003A01"],
+            session.events,
+        )
+        self.assertFalse(root.saved)
+        self.assertFalse(children[0].saved)
+        self.assertTrue(children[1].saved)
+        by_number = rows_by_part_number(rows)
+        self.assertEqual(
+            "SKIPPED_MASS_PRESENT", by_number["264MN000001A01"]["UPDATE"]
+        )
+        self.assertEqual(
+            "SKIPPED_MASS_PRESENT", by_number["264MN000002A01"]["UPDATE"]
+        )
+        missing = by_number["264MN000003A01"]
+        self.assertEqual("MISSING", missing["MASS_SCAN_STATUS"])
+        self.assertEqual("SELECTED_MISSING_MASS", missing["SELECTION"])
+        self.assertEqual("UPDATED", missing["UPDATE"])
+
+    def test_apply_attribute_scan_failure_is_not_treated_as_missing(self):
+        root, children = self.make_assembly()
+        root.real_attributes["NX_MassPropRollupMass"] = 10.0
+        children[0].real_attributes["NX_MassPropRollupMass"] = 1.0
+        children[1].attribute_read_error = RuntimeError("NX attribute API failed")
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual([], session.events)
+        failed = rows_by_part_number(rows)["264MN000003A01"]
+        self.assertEqual("READ_FAILED", failed["MASS_SCAN_STATUS"])
+        self.assertEqual("SKIPPED_READ_FAILED", failed["SELECTION"])
+        self.assertEqual("SKIPPED_READ_FAILED", failed["UPDATE"])
+        self.assertEqual("NOT_INSPECTED", failed["CHECKOUT_STATE"])
+        self.assertEqual("READ_FAILED", failed["STATUS"])
+        self.assertEqual("PARTIAL", run_summary(rows)["STATUS"])
+
+    def test_refresh_all_rebuilds_parts_even_when_mass_exists(self):
+        root, children = self.make_assembly()
+        for part in (root, *children):
+            part.real_attributes["NX_MassPropRollupMass"] = 99.0
+        session = FakeSession(root)
+
+        os.environ["NX_J21_MODE"] = "REFRESH_ALL"
+        _path, rows, diagnostics = self.j21.run(session)
+
+        self.assertFalse(diagnostics)
+        self.assertEqual(3, sum(row["UPDATE"] == "UPDATED" for row in rows))
+        self.assertTrue(all(part.saved for part in (root, *children)))
+        self.assertTrue(
+            all(
+                row["SELECTION"] == "REFRESH_ALL"
+                for row in only_part_rows(rows)
+            )
+        )
+
     def test_nested_assembly_is_processed_leaf_to_subassembly_to_root(self):
         leaf = FakePart("LEAF")
         leaf.string_attributes = {"DB_PART_NO": "LEAF", "DB_PART_REV": "A"}
@@ -598,7 +738,7 @@ class J21Tests(unittest.TestCase):
         )
         session = FakeSession(root)
 
-        os.environ.pop("NX_J21_MODE", None)
+        os.environ["NX_J21_MODE"] = "REFRESH_ALL"
         path, rows, diagnostics = self.j21.run(session)
 
         self.assertTrue(Path(path).exists())
@@ -614,6 +754,52 @@ class J21Tests(unittest.TestCase):
         self.assertFalse(any("update:" in event for event in session.events))
         self.assertFalse(any(part.saved for part in (root, *children)))
 
+    def test_apply_load_failure_updates_sibling_and_blocks_missing_ancestor(self):
+        root, children = self.make_assembly()
+        failed = children[1]
+        failed.IsFullyLoaded = False
+        failed.PartLoadState = "MinimallyLoaded"
+        failed.load_status = FakeLoadStatus(
+            [
+                (
+                    "MISSING.prt",
+                    641044,
+                    "Failed to find file using current search options",
+                )
+            ]
+        )
+        session = FakeSession(root)
+
+        os.environ.pop("NX_J21_MODE", None)
+        path, rows, diagnostics = self.j21.run(session)
+
+        self.assertTrue(Path(path).exists())
+        self.assertEqual("PARTIAL", run_summary(rows)["STATUS"])
+        self.assertEqual("PARTIAL", run_summary(rows)["LOAD_STATUS"])
+        by_number = rows_by_part_number(rows)
+        sibling = by_number["264MN000002A01"]
+        self.assertEqual("UPDATED", sibling["UPDATE"])
+        self.assertTrue(children[0].saved)
+        failed_row = by_number["264MN000003A01"]
+        self.assertEqual("MISSING_FILE", failed_row["LOAD_STATUS"])
+        self.assertEqual(
+            "NOT_SCANNED_LOAD_FAILED", failed_row["MASS_SCAN_STATUS"]
+        )
+        self.assertEqual("BLOCKED_LOAD_DEPENDENCY", failed_row["UPDATE"])
+        root_row = by_number["264MN000001A01"]
+        self.assertEqual("MISSING", root_row["MASS_SCAN_STATUS"])
+        self.assertEqual("BLOCKED_LOAD_DEPENDENCY", root_row["UPDATE"])
+        self.assertEqual(
+            "BLOCKED_BY_LOAD_FAILURE", root_row["DEPENDENCY_STATUS"]
+        )
+        self.assertFalse(root.saved)
+        self.assertFalse(failed.saved)
+        self.assertTrue(any(item["code"] == "MISSING_FILE" for item in diagnostics))
+        self.assertEqual(
+            ["load:264MN000003A01", "update:264MN000002A01", "save:264MN000002A01"],
+            session.events,
+        )
+
     def test_unresolved_component_creates_diagnostic_and_clean_abort(self):
         root = FakePart(
             "TOP",
@@ -626,7 +812,7 @@ class J21Tests(unittest.TestCase):
         path, rows, diagnostics = self.j21.run(session)
 
         self.assertTrue(Path(path).exists())
-        self.assertEqual("MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"])
+        self.assertEqual("PARTIAL", run_summary(rows)["STATUS"])
         diagnostic_rows = [
             row for row in rows if row["ROW_TYPE"] == "LOAD_DIAGNOSTIC"
         ]
@@ -666,7 +852,7 @@ class J21Tests(unittest.TestCase):
         os.environ.pop("NX_J21_MODE", None)
         _path, rows, diagnostics = self.j21.run(session)
 
-        self.assertEqual("MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"])
+        self.assertEqual("PARTIAL", run_summary(rows)["STATUS"])
         self.assertTrue(any(item["code"] == "INVALID_OBJECT" for item in diagnostics))
         self.assertEqual([], session.events)
 
@@ -687,13 +873,14 @@ class J21Tests(unittest.TestCase):
                 os.environ.pop("NX_J21_MODE", None)
                 _path, rows, diagnostics = self.j21.run(session)
 
-                self.assertEqual(
-                    "MASS_UPDATE_ABORTED", run_summary(rows)["STATUS"]
-                )
+                self.assertEqual("PARTIAL", run_summary(rows)["STATUS"])
                 row = rows_by_part_number(rows)["264MN000002A01"]
                 self.assertEqual(expected, row["LOAD_STATUS"])
                 self.assertTrue(any(item["code"] == expected for item in diagnostics))
-                self.assertFalse(any("update:" in event for event in session.events))
+                self.assertTrue(
+                    any("update:264MN000003A01" == event for event in session.events)
+                )
+                self.assertFalse(root.saved)
 
     def test_dry_run_reports_load_required_without_loading(self):
         root, children = self.make_assembly()
