@@ -37,7 +37,7 @@ Available production journals:
 18_work_part_surface_area.py Active-work-part solid surface-area CSV
 19_test_teamcenter_drawing_import_contract.py Read-only J16 runtime contract probe
 20_diagnose_assembly_full_load.py Component-by-component Full Load failure diagnostic
-21_mass_surface_attribute_updater.py Measures roll-up area/mass, writes standard attributes
+21_mass_surface_attribute_updater.py Bottom-up native roll-up mass/area updater
 22_diagnose_mass_attribute_write.py One-part write-mechanism diagnostic
 25_tc_single_drawing_cleanup.py Guarded reduction to one drawing specification
 ```
@@ -47,11 +47,12 @@ package/import path problems. They read
 `config/attribute_reconciliation.json`; J05 production saving remains
 J21 is also self-contained and follows the same BoM visibility filter as
 `NXOpenBoMExtended.py` (suppressed, reference-only, and keyword-named
-occurrences are excluded). J21 does not write attributes itself: it triggers
-NX's native Mass Properties update (Roll Up + Update On Save) and NX writes
-its standard `NX_MassPropRollupMass` / `NX_MassPropRollupArea` attributes on
-every component. NX stores area in mm^2; the extended BoM exports
-`NX_MassPropRollupArea_m2` (converted m^2) and the J21 report carries both.
+occurrences are excluded). APPLY first requires the complete target subtree
+to be fully loaded, then drives NX's native Mass Properties update separately
+on each unique prototype from deepest leaf to active assembly. J21 performs no
+checkout and no direct reserved-attribute write; non-writable targets are
+skipped and reported while writable targets are saved and verified. NX stores
+area in mm^2; the J21 report also presents converted m^2 values.
 The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder

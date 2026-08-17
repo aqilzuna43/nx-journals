@@ -8,17 +8,20 @@ computes and writes its standard attributes on every component:
     NX_MassPropRollupArea  roll-up area (mm^2)    [Rolled-Up Mass Properties]
 
 The journal does NOT create, compute, or write attributes itself.  It:
-  1. confirms the BoM-visible 3D masters in the open assembly (same filter
-     as NXOpenBoMExtended.py / Journal 04: suppressed, reference-only, and
-     keyword-named occurrences are excluded),
-  2. triggers the native mass-properties update once on the assembly
-     (PropertiesManager.CreateMassPropertiesBuilder with UpdateOnSave=Yes,
-     then UpdateNow and Commit; NX 2506 has no RollUp option - roll-up is
-     implicit when the assembly root is measured),
-  3. saves each BoM-visible part (attributes are persisted on save),
-  4. reads the standard attributes back for the CSV/Listing report, so the
-     run proves what NX wrote.  A blank read-back means the native update
-     did not engage for that part and must be investigated.
+  1. confirms the complete BoM-visible subtree is already fully loaded (same
+     filter as NXOpenBoMExtended.py / Journal 04: suppressed, reference-only,
+     and keyword-named occurrences are excluded),
+  2. processes every unique prototype bottom-up: leaf parts first,
+     subassemblies next, and the active assembly last,
+  3. makes each target the work part and triggers NX's native mass-properties
+     update on that target (PropertiesManager.CreateMassPropertiesBuilder
+     with UpdateOnSave=Yes, then UpdateNow and Commit),
+  4. saves every writable target and reads the reserved attributes back.
+
+J21 never checks a part out.  In Teamcenter managed mode it reports checkout
+state and owner, skips parts that are checked in, checked out by somebody
+else, or read-only, and continues with everything it can update.  The
+original display/work context is restored after the run.
 
 WRITE_MODE defaults to "APPLY".  Set WRITE_MODE = "DRY_RUN" (or the
 NX_J21_MODE environment variable) to report the current stored attribute
@@ -35,9 +38,8 @@ AttributePropertiesBuilder (NX raises "This is a reserved attribute title.
 [512006]").  Only NX's own mass-properties update can populate them, so this
 journal only triggers that native update and reports what NX wrote.
 
-Note: SMOKE measures the active work part's own bodies.  An assembly part
-with no own solid bodies reports NO_SOLIDS there; run APPLY to roll up the
-children into NX_MassPropRollupMass / NX_MassPropRollupArea.
+Note: SMOKE measures only the active work part.  APPLY is the recursive,
+bottom-up mode required to refresh both child parts and assembly roll-ups.
 
 Target: NX X 2506 embedded Python only
 Run via: NX > Tools > Journal > Play
@@ -51,8 +53,8 @@ import traceback
 import NXOpen
 
 
-BUILD = "J21-NX2506-NATIVE-MASS-PROP-UPDATE-V3"
-WRITE_MODE = "APPLY"  # "APPLY", "DRY_RUN", or "PROBE"; NX_J21_MODE overrides
+BUILD = "J21-NX2506-BOTTOM-UP-MASS-PROP-UPDATE-V4"
+WRITE_MODE = "APPLY"  # APPLY / DRY_RUN / SMOKE / PROBE; NX_J21_MODE overrides
 OUTPUT_FOLDER = "NX_MASS_SURFACE_UPDATE"
 MEASUREMENT_ACCURACY = 0.99
 MASS_DECIMAL_PLACES = 6
@@ -81,6 +83,14 @@ RESULT_COLUMNS = (
     "DB_PART_REV",
     "PART_NAME",
     "LEVEL",
+    "PROCESS_ORDER",
+    "PART_KIND",
+    "LOAD_STATE",
+    "CHECKOUT_STATE",
+    "CHECKOUT_OWNER",
+    "CURRENT_USER",
+    "READ_ONLY",
+    "UPDATE",
     "ROLLUP_MASS_KG",
     "ROLLUP_AREA_MM2",
     "ROLLUP_AREA_M2",
@@ -216,11 +226,28 @@ def _object_key(nx_object):
     return ("TAG", _text(tag)) if tag is not None else ("PY", id(nx_object))
 
 
-def _children(component):
+def _safe_property(nx_object, name, fallback=None):
     try:
-        return list(component.GetChildren())
+        value = getattr(nx_object, name)
+        return value() if callable(value) else value
     except Exception:
-        return []
+        return fallback
+
+
+def _component_name(component):
+    return (
+        clean(_safe_property(component, "DisplayName"))
+        or clean(_safe_property(component, "Name"))
+        or "<unknown>"
+    )
+
+
+def _children(component):
+    """Return (children, error) so an unreadable branch cannot look empty."""
+    try:
+        return list(component.GetChildren()), ""
+    except Exception as error:
+        return [], error_text(error)
 
 
 def _component_string_attribute(component, title):
@@ -272,6 +299,10 @@ def collect_unique_parts(work_part):
         key = _object_key(part)
         if key not in unique:
             unique[key] = (part, level)
+        elif level > unique[key][1]:
+            # Shared prototypes are processed once, at their deepest observed
+            # level, so sorting by descending level remains bottom-up.
+            unique[key] = (part, level)
 
     add_part(work_part, 0)
     root_component = getattr(
@@ -280,7 +311,17 @@ def collect_unique_parts(work_part):
     if root_component is None:
         return list(unique.values()), diagnostics
 
-    stack = [(component, 1) for component in reversed(_children(root_component))]
+    root_children, root_error = _children(root_component)
+    if root_error:
+        diagnostics.append(
+            {
+                "code": "CHILDREN_UNREADABLE",
+                "message": "Assembly root children could not be read: " + root_error,
+            }
+        )
+        return list(unique.values()), diagnostics
+
+    stack = [(component, 1) for component in reversed(root_children)]
     while stack:
         component, level = stack.pop()
         if not _is_active_visible(component):
@@ -294,20 +335,78 @@ def collect_unique_parts(work_part):
                     "code": "MISSING_MODEL",
                     "message": (
                         "Component has no loaded prototype: {0}".format(
-                            clean(getattr(component, "DisplayName", ""))
-                            or clean(getattr(component, "Name", ""))
-                            or "<unknown>"
+                            _component_name(component)
                         )
                     ),
                 }
             )
         else:
             add_part(prototype, level)
+
+        children, children_error = _children(component)
+        if children_error:
+            diagnostics.append(
+                {
+                    "code": "CHILDREN_UNREADABLE",
+                    "message": (
+                        "Component children could not be read for {0}: {1}".format(
+                            _component_name(component), children_error
+                        )
+                    ),
+                }
+            )
         stack.extend(
             (child, level + 1)
-            for child in reversed(_children(component))
+            for child in reversed(children)
         )
     return list(unique.values()), diagnostics
+
+
+def part_load_state(part):
+    fully_loaded = _safe_property(part, "IsFullyLoaded")
+    state = clean(_safe_property(part, "PartLoadState"))
+    if fully_loaded is True:
+        return "FULLY_LOADED", state
+    if fully_loaded is False:
+        return "NOT_FULLY_LOADED", state
+    return "UNKNOWN", state
+
+
+def full_load_preflight(parts, traversal_diagnostics):
+    """Return every issue that must abort APPLY before the first mutation."""
+    issues = list(traversal_diagnostics)
+    for part, _level in parts:
+        load_status, raw_state = part_load_state(part)
+        if load_status == "FULLY_LOADED":
+            continue
+        identity = part_identity(part)
+        label = identity["number"] or identity["name"]
+        issues.append(
+            {
+                "code": load_status,
+                "message": "{0}: IsFullyLoaded is {1}; PartLoadState={2}".format(
+                    label,
+                    "False" if load_status == "NOT_FULLY_LOADED" else "unavailable",
+                    raw_state or "<unavailable>",
+                ),
+            }
+        )
+    return issues
+
+
+def require_fully_loaded(parts, traversal_diagnostics):
+    issues = full_load_preflight(parts, traversal_diagnostics)
+    if not issues:
+        return
+    details = " | ".join(
+        "{0}: {1}".format(item["code"], item["message"])
+        for item in issues
+    )
+    raise RuntimeError(
+        "FULL_LOAD_REQUIRED: no parts were changed. Fully load the complete "
+        "BoM-visible subtree (J20 can diagnose load failures), then rerun J21. "
+        + details
+    )
 
 
 def _update_on_save_yes(builder):
@@ -356,11 +455,12 @@ def _create_mass_properties_builder(work_part, objects):
 
 
 def run_native_mass_property_update(work_part, objects=None):
-    """Trigger NX's native roll-up mass property update on the assembly.
+    """Trigger NX's native roll-up mass property update on one target part.
 
     NX itself computes and writes NX_MassPropRollupMass / NX_MassPropRollupArea
-    (and the rest of the standard family) on every component.  Returns a
-    status message; raises nothing unless the update cannot be started.
+    (and the rest of the standard family) on the measured object.  APPLY calls
+    this function separately for every unique prototype.  Returns a status
+    message; raises nothing unless the update cannot be started.
     """
     warnings = []
     builder = None
@@ -491,6 +591,207 @@ def number_text(value, decimal_places):
     return ("{0:." + str(decimal_places) + "f}").format(value)
 
 
+def _read_only(part):
+    value = _safe_property(part, "IsReadOnly")
+    return None if value is None else bool(value)
+
+
+def _managed_mode(session, part):
+    managed = _safe_property(session, "IsManagedMode", False)
+    if bool(managed):
+        return True
+    identifier = clean(_safe_property(part, "FullPath"))
+    return identifier.upper().startswith("@DB/")
+
+
+def _pdm_part(part):
+    return _safe_property(part, "PDMPart")
+
+
+def _checkout_result(raw):
+    checked = None
+    owner = ""
+    if isinstance(raw, dict):
+        for key in ("isCheckedOut", "is_checked_out", "checkedOut", "checked_out"):
+            if isinstance(raw.get(key), bool):
+                checked = raw[key]
+                break
+        for key in ("checkedOutBy", "checked_out_by", "owner", "user"):
+            if key in raw:
+                owner = clean(raw[key])
+                break
+    elif isinstance(raw, (tuple, list)):
+        for value in raw:
+            if checked is None and isinstance(value, bool):
+                checked = value
+            elif isinstance(value, str) and not owner:
+                owner = clean(value)
+            elif checked is None:
+                normalized = clean(
+                    getattr(value, "name", value)
+                ).upper().replace("_", "")
+                if normalized.startswith("NOT") and "CHECKEDOUT" in normalized:
+                    checked = False
+                elif "CHECKEDOUT" in normalized:
+                    checked = True
+    elif isinstance(raw, bool):
+        checked = raw
+    else:
+        for name in ("IsCheckedOut", "isCheckedOut", "CheckedOut"):
+            value = getattr(raw, name, None)
+            if isinstance(value, bool):
+                checked = value
+                break
+        for name in ("CheckedOutBy", "checkedOutBy", "Owner", "User"):
+            value = getattr(raw, name, None)
+            if value is not None:
+                owner = clean(value)
+                break
+    return (
+        "CHECKED_OUT" if checked is True else
+        "CHECKED_IN" if checked is False else
+        "UNKNOWN",
+        owner,
+    )
+
+
+def checkout_status(part):
+    pdm_part = _pdm_part(part)
+    method = getattr(pdm_part, "GetCheckedoutStatusAndUser", None)
+    if not callable(method):
+        return "UNKNOWN", "", "GetCheckedoutStatusAndUser unavailable"
+    try:
+        raw = method()
+    except TypeError:
+        try:
+            raw = method(False, "")
+        except Exception as error:
+            return "UNKNOWN", "", error_text(error)
+    except Exception as error:
+        return "UNKNOWN", "", error_text(error)
+    state, owner = _checkout_result(raw)
+    return state, owner, clean(repr(raw))[:2000]
+
+
+def current_teamcenter_user(session):
+    pdm_session = _safe_property(session, "PdmSession")
+    method = getattr(pdm_session, "GetUserName", None)
+    if not callable(method):
+        return ""
+    try:
+        return clean(method())
+    except Exception:
+        return ""
+
+
+def inspect_write_access(session, part):
+    """Read-only gate.  This function never checks a part out."""
+    read_only = _read_only(part)
+    current_user = current_teamcenter_user(session)
+    if not _managed_mode(session, part):
+        return {
+            "allowed": read_only is not True,
+            "checkout_state": "NATIVE",
+            "checkout_owner": "",
+            "current_user": current_user,
+            "read_only": read_only,
+            "message": "Part is read-only." if read_only is True else "",
+        }
+
+    state, owner, raw = checkout_status(part)
+    owner_is_other = bool(
+        state == "CHECKED_OUT"
+        and owner
+        and current_user
+        and owner.casefold() != current_user.casefold()
+    )
+    messages = []
+    if state == "CHECKED_IN":
+        messages.append("Part is not checked out; J21 does not perform checkout.")
+    elif owner_is_other:
+        messages.append("Part is checked out by another user: {0}.".format(owner))
+    elif state == "UNKNOWN":
+        messages.append("Checkout state is unknown: {0}.".format(raw or "<none>"))
+    if read_only is True:
+        messages.append("Part is read-only in this NX session.")
+
+    allowed = (
+        state != "CHECKED_IN"
+        and not owner_is_other
+        and read_only is not True
+    )
+    return {
+        "allowed": allowed,
+        "checkout_state": state,
+        "checkout_owner": owner,
+        "current_user": current_user,
+        "read_only": read_only,
+        "message": " ".join(messages),
+    }
+
+
+def read_only_text(value):
+    return "UNKNOWN" if value is None else "YES" if value else "NO"
+
+
+def measurement_objects(part):
+    root_component = getattr(
+        getattr(part, "ComponentAssembly", None), "RootComponent", None
+    )
+    return [root_component] if root_component is not None else [part]
+
+
+def part_kind(part):
+    return "ASSEMBLY" if measurement_objects(part)[0] is not part else "LEAF"
+
+
+def set_work_part(session, part):
+    setter = getattr(getattr(session, "Parts", None), "SetWork", None)
+    if not callable(setter):
+        current = getattr(getattr(session, "Parts", None), "Work", None)
+        if current is part:
+            return
+        raise RuntimeError("Session.Parts.SetWork is unavailable.")
+    setter(part)
+
+
+def _same_object(left, right):
+    if left is right:
+        return True
+    if left is None or right is None:
+        return False
+    return _object_key(left) == _object_key(right)
+
+
+def _set_display_part(session, part):
+    setter = getattr(getattr(session, "Parts", None), "SetDisplay", None)
+    if not callable(setter):
+        raise RuntimeError("Session.Parts.SetDisplay is unavailable.")
+    result = setter(part, False, True)
+    if isinstance(result, (tuple, list)) and len(result) > 1:
+        dispose(result[1])
+
+
+def restore_part_context(session, original_display, original_work):
+    messages = []
+    parts = getattr(session, "Parts", None)
+    current_display = getattr(parts, "Display", None)
+    if original_display is not None and not _same_object(
+        current_display, original_display
+    ):
+        try:
+            _set_display_part(session, original_display)
+        except Exception as error:
+            messages.append("DISPLAY RESTORE: " + error_text(error))
+    current_work = getattr(parts, "Work", None)
+    if original_work is not None and not _same_object(current_work, original_work):
+        try:
+            set_work_part(session, original_work)
+        except Exception as error:
+            messages.append("WORK RESTORE: " + error_text(error))
+    return messages
+
+
 def save_part(part):
     status = None
     try:
@@ -512,94 +813,215 @@ def save_part(part):
         dispose(status)
 
 
-def build_result_rows(work_part, timestamp, mode, parts=None):
-    if parts is None:
-        parts, diagnostics = collect_unique_parts(work_part)
-    else:
-        diagnostics = []
+def _result_row(
+    timestamp,
+    mode,
+    part,
+    level,
+    process_order,
+    access,
+    update,
+    saved,
+    status,
+    messages,
+    stored_label="POPULATED",
+):
+    identity = part_identity(part)
+    attributes = read_rollup_attributes(part)
+    mass_status = stored_label if attributes["mass"] is not None else "BLANK"
+    area_status = stored_label if attributes["area"] is not None else "BLANK"
+    if status == "SUCCESS" and (mass_status == "BLANK" or area_status == "BLANK"):
+        status = "PARTIAL"
+    if update == "UPDATED":
+        if mass_status == "BLANK":
+            messages.append(
+                "MASS ATTRIBUTE: NX did not write {0} for this part.".format(
+                    ROLLUP_MASS_ATTRIBUTE
+                )
+            )
+        if area_status == "BLANK":
+            messages.append(
+                "AREA ATTRIBUTE: NX did not write {0} for this part.".format(
+                    ROLLUP_AREA_ATTRIBUTE
+                )
+            )
+
+    load_status, raw_load_state = part_load_state(part)
+    return {
+        "RUN_TIMESTAMP": timestamp,
+        "JOURNAL_BUILD": BUILD,
+        "WRITE_MODE": mode,
+        "DB_PART_NO": identity["number"],
+        "DB_PART_REV": identity["revision"],
+        "PART_NAME": identity["name"],
+        "LEVEL": level,
+        "PROCESS_ORDER": process_order,
+        "PART_KIND": part_kind(part),
+        "LOAD_STATE": raw_load_state or load_status,
+        "CHECKOUT_STATE": access["checkout_state"],
+        "CHECKOUT_OWNER": access["checkout_owner"],
+        "CURRENT_USER": access["current_user"],
+        "READ_ONLY": read_only_text(access["read_only"]),
+        "UPDATE": update,
+        "ROLLUP_MASS_KG": number_text(
+            attributes["mass"], MASS_DECIMAL_PLACES
+        ),
+        "ROLLUP_AREA_MM2": number_text(
+            attributes["area"], AREA_DECIMAL_PLACES
+        ),
+        "ROLLUP_AREA_M2": number_text(
+            (
+                attributes["area"] * SQUARE_METRES_PER_SQUARE_MILLIMETRE
+                if attributes["area"] is not None
+                else None
+            ),
+            AREA_M2_DECIMAL_PLACES,
+        ),
+        "ROLLUP_MASS_ATTRIBUTE": mass_status,
+        "ROLLUP_AREA_ATTRIBUTE": area_status,
+        "SAVED": saved,
+        "STATUS": status,
+        "MESSAGE": " | ".join(message for message in messages if message),
+    }
+
+
+def bottom_up_parts(parts):
+    """Deepest prototypes first; stable discovery order breaks equal-depth ties."""
+    return sorted(parts, key=lambda item: -item[1])
+
+
+def build_dry_run_rows(session, timestamp, parts):
     rows = []
+    for process_order, (part, level) in enumerate(
+        bottom_up_parts(parts), start=1
+    ):
+        access = inspect_write_access(session, part)
+        messages = [access["message"]] if access["message"] else []
+        rows.append(
+            _result_row(
+                timestamp,
+                "DRY_RUN",
+                part,
+                level,
+                process_order,
+                access,
+                "DRY_RUN",
+                "DRY_RUN",
+                "SUCCESS",
+                messages,
+                stored_label="STORED",
+            )
+        )
+    return rows
 
-    for part, level in parts:
-        identity = part_identity(part)
-        messages = []
 
-        if mode in ("APPLY", "SMOKE"):
-            # Persist first: with UpdateOnSave=Yes NX writes the roll-up
-            # attributes during Save, so read-back must happen afterwards.
+def apply_parts_bottom_up(session, timestamp, mode, parts):
+    rows = []
+    diagnostics = []
+    part_collection = getattr(session, "Parts", None)
+    original_work = getattr(part_collection, "Work", None)
+    original_display = getattr(part_collection, "Display", None)
+
+    try:
+        ordered = bottom_up_parts(parts)
+        for process_order, (part, level) in enumerate(ordered, start=1):
+            identity = part_identity(part)
+            label = identity["number"] or identity["name"]
+            access = inspect_write_access(session, part)
+            messages = [access["message"]] if access["message"] else []
+
+            if not access["allowed"]:
+                log_line(
+                    session,
+                    "SKIP {0}: {1}".format(
+                        label, access["message"] or "target is not writable"
+                    ),
+                )
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        mode,
+                        part,
+                        level,
+                        process_order,
+                        access,
+                        "SKIPPED_NOT_WRITABLE",
+                        "NOT_SAVED",
+                        "SKIPPED",
+                        messages,
+                    )
+                )
+                continue
+
+            log_line(
+                session,
+                "UPDATE {0} ({1}/{2}, level {3}, {4})".format(
+                    label, process_order, len(ordered), level, part_kind(part)
+                ),
+            )
+            try:
+                set_work_part(session, part)
+            except Exception as error:
+                messages.append("SET WORK: " + error_text(error))
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        mode,
+                        part,
+                        level,
+                        process_order,
+                        access,
+                        "UPDATE_FAILED",
+                        "NOT_SAVED",
+                        "UPDATE_FAILED",
+                        messages,
+                    )
+                )
+                continue
+
+            update_status = run_native_mass_property_update(
+                part, objects=measurement_objects(part)
+            )
+            if not update_status.startswith("NATIVE_UPDATE_OK"):
+                messages.append("UPDATE: " + update_status)
+                rows.append(
+                    _result_row(
+                        timestamp,
+                        mode,
+                        part,
+                        level,
+                        process_order,
+                        access,
+                        "UPDATE_FAILED",
+                        "NOT_SAVED",
+                        "UPDATE_FAILED",
+                        messages,
+                    )
+                )
+                continue
+
             saved_ok, save_message = save_part(part)
-            saved = "SAVED" if saved_ok else "SAVE_FAILED"
             if not saved_ok:
                 messages.append("SAVE: " + save_message)
-            attributes = read_rollup_attributes(part)
-            mass_status = (
-                "POPULATED" if attributes["mass"] is not None else "BLANK"
-            )
-            area_status = (
-                "POPULATED" if attributes["area"] is not None else "BLANK"
-            )
-            if mass_status == "BLANK":
-                messages.append(
-                    "MASS ATTRIBUTE: NX did not write {0} for this part.".format(
-                        ROLLUP_MASS_ATTRIBUTE
-                    )
+            rows.append(
+                _result_row(
+                    timestamp,
+                    mode,
+                    part,
+                    level,
+                    process_order,
+                    access,
+                    "UPDATED",
+                    "SAVED" if saved_ok else "SAVE_FAILED",
+                    "SUCCESS" if saved_ok else "SAVE_FAILED",
+                    messages,
                 )
-            if area_status == "BLANK":
-                messages.append(
-                    "AREA ATTRIBUTE: NX did not write {0} for this part.".format(
-                        ROLLUP_AREA_ATTRIBUTE
-                    )
-                )
-        else:
-            # DRY_RUN: report the currently stored attributes without updating.
-            attributes = read_rollup_attributes(part)
-            mass_status = (
-                "STORED" if attributes["mass"] is not None else "BLANK"
             )
-            area_status = (
-                "STORED" if attributes["area"] is not None else "BLANK"
-            )
-            saved = "DRY_RUN"
-
-        row_status = "SUCCESS"
-        if "SAVE_FAILED" in saved:
-            row_status = "SAVE_FAILED"
-        elif "BLANK" in mass_status or "BLANK" in area_status:
-            row_status = "PARTIAL"
-        elif messages:
-            row_status = "PARTIAL"
-
-        rows.append(
-            {
-                "RUN_TIMESTAMP": timestamp,
-                "JOURNAL_BUILD": BUILD,
-                "WRITE_MODE": mode,
-                "DB_PART_NO": identity["number"],
-                "DB_PART_REV": identity["revision"],
-                "PART_NAME": identity["name"],
-                "LEVEL": level,
-                "ROLLUP_MASS_KG": number_text(
-                    attributes["mass"], MASS_DECIMAL_PLACES
-                ),
-                "ROLLUP_AREA_MM2": number_text(
-                    attributes["area"], AREA_DECIMAL_PLACES
-                ),
-                "ROLLUP_AREA_M2": number_text(
-                    (
-                        attributes["area"]
-                        * SQUARE_METRES_PER_SQUARE_MILLIMETRE
-                        if attributes["area"] is not None
-                        else None
-                    ),
-                    AREA_M2_DECIMAL_PLACES,
-                ),
-                "ROLLUP_MASS_ATTRIBUTE": mass_status,
-                "ROLLUP_AREA_ATTRIBUTE": area_status,
-                "SAVED": saved,
-                "STATUS": row_status,
-                "MESSAGE": " | ".join(messages),
-            }
-        )
-
+    finally:
+        for message in restore_part_context(
+            session, original_display, original_work
+        ):
+            diagnostics.append({"code": "CONTEXT_RESTORE_FAILED", "message": message})
     return rows, diagnostics
 
 
@@ -652,26 +1074,23 @@ def run(session, run_datetime=None):
     if mode == "PROBE":
         return None, probe_builder_api(work_part), []
 
+    parts, traversal_diagnostics = collect_unique_parts(work_part)
     if mode == "APPLY":
-        update_status = run_native_mass_property_update(work_part)
-        if not update_status.startswith("NATIVE_UPDATE_OK"):
-            raise RuntimeError(update_status)
-        rows, diagnostics = build_result_rows(
-            work_part, timestamp, mode
+        # Fail before the first builder/checkout/save operation when any
+        # BoM-visible branch is missing, unreadable, or not fully loaded.
+        require_fully_loaded(parts, traversal_diagnostics)
+        rows, diagnostics = apply_parts_bottom_up(
+            session, timestamp, mode, parts
         )
     elif mode == "SMOKE":
-        # Fast iteration: run the native update on the work part only and
-        # report just that part, so the mechanism can be verified quickly.
-        update_status = run_native_mass_property_update(
-            work_part, objects=[work_part]
-        )
-        if not update_status.startswith("NATIVE_UPDATE_OK"):
-            raise RuntimeError(update_status)
-        rows, diagnostics = build_result_rows(
-            work_part, timestamp, mode, parts=[(work_part, 0)]
+        smoke_parts = [(work_part, 0)]
+        require_fully_loaded(smoke_parts, [])
+        rows, diagnostics = apply_parts_bottom_up(
+            session, timestamp, mode, smoke_parts
         )
     else:
-        rows, diagnostics = build_result_rows(work_part, timestamp, mode)
+        rows = build_dry_run_rows(session, timestamp, parts)
+        diagnostics = traversal_diagnostics
     path = output_path(part_identity(work_part), file_timestamp)
     write_csv(path, rows)
     return path, rows, diagnostics
@@ -687,6 +1106,10 @@ def main():
     log_line(
         session,
         "Mechanism: NX native mass-properties update (Update On Save + Commit)",
+    )
+    log_line(
+        session,
+        "APPLY order: deepest leaf first, active assembly last; checkout: inspect only",
     )
     log_line(
         session,
@@ -712,10 +1135,16 @@ def main():
         for row in rows:
             log_line(
                 session,
-                "{0} | {1} | rollup mass={2} kg [{3}] | rollup area={4} m^2 [{5}] | "
-                "saved={6} | {7}".format(
+                "{0} | level={1} | order={2} | {3} | checkout={4} ({5}) | "
+                "update={6} | rollup mass={7} kg [{8}] | rollup area={9} m^2 [{10}] | "
+                "saved={11} | {12}".format(
                     row["DB_PART_NO"] or row["PART_NAME"],
                     row["LEVEL"],
+                    row["PROCESS_ORDER"],
+                    row["PART_KIND"],
+                    row["CHECKOUT_STATE"],
+                    row["CHECKOUT_OWNER"] or "<blank>",
+                    row["UPDATE"],
                     row["ROLLUP_MASS_KG"] or "<blank>",
                     row["ROLLUP_MASS_ATTRIBUTE"],
                     row["ROLLUP_AREA_M2"] or "<blank>",
