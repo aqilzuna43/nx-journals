@@ -29,6 +29,7 @@ FZ_COLUMNS = [
     "NX_MassPropRollupArea_m2",
     "COMPONENT_CLASS",
     "Dimensions",
+    "COMMODITYTYPE",
 ]
 
 # CSV column -> exact internal NX/Teamcenter title -> NX attribute type.
@@ -48,6 +49,7 @@ FZ_ATTRIBUTE_SPECS = [
     ("NX_MassPropRollupArea", "NX_MassPropRollupArea", "Number"),
     ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
     ("Dimensions", "Dimensions", "String"),
+    ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
 ]
 
 # The attribute used as the primary identifier (Source of Truth).

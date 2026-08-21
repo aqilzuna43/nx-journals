@@ -33,13 +33,13 @@ EXPECTED_EXTENDED_COLUMNS = [
     "NX_MassPropRollupArea_m2",
     "COMPONENT_CLASS",
     "Dimensions",
+    "COMMODITYTYPE",
 ]
 NX_EXCLUDED_BUSINESS_COLUMNS = {
     "LIFED",
     "Traceability",
     "Temperature_Sensitive",
     "Hazardous",
-    "COMMODITYTYPE",
     "Commodity_Code",
     "Serviceable_item_flag",
     "Export_Control_Number",
@@ -134,6 +134,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 ("NX_MassPropRollupArea", "NX_MassPropRollupArea", "Number"),
                 ("COMPONENT_CLASS", "COMPONENT_CLASS", "String"),
                 ("Dimensions", "Dimensions", "String"),
+                ("COMMODITYTYPE", "COMMODITYTYPE", "String"),
             ],
             self.module.FZ_ATTRIBUTE_SPECS,
         )
@@ -281,6 +282,83 @@ class ExtendedBomAttributeTests(unittest.TestCase):
             name="ROOT",
             display_name="ROOT DISPLAY",
         )
+
+    def test_typed_reads_preserve_numeric_zero_and_missing_values(self):
+        nx_object = FakeNxObject(
+            strings={"NX_MATERIAL": "Copper"},
+            numbers={"NX_Mass": 0.0},
+        )
+
+        self.assertEqual(
+            "Copper",
+            self.module.get_safe_attribute(nx_object, "NX_MATERIAL", "String"),
+        )
+        self.assertEqual(
+            0.0,
+            self.module.get_safe_attribute(nx_object, "NX_Mass", "Number"),
+        )
+        self.assertIsNone(
+            self.module.get_safe_attribute(nx_object, "WAE_VERSION", "String")
+        )
+        with self.assertRaises(ValueError):
+            self.module.get_safe_attribute(nx_object, "NX_Mass", "Unsupported")
+
+    def test_component_values_always_come_from_prototype(self):
+        prototype = FakeNxObject(
+            strings={"NX_MATERIAL": "Prototype material"},
+            numbers={"NX_Mass": 4.25},
+        )
+        component = FakeNxObject(
+            strings={"NX_MATERIAL": "Occurrence material"},
+            prototype=prototype,
+        )
+
+        self.assertEqual(
+            "Prototype material",
+            self.module.get_component_attribute(component, "NX_MATERIAL", "String"),
+        )
+        self.assertEqual(
+            4.25,
+            self.module.get_component_attribute(component, "NX_Mass", "Number"),
+        )
+        self.assertIsNone(
+            self.module.get_component_attribute(component, "MISSING", "String")
+        )
+
+    def test_exported_row_matches_fz_template_projection(self):
+        component = FakeNxObject(
+            strings={
+                "DB_PART_NO": "264MN180801A01",
+                "DB_PART_NAME": "ASSY-GENX",
+                "DB_PART_REV": "A",
+                "ItemRev_REL_STATUS": "RELEASED",
+                "Unit_Of_Measure": "ea",
+                "MFG": "CELESTICA",
+                "MPN": "264MN180801A01",
+                "Stocking_Type": "MAKE",
+                "WAE_VERSION": "22.1",
+                "NX_MATERIAL": "Copper",
+                "NX_FINISH": "TIN",
+                "COMPONENT_CLASS": "A",
+                "LIFED": "N",
+                "SERIAL_NUMBERED_PART": "SERIAL",
+                "Temperature_Sensitive": "N",
+                "WAE_Hazardous": "Y",
+                "Dimensions": "10 x 20 x 30",
+                "COMMODITYTYPE": "Assembly",
+                "Commodity_Code": "123",
+                "Serviceable_item_flag": "Y",
+                "Export_Control_Number": "EAR99",
+                "Country_of_Origin": "MY",
+            },
+            numbers={
+                "NX_Mass": 1.25,
+                "NX_MassPropRollupMass": 2.5,
+                "NX_MassPropRollupArea": 12500000.0,
+            },
+            name="ROOT",
+            display_name="ROOT DISPLAY",
+        )
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
 
@@ -306,6 +384,7 @@ class ExtendedBomAttributeTests(unittest.TestCase):
                 "12.5",
                 "A",
                 "10 x 20 x 30",
+                "Assembly",
             ]],
             list(csv.reader(io.StringIO(output.getvalue()))),
         )
