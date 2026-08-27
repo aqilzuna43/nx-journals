@@ -40,6 +40,7 @@ Available production journals:
 21_mass_surface_attribute_updater.py Bottom-up native roll-up mass/area updater
 22_diagnose_mass_attribute_write.py One-part write-mechanism diagnostic
 25_tc_single_drawing_cleanup.py Guarded reduction to one drawing specification
+26_move_solid_bodies_to_layer_1.py Guarded active-part solid-body layer migration
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -168,5 +169,26 @@ associated files, then uses `DeleteExistingAttachedFiles(..., False)` to remove
 the files and empty drawing dataset. This is destructive dataset removal, not a
 relation-only detach. See `docs/J25_SINGLE_DRAWING_CLEANUP.md` and start from
 `templates/NX_TC_SINGLE_DRAWING_SCOPE_TEMPLATE.csv`.
+
+J26 prevents layer-filtered Teamcenter STEP and JT output from omitting imported
+solid geometry. It scans only direct bodies owned by the active NX work part,
+including blanked bodies and bodies on hidden layers. Traditional solid bodies
+are eligible for layer 1; sheet, convergent, and other body types are reported
+but never moved. A parent assembly may remain displayed while a component is
+the work part. J26 never traverses or modifies other component prototypes.
+
+J26 defaults to `USER_MODE = "DRY_RUN"`. Play it once and review the paired CSV
+and JSON under `NX_LAYER_1_MIGRATION` on `NX_JOURNALS_IO_DIR` or the Desktop.
+For a Teamcenter part, manually check out the active work part before changing
+the setting near the top of the journal to `USER_MODE = "APPLY"`; J26 requires
+a known checkout owned by the current Teamcenter user and never checks out,
+checks in, or saves. APPLY uses one visible NX undo mark, batch-moves the
+off-layer solids, and verifies every body, blanked state, work layer, and all
+256 layer states. Any move, verification, or paired-evidence failure triggers
+rollback. After `APPLIED_VERIFIED`, inspect the part, use one Undo if needed,
+and save manually only when the result is correct. A successful local test run
+is not NX proof: retain the office-machine CSV/JSON and confirm the downstream
+Teamcenter STEP and JT contain every expected solid before declaring J26
+runtime-verified.
 
 No third-party Python packages are required.
