@@ -496,18 +496,60 @@ def stable_instance_id_probe(component, uf_session):
         return unavailable(source, "Component tag is unavailable.")
     try:
         method = uf_session.Assem.AskStableIdOfInstance
+    except AttributeError:
+        return unavailable(source, "Method is not exposed by this runtime object type.")
+    except Exception as error:
+        return failed(source, error)
+
+    # The UF wrapper rejects the raw Tag on some NX builds (NX error 650004
+    # "Incorrect object for this operation"), so marshal the tag to the
+    # integer form the UF API expects before calling.
+    candidates = []
+    for raw in (tag,):
+        if raw not in candidates:
+            candidates.append(raw)
+        converted = None
         try:
-            result = method(tag)
+            converted = int(raw)
+        except Exception:
+            converted = None
+        if converted is not None and converted not in candidates:
+            candidates.append(converted)
+        if converted is None:
+            for attribute_name in ("Value", "Tag", "Handle"):
+                try:
+                    nested = getattr(raw, attribute_name)
+                except Exception:
+                    continue
+                try:
+                    nested_int = int(nested)
+                except Exception:
+                    continue
+                if nested_int not in candidates:
+                    candidates.append(nested_int)
+
+    last_error = None
+    for candidate in candidates:
+        try:
+            result = method(candidate)
         except TypeError:
-            result = method(tag, "")
+            try:
+                result = method(candidate, "")
+            except Exception as error:
+                last_error = error
+                continue
+        except Exception as error:
+            last_error = error
+            continue
         if isinstance(result, (tuple, list)):
             result = next((item for item in result if clean(item)), "")
         text = clean(result)
-        if not text:
-            return unavailable(source, "NX returned no stable instance ID.")
-        return observed(text, source)
-    except Exception as error:
-        return failed(source, error)
+        if text:
+            return observed(text, source)
+        last_error = ValueError("NX returned no stable instance ID.")
+    if last_error is not None:
+        return failed(source, last_error)
+    return unavailable(source, "NX returned no stable instance ID.")
 
 
 def keyword_match(component):

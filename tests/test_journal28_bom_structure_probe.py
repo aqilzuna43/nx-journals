@@ -531,6 +531,55 @@ class Journal28Tests(unittest.TestCase):
         self.assertEqual(0, parsed["summary"]["critical_read_error_occurrence_count"])
         self.assertEqual([], parsed["flagged_occurrences"])
 
+    def test_stable_id_falls_back_to_integer_tag_when_raw_tag_is_rejected(self):
+        class TagValueWrapper:
+            def __init__(self, value):
+                self.Value = value
+
+            def __str__(self):
+                return str(self.Value)
+
+        class StrictAssem:
+            def AskStableIdOfInstance(self, tag):
+                if not isinstance(tag, int):
+                    raise RuntimeError("Incorrect object for this operation.")
+                return "STABLE-{0}".format(tag)
+
+        wrapped = TagValueWrapper(9001)
+        component = FakeComponent("WRAPPED_TAG", wrapped, FakePrototype("WRAPPED", 9002))
+        probe = self.journal.stable_instance_id_probe(
+            component, types.SimpleNamespace(Assem=StrictAssem())
+        )
+
+        self.assertEqual("OBSERVED", probe["status"])
+        self.assertEqual("STABLE-9001", probe["value"])
+
+    def test_stable_id_int_conversion_handles_int_like_wrapper(self):
+        class IntLikeTag:
+            def __init__(self, value):
+                self.value = value
+
+            def __int__(self):
+                return int(self.value)
+
+            def __str__(self):
+                return str(self.value)
+
+        class StrictAssem:
+            def AskStableIdOfInstance(self, tag):
+                if not isinstance(tag, int):
+                    raise RuntimeError("Incorrect object for this operation.")
+                return "STABLE-{0}".format(tag)
+
+        wrapped = IntLikeTag(9003)
+        component = FakeComponent("INTLIKE_TAG", wrapped, FakePrototype("INTLIKE", 9004))
+        probe = self.journal.stable_instance_id_probe(
+            component, types.SimpleNamespace(Assem=StrictAssem())
+        )
+
+        self.assertEqual("OBSERVED", probe["status"])
+        self.assertEqual("STABLE-9003", probe["value"])
+
     def test_root_failure_writes_failed_json_without_csv(self):
         work = make_work([])
         work.ComponentAssembly.RootComponent = None
