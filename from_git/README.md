@@ -41,6 +41,7 @@ Available production journals:
 22_diagnose_mass_attribute_write.py One-part write-mechanism diagnostic
 25_tc_single_drawing_cleanup.py Guarded reduction to one drawing specification
 26_move_solid_bodies_to_layer_1.py Guarded active-part solid-body layer migration
+27_move_assembly_components_to_layer_1.py Guarded direct-component layer migration
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -190,5 +191,28 @@ and save manually only when the result is correct. A successful local test run
 is not NX proof: retain the office-machine CSV/JSON and confirm the downstream
 Teamcenter STEP and JT contain every expected solid before declaring J26
 runtime-verified.
+
+J27 complements J26 at assembly level. It requires the target assembly to be
+both Work Part and Displayed Part, then scans only the component occurrences
+placed directly under that assembly root. It includes blanked, suppressed,
+reference-only, non-geometric, lightweight, and unloaded occurrences without
+forcing any prototype to load. For a direct subassembly, J27 changes only that
+subassembly occurrence's parent-level layer option; it does not recurse into or
+modify the subassembly's internal child placements or any prototype body.
+
+J27 defaults to `USER_MODE = "DRY_RUN"` and writes paired CSV/JSON evidence
+under `NX_ASSEMBLY_LAYER_1_MIGRATION`. Review DRY_RUN first. For a Teamcenter
+assembly, manually check out only the parent assembly, set
+`USER_MODE = "APPLY"`, and rerun. APPLY uses
+`Component.SetLayerOption(1)` under one visible undo mark and verifies direct
+child membership, occurrence identity, prototype identity, suppression,
+blanking, reference set, non-geometric state, position/orientation, work layer,
+and all 256 layer states. Any mutation, verification, or paired-evidence
+failure triggers full rollback. J27 never loads, checks out, checks in, or
+saves NX data. After `APPLIED_VERIFIED`, inspect the assembly, use one Undo if
+needed, and save manually only when correct. Run J27 separately with a nested
+subassembly as Work and Displayed Part only when its own direct children also
+need normalization. Retain the office-machine evidence and verify the customer
+Teamcenter STEP/JT before declaring runtime success.
 
 No third-party Python packages are required.
