@@ -43,3 +43,4 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+/documents/input
