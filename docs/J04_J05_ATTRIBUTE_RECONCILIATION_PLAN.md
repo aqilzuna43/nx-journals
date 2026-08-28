@@ -99,9 +99,12 @@ replacement, J05 reports `ALREADY_AT_EXPECTED_VALUE` and requires no checkout
 or write. A stale error is reserved for a live value that matches neither the
 baseline nor the approved replacement.
 
-`TBC` and `N/A` are accepted for unrestricted text fields. They remain invalid
-where an attribute has a controlled domain such as Y/N, UOM, component class,
-traceability, stocking type, or commodity type.
+`TBC` and `N/A` are accepted for unrestricted text fields. `COMMODITYTYPE` is a
+Journal 05-only exception: approved updates accept any nonblank text, including
+`TBC`, even when it is outside the shared configured vocabulary. The shared
+configuration and Journal 04 behavior are unchanged. Other controlled domains,
+such as Y/N, UOM, component class, traceability, and stocking type, remain
+strictly validated.
 
 In managed mode, apply performs a complete preflight and then explicitly
 checks out every changed prototype. No attribute is changed unless all
