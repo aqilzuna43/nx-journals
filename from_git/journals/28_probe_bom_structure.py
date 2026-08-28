@@ -21,7 +21,6 @@ import traceback
 import uuid
 
 import NXOpen
-import NXOpen.UF
 
 
 BUILD = "J28-NX2506-BOM-STRUCTURE-PROBE-V1"
@@ -1109,7 +1108,8 @@ def run(session, uf_session=None, run_datetime=None, output_root=None, run_id=No
     report["work_part_modified"]["before"] = modified_state(work_part)
     if uf_session is None:
         try:
-            uf_session = NXOpen.UF.UFSession.GetUFSession()
+            uf_module = __import__("NXOpen.UF", fromlist=["UFSession"])
+            uf_session = uf_module.UFSession.GetUFSession()
         except Exception:
             uf_session = None
 
