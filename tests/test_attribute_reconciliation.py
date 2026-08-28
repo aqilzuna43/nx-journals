@@ -827,6 +827,50 @@ class J05Tests(unittest.TestCase):
             "", self.j05._validate_expected("BUY/REF", rule, self.config)
         )
 
+    def test_commodity_type_accepts_value_outside_shared_controlled_vocabulary(self):
+        baseline = self.baseline()
+        baseline["parts"][0]["business_values"]["COMMODITYTYPE"].update(
+            status="POPULATED", raw_value="Assembly"
+        )
+        row = self.row(
+            Commodity_Code="OLD", COMMODITYTYPE="Future Commodity Group"
+        )
+        target = self.target()
+        target.attributes.append(
+            FakeAttribute("WAEItem", "COMMODITYTYPE", "Assembly")
+        )
+
+        reports, proposals = self.prepare(row, target, baseline)
+
+        self.assertEqual(["PROPOSED_UPDATE"], [r["ACTION"] for r in reports])
+        self.assertEqual(1, len(proposals))
+        self.assertEqual("Future Commodity Group", proposals[0]["expected"])
+
+    def test_commodity_type_keeps_tbc_but_rejects_blank_updates(self):
+        rule = next(
+            rule
+            for rule in self.config["attributes"]
+            if rule["logical_name"] == "commodity_type"
+        )
+
+        self.assertEqual(
+            "", self.j05._validate_expected("TBC", rule, self.config)
+        )
+        self.assertEqual(
+            "Populated-to-blank updates are not supported.",
+            self.j05._validate_expected("   ", rule, self.config),
+        )
+
+        uom_rule = next(
+            rule
+            for rule in self.config["attributes"]
+            if rule["logical_name"] == "uom"
+        )
+        self.assertEqual(
+            "Expected value is outside the controlled value set.",
+            self.j05._validate_expected("box", uom_rule, self.config),
+        )
+
     def test_baseline_mapping_must_match_deployed_contract(self):
         baseline = self.baseline()
         baseline["business_columns"][0]["attribute"] = "WRONG"

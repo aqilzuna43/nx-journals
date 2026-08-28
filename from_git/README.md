@@ -42,6 +42,7 @@ Available production journals:
 25_tc_single_drawing_cleanup.py Guarded reduction to one drawing specification
 26_move_solid_bodies_to_layer_1.py Guarded active-part solid-body layer migration
 27_move_assembly_components_to_layer_1.py Guarded direct-component layer migration
+28_probe_bom_structure.py      Read-only raw BoM occurrence checkpoint
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312

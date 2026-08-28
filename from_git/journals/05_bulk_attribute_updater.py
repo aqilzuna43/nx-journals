@@ -45,6 +45,10 @@ VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
 COMPATIBILITY_ALLOWED_VALUES = {
     "stocking_type": ("BUY/REF",),
 }
+# Journal 05 intentionally accepts future commodity names without requiring a
+# shared reconciliation-config update. Blank values are still rejected before
+# this exception is considered.
+OPEN_TEXT_UPDATE_FIELDS = ("commodity_type",)
 # CSV display names can change without changing the underlying NX attribute.
 # Keep previously emitted J04 update packages usable when that happens.
 LEGACY_COLUMN_ALIASES = {
@@ -583,6 +587,8 @@ def _validate_expected(value, rule, config):
             int(value)
         except ValueError:
             return "Expected value is not a valid integer."
+    if rule.get("logical_name") in OPEN_TEXT_UPDATE_FIELDS:
+        return ""
     allowed = list(rule.get("allowed_values") or [])
     allowed.extend(
         COMPATIBILITY_ALLOWED_VALUES.get(rule.get("logical_name"), ())

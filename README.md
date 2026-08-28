@@ -65,6 +65,7 @@ shared helpers from `from_git\utils`.
 | 22 | `from_git/journals/22_diagnose_mass_attribute_write.py` | One-part diagnostic: tests classic compute, the native mass-properties builder, and per-category attribute writes, with full before/after attribute dumps |
 | 23 | `from_git/journals/23_diagnose_hla_visibility.py` | Read-only, exact-target HLA visibility proof: tri-state NX probes, subtree/reference-set occurrence mapping, cross-view and same-prototype controls, hypothesis verdicts, and fact-cited root-cause conclusions |
 | 24 | `from_git/journals/24_repair_hla_isolate_visibility.py` | Guarded display-only causal test and repair: uses the NX Python one-input isolate API, tests the selected parent then mapped unsuppressed descendants, compares active/returned/layout views, records exact before/after JSON evidence, and provides an NX undo mark without saving |
+| 28 | `from_git/journals/28_probe_bom_structure.py` | Read-only raw occurrence checkpoint for suppressed, Reference-Only, and native parts-list control evidence |
 
 ## Key Runtime Notes
 
