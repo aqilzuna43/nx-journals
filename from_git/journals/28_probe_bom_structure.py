@@ -27,6 +27,7 @@ BUILD = "J28-NX2506-BOM-STRUCTURE-PROBE-V1"
 SCHEMA_VERSION = 1
 OUTPUT_FOLDER = "NX_BOM_STRUCTURE_PROBE"
 MAX_OCCURRENCES = 100000
+MAX_OCCURRENCES_ENV = "NX_J28_MAX_OCCURRENCES"
 PROGRESS_INTERVAL = 500
 
 OBSERVED = "OBSERVED"
@@ -283,6 +284,26 @@ def io_root():
     if fallback and fallback != "~":
         return os.path.join(fallback, "Desktop")
     return os.getcwd()
+
+
+def max_occurrences():
+    """Resolve the per-run occurrence safety cap.
+
+    Defaults to MAX_OCCURRENCES (100000).  Set NX_J28_MAX_OCCURRENCES before
+    launching NX to tighten the bound for per-subassembly checkpoint runs
+    (for example 10000).  Invalid or non-positive values fall back to the
+    default.
+    """
+    raw = clean(os.environ.get(MAX_OCCURRENCES_ENV))
+    if not raw:
+        return MAX_OCCURRENCES
+    try:
+        value = int(raw)
+    except Exception:
+        return MAX_OCCURRENCES
+    if value < 1:
+        return MAX_OCCURRENCES
+    return value
 
 
 def filename_token(value):
@@ -833,15 +854,16 @@ def collect_occurrences(work_part, uf_session, run_id, run_timestamp, progress=N
     rows = []
     stack = [(root, 0, 0, "", "", "", "")]
     safety_limit_reached = False
+    limit = max_occurrences()
     while stack:
-        if len(rows) >= MAX_OCCURRENCES:
+        if len(rows) >= limit:
             safety_limit_reached = True
             traversal_errors.append(
                 {
                     "path": rows[-1]["STRUCTURAL_PATH"] if rows else "",
                     "operation": "Traversal safety limit",
                     "status": ERROR,
-                    "error": "Safety limit reached: {0}".format(MAX_OCCURRENCES),
+                    "error": "Safety limit reached: {0}".format(limit),
                 }
             )
             break
@@ -1180,6 +1202,7 @@ def run(session, uf_session=None, run_datetime=None, output_root=None, run_id=No
         report["flagged_occurrences"] = flagged_occurrence_records(rows)
         report["summary"] = {
             "occurrence_count": len(rows),
+            "max_occurrences": max_occurrences(),
             "suppressed_count": sum(
                 1
                 for row in rows

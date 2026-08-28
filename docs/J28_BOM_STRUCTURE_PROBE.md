@@ -48,6 +48,11 @@ By default, output is written beneath:
 Set `NX_JOURNALS_IO_DIR` before launching NX to use another local output root.
 Each run receives a separate timestamped folder and run ID.
 
+The occurrence safety cap defaults to 100,000.  Set
+`NX_J28_MAX_OCCURRENCES` before launching NX to tighten it for a
+per-subassembly checkpoint run (for example `10000`); a hit cap makes the
+run `INCOMPLETE` with `safety_limit_reached` true.
+
 ## Artifacts
 
 ### Occurrence CSV

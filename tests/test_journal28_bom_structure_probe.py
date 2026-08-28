@@ -580,6 +580,43 @@ class Journal28Tests(unittest.TestCase):
         self.assertEqual("OBSERVED", probe["status"])
         self.assertEqual("STABLE-9003", probe["value"])
 
+    def test_max_occurrences_env_override_limits_traversal(self):
+        work = make_work(
+            [
+                FakeComponent("A", 1, FakePrototype("A", 101)),
+                FakeComponent("B", 2, FakePrototype("B", 102)),
+                FakeComponent("C", 3, FakePrototype("C", 103)),
+            ]
+        )
+        previous = os.environ.get("NX_J28_MAX_OCCURRENCES")
+        os.environ["NX_J28_MAX_OCCURRENCES"] = "2"
+        try:
+            rows, errors, capped = self.journal.collect_occurrences(
+                work, FakeUFSession(), "run28", "2026-08-29T10:00:00+08:00"
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("NX_J28_MAX_OCCURRENCES", None)
+            else:
+                os.environ["NX_J28_MAX_OCCURRENCES"] = previous
+
+        self.assertTrue(capped)
+        self.assertEqual(2, len(rows))
+        self.assertIn("Safety limit reached: 2", errors[0]["error"])
+
+    def test_max_occurrences_invalid_env_falls_back_to_default(self):
+        previous = os.environ.get("NX_J28_MAX_OCCURRENCES")
+        os.environ["NX_J28_MAX_OCCURRENCES"] = "not-a-number"
+        try:
+            resolved = self.journal.max_occurrences()
+        finally:
+            if previous is None:
+                os.environ.pop("NX_J28_MAX_OCCURRENCES", None)
+            else:
+                os.environ["NX_J28_MAX_OCCURRENCES"] = previous
+
+        self.assertEqual(self.journal.MAX_OCCURRENCES, resolved)
+
     def test_root_failure_writes_failed_json_without_csv(self):
         work = make_work([])
         work.ComponentAssembly.RootComponent = None
