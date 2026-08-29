@@ -21,7 +21,10 @@ def load_journal():
         AttributeType=types.SimpleNamespace(String="String")
     )
     nxopen.Session = types.SimpleNamespace(
-        LibraryUnloadOption=types.SimpleNamespace(Immediately="Immediately")
+        LibraryUnloadOption=types.SimpleNamespace(
+            Immediately="Immediately",
+            AtTermination="AtTermination",
+        )
     )
     nxopen_uf = types.ModuleType("NXOpen.UF")
     nxopen_uf.UFSession = types.SimpleNamespace(GetUFSession=lambda: None)
@@ -130,6 +133,9 @@ class FakeComponent:
         self._attributes = list(attributes or [])
         self._children_error = children_error
         self._inventory_error = inventory_error
+        self.targeted_presence_calls = 0
+        self.targeted_value_calls = 0
+        self.full_inventory_calls = 0
 
     def GetChildren(self):
         if self._children_error:
@@ -137,11 +143,27 @@ class FakeComponent:
         return list(self._children)
 
     def GetInstanceUserAttributes(self, include_unset=False):
+        self.full_inventory_calls += 1
         if self._inventory_error:
             raise RuntimeError(self._inventory_error)
         if include_unset:
             return list(self._attributes)
         return [item for item in self._attributes if not item.Unset]
+
+    def HasInstanceUserAttribute(self, title, attribute_type, index):
+        self.targeted_presence_calls += 1
+        if self._inventory_error:
+            raise RuntimeError(self._inventory_error)
+        return any(item.Title == title and not item.Unset for item in self._attributes)
+
+    def GetInstanceUserAttribute(self, title, attribute_type, index):
+        self.targeted_value_calls += 1
+        if self._inventory_error:
+            raise RuntimeError(self._inventory_error)
+        for item in self._attributes:
+            if item.Title == title and not item.Unset:
+                return item
+        raise KeyError(title)
 
     def GetNonGeometricState(self):
         return False
@@ -190,7 +212,11 @@ class FakeUFSession:
 
 
 class FailingAssem:
+    def __init__(self):
+        self.calls = 0
+
     def AskStableIdOfInstance(self, tag):
+        self.calls += 1
         raise RuntimeError("stable ID unsupported for this occurrence")
 
 
@@ -475,9 +501,22 @@ class Journal28Tests(unittest.TestCase):
             remaining_partials = list(Path(folder).rglob("*.partial"))
 
         self.assertEqual("COMPLETE", report["run_status"])
+        self.assertEqual(
+            "J28-NX2506-BOM-STRUCTURE-PROBE-V2-MEMSAFE",
+            parsed["journal_build"],
+        )
+        self.assertEqual(2, parsed["schema_version"])
         self.assertEqual(b"\xef\xbb\xbf", csv_bytes[:3])
         self.assertEqual(2, parsed["summary"]["occurrence_count"])
         self.assertEqual(2, len(csv_rows))
+        self.assertTrue(
+            all(row["INSTANCE_STABLE_ID_STATUS"] == "NOT_APPLICABLE" for row in csv_rows)
+        )
+        self.assertEqual(
+            ["REFERENCE_COMPONENT"],
+            [item["title"] for item in parsed["flagged_occurrences"][0]["control_attributes"]],
+        )
+        self.assertNotIn("instance_attributes", parsed["flagged_occurrences"][0])
         self.assertEqual(
             hashlib.sha256(csv_bytes).hexdigest(), parsed["csv_sha256"]
         )
@@ -511,74 +550,82 @@ class Journal28Tests(unittest.TestCase):
         self.assertEqual(1, parsed["summary"]["traversal_error_count"])
         self.assertEqual(3, parsed["summary"]["occurrence_count"])
 
-    def test_best_effort_stable_id_failure_is_recorded_but_not_incomplete(self):
+    def test_uf_stable_id_probe_is_never_called(self):
         work = make_work(
             [FakeComponent("GOOD", 75, FakePrototype("GOOD", 775))]
         )
         session = FakeSession(work)
+        uf_session = FailingUFSession()
 
         with tempfile.TemporaryDirectory() as folder:
             _, json_path, report = self.journal.run(
                 session,
-                uf_session=FailingUFSession(),
+                uf_session=uf_session,
                 output_root=folder,
                 run_id="no_stable_id",
             )
             parsed = json.loads(Path(json_path).read_text(encoding="utf-8"))
 
         self.assertEqual("COMPLETE", report["run_status"])
-        self.assertEqual(2, parsed["summary"]["read_error_occurrence_count"])
+        self.assertEqual(0, parsed["summary"]["read_error_occurrence_count"])
         self.assertEqual(0, parsed["summary"]["critical_read_error_occurrence_count"])
         self.assertEqual([], parsed["flagged_occurrences"])
+        self.assertEqual(0, uf_session.Assem.calls)
 
-    def test_stable_id_falls_back_to_integer_tag_when_raw_tag_is_rejected(self):
-        class TagValueWrapper:
-            def __init__(self, value):
-                self.Value = value
+    def test_numeric_nx_attribute_type_decodes_string_value(self):
+        info = FakeAttributeInfo("REFERENCE_COMPONENT", "YES")
+        info.Type = 5
 
-            def __str__(self):
-                return str(self.Value)
+        item = self.journal.attribute_info_dict(info)
 
-        class StrictAssem:
-            def AskStableIdOfInstance(self, tag):
-                if not isinstance(tag, int):
-                    raise RuntimeError("Incorrect object for this operation.")
-                return "STABLE-{0}".format(tag)
+        self.assertEqual("STRING", item["type"])
+        self.assertEqual("YES", item["value"])
 
-        wrapped = TagValueWrapper(9001)
-        component = FakeComponent("WRAPPED_TAG", wrapped, FakePrototype("WRAPPED", 9002))
-        probe = self.journal.stable_instance_id_probe(
-            component, types.SimpleNamespace(Assem=StrictAssem())
+    def test_targeted_controls_do_not_enumerate_or_retain_components(self):
+        component = FakeComponent(
+            "REFERENCE",
+            9001,
+            FakePrototype("REFERENCE", 9002),
+            attributes=[attribute("REFERENCE_COMPONENT", "")],
+        )
+        work = make_work([component])
+
+        rows, _, _ = self.collect(work)
+
+        self.assertEqual(3, component.targeted_presence_calls)
+        self.assertEqual(1, component.targeted_value_calls)
+        self.assertEqual(0, component.full_inventory_calls)
+        self.assertNotIn("_component", rows[1])
+        self.assertEqual(
+            ["REFERENCE_COMPONENT"],
+            [item["title"] for item in rows[1]["_control_attributes"]],
         )
 
-        self.assertEqual("OBSERVED", probe["status"])
-        self.assertEqual("STABLE-9001", probe["value"])
-
-    def test_stable_id_int_conversion_handles_int_like_wrapper(self):
-        class IntLikeTag:
-            def __init__(self, value):
-                self.value = value
-
-            def __int__(self):
-                return int(self.value)
-
-            def __str__(self):
-                return str(self.value)
-
-        class StrictAssem:
-            def AskStableIdOfInstance(self, tag):
-                if not isinstance(tag, int):
-                    raise RuntimeError("Incorrect object for this operation.")
-                return "STABLE-{0}".format(tag)
-
-        wrapped = IntLikeTag(9003)
-        component = FakeComponent("INTLIKE_TAG", wrapped, FakePrototype("INTLIKE", 9004))
-        probe = self.journal.stable_instance_id_probe(
-            component, types.SimpleNamespace(Assem=StrictAssem())
+    def test_unloaded_parent_skips_targeted_control_calls(self):
+        child = FakeComponent(
+            "CHILD",
+            9011,
+            FakePrototype("CHILD", 9012),
+            inventory_error="targeted read must not run",
         )
+        parent_prototype = FakePrototype("PARENT", 9013)
+        parent_prototype.PartLoadState = NamedValue("NotLoaded")
+        parent = FakeComponent(
+            "PARENT",
+            9014,
+            parent_prototype,
+            children=[child],
+        )
+        work = make_work([parent])
 
-        self.assertEqual("OBSERVED", probe["status"])
-        self.assertEqual("STABLE-9003", probe["value"])
+        rows, _, _ = self.collect(work)
+
+        self.assertEqual(0, child.targeted_presence_calls)
+        self.assertEqual("UNAVAILABLE", rows[2]["REFERENCE_COMPONENT_READ_STATUS"])
+        self.assertIn("parent assembly prototype is not loaded", rows[2]["PROBE_ERRORS"])
+
+    def test_unload_is_deferred_until_nx_termination(self):
+        self.assertEqual("AtTermination", self.journal.get_unload_option(None))
 
     def test_max_occurrences_env_override_limits_traversal(self):
         work = make_work(
@@ -656,8 +703,12 @@ class Journal28Tests(unittest.TestCase):
 
     def test_source_contains_no_nx_mutation_or_load_calls(self):
         source = JOURNAL.read_text(encoding="utf-8")
-        self.assertIn("GetInstanceUserAttributes", source)
-        self.assertIn("AskStableIdOfInstance", source)
+        self.assertIn("HasInstanceUserAttribute", source)
+        self.assertIn("GetInstanceUserAttribute", source)
+        self.assertNotIn("GetInstanceUserAttributes(", source)
+        self.assertNotIn("AskStableIdOfInstance", source)
+        self.assertNotIn('row["_component"]', source)
+        self.assertNotIn('row["_attribute_inventory"]', source)
         for forbidden in (
             ".Save(",
             ".SaveAs(",

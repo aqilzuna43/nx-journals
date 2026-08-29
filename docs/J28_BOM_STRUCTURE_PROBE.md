@@ -10,7 +10,9 @@ and every descendant returned by NX without grouping or pruning.
 This is an evidence journal, not a production BoM exporter. It does not prove
 that a replacement marker is safe for JT or native NX parts lists.
 
-Build: `J28-NX2506-BOM-STRUCTURE-PROBE-V1`
+Build: `J28-NX2506-BOM-STRUCTURE-PROBE-V2-MEMSAFE`
+
+Schema: `2`
 
 Primary runtime: NX X 2506 embedded Python in managed or native mode.
 
@@ -24,6 +26,20 @@ J28 does not:
 - update, save, check out, or check in NX/Teamcenter data; or
 - group repeated components or filter any returned occurrence.
 
+The memory-safe V2 build also does not:
+
+- enumerate complete instance-attribute inventories;
+- call `UFSession.Assem.AskStableIdOfInstance`;
+- retain NXOpen `Component` or prototype objects in report rows; or
+- call representation/non-geometric probes unless the prototype reports
+  `FullyLoaded`.
+
+For each eligible non-root occurrence, V2 performs targeted presence checks
+for only `REFERENCE_COMPONENT`, `PLIST_IGNORE_MEMBER`, and
+`PLIST_IGNORE_SUBASSEMBLY`. If an occurrence's parent prototype explicitly
+reports `NotLoaded`, the targeted reads are skipped and reported as unavailable
+instead of deliberately provoking an NX load-state exception.
+
 The JSON records `IsModified` before and after the probe. This is supporting
 evidence, not a substitute for checking the NX session after the run.
 
@@ -34,7 +50,9 @@ evidence, not a substitute for checking the NX session after the run.
    Reference-Only occurrences before this checkpoint.
 3. In NX, select **Tools > Journal > Play**.
 4. Run `from_git/journals/28_probe_bom_structure.py`.
-5. Wait for `Run status`, `CSV`, and `JSON` to appear in the Listing Window.
+5. Confirm the Listing Window reports build
+   `J28-NX2506-BOM-STRUCTURE-PROBE-V2-MEMSAFE`, then wait for `Run status`,
+   `CSV`, and `JSON` to appear.
    Progress is reported every 500 occurrences.
 6. Do not save the assembly merely because the probe was run. Confirm that NX
    has not marked the work part modified.
@@ -48,9 +66,9 @@ By default, output is written beneath:
 Set `NX_JOURNALS_IO_DIR` before launching NX to use another local output root.
 Each run receives a separate timestamped folder and run ID.
 
-The occurrence safety cap defaults to 100,000.  Set
+The occurrence safety cap defaults to 10,000. Set
 `NX_J28_MAX_OCCURRENCES` before launching NX to tighten it for a
-per-subassembly checkpoint run (for example `10000`); a hit cap makes the
+per-subassembly checkpoint run (for example `2000`); a hit cap makes the
 run `INCOMPLETE` with `safety_limit_reached` true.
 
 ## Artifacts
@@ -71,6 +89,10 @@ Important evidence groups include:
 - direct control classification and nearest controlling ancestor; and
 - a prediction of what the current `NXOpenBoMExtended.py` logic would do.
 
+The stable-instance-ID columns are retained for CSV compatibility but report
+`NOT_APPLICABLE` in V2. Representation and non-geometric columns likewise
+report `NOT_APPLICABLE` when the prototype is not fully loaded.
+
 The prediction is diagnostic only. J28 never uses it to prune traversal.
 
 ### JSON summary
@@ -82,16 +104,16 @@ The JSON contains:
 - occurrence and classification totals;
 - descendant counts beneath every directly controlled occurrence;
 - traversal and read failures;
-- complete typed instance-attribute inventories for flagged, inconsistent, or
-  unreadable occurrences only;
+- typed details for matched BoM-control attributes only; no unrelated instance
+  attributes are materialized;
 - CSV/schema SHA-256 values; and
 - work-part modified state before and after.
 
 An inaccessible branch, unreadable required BoM evidence, changed modified
-state, or the 100,000-occurrence safety cap makes the run `INCOMPLETE`.
-Optional metadata failures, such as an unavailable stable instance ID, remain
-visible in `read_errors` but do not invalidate an otherwise complete structural
-checkpoint. A root-access failure produces a failed JSON and no CSV.
+state, or the 10,000-occurrence safety cap makes the run `INCOMPLETE`.
+An intentionally skipped stable instance ID or representation probe is
+`NOT_APPLICABLE` and does not invalidate the checkpoint. A root-access failure
+produces a failed JSON and no CSV.
 Unexpected failures retain `.partial` files for troubleshooting.
 
 ## Artifact return checklist
@@ -103,8 +125,11 @@ Before sharing the output, verify:
 - the CSV contains that occurrence and its descendants;
 - the JSON reports no unexpected traversal gaps;
 - the CSV and JSON have the same run ID;
+- `journal_build` is `J28-NX2506-BOM-STRUCTURE-PROBE-V2-MEMSAFE`;
 - `work_part_modified.changed` is `false`; and
-- the assembly did not become checked out or modified because of the run.
+- the assembly did not become checked out or modified because of the run;
+- no NX internal-memory dialog appears during or after the run; and
+- NX remains responsive after the final Listing Window message.
 
 Return both files together. They can contain proprietary part numbers,
 structure, paths, and custom attributes. Do not commit raw customer artifacts
@@ -112,9 +137,11 @@ without deliberate review and sanitization.
 
 ## Acceptance boundary
 
-Local pytest verifies traversal, classification, report construction, and the
-absence of known mutation calls. Siemens NX is not installed on this machine,
-so only Aqil's NX X 2506 run can establish runtime behavior.
+Local pytest verifies traversal, classification, targeted attribute reads,
+numeric NX attribute-type decoding, report construction, the absence of the UF
+stable-ID/full-inventory calls, and the absence of known mutation calls.
+Siemens NX is not installed on this machine, so only Aqil's NX X 2506 run can
+establish runtime and memory behavior.
 
 The checkpoint does not authorize changes to `NXOpenBoMExtended.py`. After the
 artifacts are reviewed, resume the BoM design and decide whether native

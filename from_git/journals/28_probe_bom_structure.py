@@ -1,12 +1,12 @@
-"""J28 - read-only raw BoM structure checkpoint.
+"""J28 - memory-safe, read-only raw BoM structure checkpoint.
 
 Capture every occurrence returned by the active NX assembly, including the
 root, suppressed occurrences, Reference-Only occurrences, and all descendants.
 The journal does not group, filter, load, update, or persist NX/Teamcenter data.
 
 The CSV is the occurrence ledger.  The JSON is the run summary and includes
-full typed instance-attribute inventories only for occurrences whose BoM
-controls are present, inconsistent, or unreadable.
+only the three targeted BoM-control attributes.  It never retains NXOpen
+objects in report rows and never invokes the optional UF stable-ID API.
 
 Target: NX X 2506 embedded Python (NX 2312-compatible APIs where practical).
 Run via: NX > Tools > Journal > Play
@@ -23,10 +23,10 @@ import uuid
 import NXOpen
 
 
-BUILD = "J28-NX2506-BOM-STRUCTURE-PROBE-V1"
-SCHEMA_VERSION = 1
+BUILD = "J28-NX2506-BOM-STRUCTURE-PROBE-V2-MEMSAFE"
+SCHEMA_VERSION = 2
 OUTPUT_FOLDER = "NX_BOM_STRUCTURE_PROBE"
-MAX_OCCURRENCES = 100000
+MAX_OCCURRENCES = 10000
 MAX_OCCURRENCES_ENV = "NX_J28_MAX_OCCURRENCES"
 PROGRESS_INTERVAL = 500
 
@@ -184,6 +184,10 @@ def unavailable(source, reason):
     return probe(UNAVAILABLE, value=None, source=source, error=reason)
 
 
+def not_applicable(source, reason):
+    return probe(NOT_APPLICABLE, value=None, source=source, error=reason)
+
+
 def property_probe(value, property_name):
     source = "{0}.{1}".format(object_kind(value) or "object", property_name)
     if value is None:
@@ -289,9 +293,9 @@ def io_root():
 def max_occurrences():
     """Resolve the per-run occurrence safety cap.
 
-    Defaults to MAX_OCCURRENCES (100000).  Set NX_J28_MAX_OCCURRENCES before
+    Defaults to MAX_OCCURRENCES (10000).  Set NX_J28_MAX_OCCURRENCES before
     launching NX to tighten the bound for per-subassembly checkpoint runs
-    (for example 10000).  Invalid or non-positive values fall back to the
+    (for example 2000).  Invalid or non-positive values fall back to the
     default.
     """
     raw = clean(os.environ.get(MAX_OCCURRENCES_ENV))
@@ -336,7 +340,20 @@ def file_sha256(path):
 
 
 def attribute_type_name(info):
-    return enum_text(safe_value(info, "Type")) or "UNKNOWN"
+    raw = enum_text(safe_value(info, "Type"))
+    normalized = clean(raw).split(".")[-1].upper()
+    numeric_names = {
+        "0": "INVALID",
+        "1": "NULL",
+        "2": "BOOLEAN",
+        "3": "INTEGER",
+        "4": "REAL",
+        "5": "STRING",
+        "6": "TIME",
+        "7": "REFERENCE",
+        "100": "ANY",
+    }
+    return numeric_names.get(normalized, normalized or "UNKNOWN")
 
 
 def attribute_value(info):
@@ -385,32 +402,51 @@ def attribute_info_dict(info):
     }
 
 
-def instance_attribute_inventory(component):
-    source = "{0}.GetInstanceUserAttributes(False)".format(
+def targeted_control_inventory(component, level, parent_load_state):
+    """Read only the three attributes needed for Reference-Only evidence.
+
+    The V1 implementation expanded every inherited instance attribute for
+    every occurrence.  On a representative 1,349-occurrence assembly that
+    created tens of thousands of Python dictionaries and close to a million
+    NXOpen bridge property reads.  This targeted reader performs three
+    presence checks and materializes only controls that actually exist.
+    """
+    source = "{0}.GetInstanceUserAttribute(targeted)".format(
         object_kind(component) or "Component"
     )
-    try:
-        method = getattr(component, "GetInstanceUserAttributes")
-    except AttributeError:
-        return unavailable(source, "Instance-attribute enumeration is unavailable.")
-    except Exception as error:
-        return failed(source, error)
-    try:
-        try:
-            values = method(False)
-        except TypeError:
-            values = method()
-        inventory = [attribute_info_dict(info) for info in list(values)]
-        inventory.sort(
-            key=lambda item: (
-                item["title"].upper(),
-                item["array_element_index"],
-                item["type"],
-            )
+    if level == 0:
+        return observed([], "Root component has no parent occurrence attributes")
+    if clean(parent_load_state).upper() == "NOTLOADED":
+        return unavailable(
+            source,
+            "Skipped because the parent assembly prototype is not loaded.",
         )
-        return observed(inventory, source)
+
+    try:
+        has_attribute = getattr(component, "HasInstanceUserAttribute")
+        get_attribute = getattr(component, "GetInstanceUserAttribute")
+    except AttributeError:
+        return unavailable(
+            source,
+            "Targeted instance-attribute APIs are unavailable in this NX runtime.",
+        )
     except Exception as error:
         return failed(source, error)
+
+    attribute_type = NXOpen.NXObject.AttributeType.String
+    inventory = []
+    try:
+        for title in CONTROL_ATTRIBUTES:
+            if not bool(has_attribute(title, attribute_type, -1)):
+                continue
+            info = get_attribute(title, attribute_type, -1)
+            item = attribute_info_dict(info)
+            if not item["title"]:
+                item["title"] = title
+            inventory.append(item)
+    except Exception as error:
+        return failed(source, error)
+    return observed(inventory, source)
 
 
 def value_state(present, raw_value):
@@ -434,6 +470,11 @@ def control_probes(inventory_probe):
                 "status": inventory_probe["status"],
                 "source": inventory_probe["source"],
                 "error": inventory_probe["error"],
+                "attribute_type": "",
+                "inherited": None,
+                "is_override": None,
+                "owned_by_system": None,
+                "pdm_based": None,
             }
         return controls
 
@@ -458,6 +499,13 @@ def control_probes(inventory_probe):
             "status": OBSERVED,
             "source": inventory_probe["source"],
             "error": "",
+            "attribute_type": clean(matches[0].get("type")) if matches else "",
+            "inherited": bool(matches[0].get("inherited")) if matches else None,
+            "is_override": bool(matches[0].get("is_override")) if matches else None,
+            "owned_by_system": (
+                bool(matches[0].get("owned_by_system")) if matches else None
+            ),
+            "pdm_based": bool(matches[0].get("pdm_based")) if matches else None,
         }
     return controls
 
@@ -508,69 +556,10 @@ def prototype_string_attribute(prototype, title):
             return unavailable(source, error_text(first_error))
 
 
-def stable_instance_id_probe(component, uf_session):
-    source = "UFSession.Assem.AskStableIdOfInstance"
-    if uf_session is None:
-        return unavailable(source, "UF session is unavailable.")
-    tag = safe_value(component, "Tag", None)
-    if tag is None:
-        return unavailable(source, "Component tag is unavailable.")
-    try:
-        method = uf_session.Assem.AskStableIdOfInstance
-    except AttributeError:
-        return unavailable(source, "Method is not exposed by this runtime object type.")
-    except Exception as error:
-        return failed(source, error)
-
-    # The UF wrapper rejects the raw Tag on some NX builds (NX error 650004
-    # "Incorrect object for this operation"), so marshal the tag to the
-    # integer form the UF API expects before calling.
-    candidates = []
-    for raw in (tag,):
-        if raw not in candidates:
-            candidates.append(raw)
-        converted = None
-        try:
-            converted = int(raw)
-        except Exception:
-            converted = None
-        if converted is not None and converted not in candidates:
-            candidates.append(converted)
-        if converted is None:
-            for attribute_name in ("Value", "Tag", "Handle"):
-                try:
-                    nested = getattr(raw, attribute_name)
-                except Exception:
-                    continue
-                try:
-                    nested_int = int(nested)
-                except Exception:
-                    continue
-                if nested_int not in candidates:
-                    candidates.append(nested_int)
-
-    last_error = None
-    for candidate in candidates:
-        try:
-            result = method(candidate)
-        except TypeError:
-            try:
-                result = method(candidate, "")
-            except Exception as error:
-                last_error = error
-                continue
-        except Exception as error:
-            last_error = error
-            continue
-        if isinstance(result, (tuple, list)):
-            result = next((item for item in result if clean(item)), "")
-        text = clean(result)
-        if text:
-            return observed(text, source)
-        last_error = ValueError("NX returned no stable instance ID.")
-    if last_error is not None:
-        return failed(source, last_error)
-    return unavailable(source, "NX returned no stable instance ID.")
+def load_state_name(load_state_probe):
+    if load_state_probe["status"] != OBSERVED:
+        return ""
+    return clean(enum_text(load_state_probe["value"])).split(".")[-1]
 
 
 def keyword_match(component):
@@ -649,12 +638,12 @@ def critical_row_errors(probes, controls):
 def create_occurrence_row(
     component,
     work_part,
-    uf_session,
     sequence,
     level,
     sibling_index,
     parent_path,
     parent_display_path,
+    parent_load_state,
     nearest_control_ancestor,
     legacy_controlling_path,
     run_id,
@@ -672,30 +661,54 @@ def create_occurrence_row(
         prototype = work_part
         prototype_probe = observed(work_part, "Root component fallback to work part")
 
-    inventory_probe = instance_attribute_inventory(component)
-    controls = control_probes(inventory_probe)
-    classification = direct_control_classification(controls)
-    is_direct_control = any(
-        controls[title]["status"] == OBSERVED and controls[title]["present"]
-        for title in CONTROL_ATTRIBUTES
-    )
-
     suppression = property_probe(component, "IsSuppressed")
     reference_set = component_string(component, "ReferenceSet")
-    non_geometric = method_probe(component, "GetNonGeometricState")
-    representation = method_probe(component, "GetComponentRepresentationMode")
-    if representation["status"] == OBSERVED:
-        representation["value"] = enum_text(representation["value"])
     layer = property_probe(component, "Layer")
-    stable_id = stable_instance_id_probe(component, uf_session)
     load_state = property_probe(prototype, "PartLoadState")
     if load_state["status"] == OBSERVED:
         load_state["value"] = enum_text(load_state["value"])
+    load_state_text = load_state_name(load_state)
 
-    part_number = prototype_string_attribute(prototype, "DB_PART_NO")
-    revision = prototype_string_attribute(prototype, "DB_PART_REV")
-    part_name = prototype_string_attribute(prototype, "DB_PART_NAME")
-    stocking_type = prototype_string_attribute(prototype, "Stocking_Type")
+    inventory_probe = targeted_control_inventory(
+        component,
+        level,
+        parent_load_state,
+    )
+    controls = control_probes(inventory_probe)
+    classification = direct_control_classification(controls)
+    is_direct_control = any(
+        legacy_flag_is_active(controls[title]) for title in CONTROL_ATTRIBUTES
+    )
+
+    if load_state_text.upper() == "FULLYLOADED":
+        non_geometric = method_probe(component, "GetNonGeometricState")
+        representation = method_probe(component, "GetComponentRepresentationMode")
+        if representation["status"] == OBSERVED:
+            representation["value"] = enum_text(representation["value"])
+    else:
+        reason = "Skipped because the prototype is not fully loaded."
+        non_geometric = not_applicable("Component.GetNonGeometricState", reason)
+        representation = not_applicable(
+            "Component.GetComponentRepresentationMode",
+            reason,
+        )
+
+    stable_id = not_applicable(
+        "UF stable-instance-ID probe",
+        "Disabled in the memory-safe J28 build.",
+    )
+
+    if load_state_text.upper() == "NOTLOADED":
+        reason = "Skipped because the prototype is not loaded."
+        part_number = not_applicable("prototype.DB_PART_NO", reason)
+        revision = not_applicable("prototype.DB_PART_REV", reason)
+        part_name = not_applicable("prototype.DB_PART_NAME", reason)
+        stocking_type = not_applicable("prototype.Stocking_Type", reason)
+    else:
+        part_number = prototype_string_attribute(prototype, "DB_PART_NO")
+        revision = prototype_string_attribute(prototype, "DB_PART_REV")
+        part_name = prototype_string_attribute(prototype, "DB_PART_NAME")
+        stocking_type = prototype_string_attribute(prototype, "Stocking_Type")
     keyword = keyword_match(component)
 
     if legacy_controlling_path:
@@ -724,7 +737,7 @@ def create_occurrence_row(
         ("DB_PART_REV", revision),
         ("DB_PART_NAME", part_name),
         ("Stocking_Type", stocking_type),
-        ("InstanceAttributeInventory", inventory_probe),
+        ("TargetedControlAttributes", inventory_probe),
     )
     probe_errors = row_probe_errors(
         all_probes,
@@ -734,7 +747,7 @@ def create_occurrence_row(
         (
             ("Prototype", prototype_probe),
             ("Suppression", suppression),
-            ("InstanceAttributeInventory", inventory_probe),
+            ("TargetedControlAttributes", inventory_probe),
         ),
         controls,
     )
@@ -826,8 +839,7 @@ def create_occurrence_row(
         row[prefix + "_READ_STATUS"] = control["status"]
         row[prefix + "_READ_ERROR"] = control["error"]
 
-    row["_component"] = component
-    row["_attribute_inventory"] = (
+    row["_control_attributes"] = (
         inventory_probe["value"] if inventory_probe["status"] == OBSERVED else []
     )
     row["_controls"] = controls
@@ -836,6 +848,7 @@ def create_occurrence_row(
         structural_path if is_direct_control else nearest_control_ancestor
     )
     row["_next_legacy_control"] = next_legacy_control
+    row["_prototype_load_state"] = load_state_text
     row["_read_error_items"] = probe_errors
     row["_critical_read_error_items"] = critical_errors
     return row
@@ -852,7 +865,10 @@ def collect_occurrences(work_part, uf_session, run_id, run_timestamp, progress=N
         raise RuntimeError("The active work part is not an assembly.")
 
     rows = []
-    stack = [(root, 0, 0, "", "", "", "")]
+    # uf_session remains in the signature for compatibility with callers and
+    # tests from schema V1.  V2 deliberately performs no UF calls.
+    _unused_uf_session = uf_session
+    stack = [(root, 0, 0, "", "", "", "", "")]
     safety_limit_reached = False
     limit = max_occurrences()
     while stack:
@@ -874,18 +890,19 @@ def collect_occurrences(work_part, uf_session, run_id, run_timestamp, progress=N
             sibling_index,
             parent_path,
             parent_display_path,
+            parent_load_state,
             nearest_control_ancestor,
             legacy_controlling_path,
         ) = stack.pop()
         row = create_occurrence_row(
             component,
             work_part,
-            uf_session,
             len(rows) + 1,
             level,
             sibling_index,
             parent_path,
             parent_display_path,
+            parent_load_state,
             nearest_control_ancestor,
             legacy_controlling_path,
             run_id,
@@ -926,6 +943,7 @@ def collect_occurrences(work_part, uf_session, run_id, run_timestamp, progress=N
                     child_index,
                     row["STRUCTURAL_PATH"],
                     row["DISPLAY_PATH"],
+                    row["_prototype_load_state"],
                     row["_next_control_ancestor"],
                     row["_next_legacy_control"],
                 )
@@ -1037,7 +1055,7 @@ def flagged_occurrence_records(rows):
                     for title in CONTROL_ATTRIBUTES
                 },
                 "probe_errors": list(row.get("_read_error_items", [])),
-                "instance_attributes": list(row.get("_attribute_inventory", [])),
+                "control_attributes": list(row.get("_control_attributes", [])),
             }
         )
     return records
@@ -1170,12 +1188,6 @@ def run(session, uf_session=None, run_datetime=None, output_root=None, run_id=No
         return "", json_path, report
 
     report["work_part_modified"]["before"] = modified_state(work_part)
-    if uf_session is None:
-        try:
-            uf_module = __import__("NXOpen.UF", fromlist=["UFSession"])
-            uf_session = uf_module.UFSession.GetUFSession()
-        except Exception:
-            uf_session = None
 
     try:
         def progress(count, path):
@@ -1247,7 +1259,7 @@ def main():
     log_line(session, "Build: " + BUILD)
     log_line(
         session,
-        "Read-only: no load, update, visibility, assembly, attribute, or persistence changes.",
+        "Memory-safe read-only build: targeted controls only; no UF stable-ID probe.",
     )
     log_line(session, "=" * 72)
     try:
@@ -1271,7 +1283,10 @@ def main():
 
 
 def get_unload_option(dummy):
-    return NXOpen.Session.LibraryUnloadOption.Immediately
+    # Keep the journal module resident until NX terminates so interpreter/module
+    # teardown cannot race deferred NXOpen wrapper finalization after a large
+    # assembly traversal.  V2 retains no NXOpen objects in its result rows.
+    return NXOpen.Session.LibraryUnloadOption.AtTermination
 
 
 if __name__ == "__main__":
