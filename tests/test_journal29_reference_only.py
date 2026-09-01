@@ -68,7 +68,7 @@ class FakeComponent:
         self.DisplayName = name
         self.Tag = tag
         self.Parent = None
-        self.Prototype = FakePrototype()
+        self.Prototype = FakePrototype(name=name + ";1", tag=tag + 10000)
         self.IsSuppressed = False
         self.attributes = dict(attributes or {})
         self.set_calls = []
@@ -99,9 +99,9 @@ class FakeComponent:
 
 
 class FakeRoot:
-    def __init__(self, component=None, tag=5000):
+    def __init__(self, components=None, tag=5000):
         self.Tag = tag
-        if component is not None:
+        for component in components or []:
             component.Parent = self
 
 
@@ -125,7 +125,7 @@ class FakePdmSession:
 class FakePart:
     _tag = 9000
 
-    def __init__(self, component, managed=False, read_only=False):
+    def __init__(self, components, managed=False, read_only=False):
         FakePart._tag += 1
         self.Tag = FakePart._tag
         self.Name = "264MN028171A01/A"
@@ -134,7 +134,8 @@ class FakePart:
         self.JournalIdentifier = self.FullPath
         self.IsReadOnly = read_only
         self.IsModified = False
-        self.root = FakeRoot(component)
+        self.components = list(components)
+        self.root = FakeRoot(self.components)
         self.ComponentAssembly = types.SimpleNamespace(RootComponent=self.root)
         self.PDMPart = FakePdmPart() if managed else None
         self.attributes = {
@@ -148,7 +149,7 @@ class FakePart:
 
 class FakeSession:
     def __init__(
-        self, part, component, managed=False, display="SAME", user="aqil",
+        self, part, components, managed=False, display="SAME", user="aqil",
         mark_error=False, undo_error=False,
     ):
         self.Parts = types.SimpleNamespace(
@@ -157,26 +158,27 @@ class FakeSession:
         )
         self.IsManagedMode = managed
         self.PdmSession = FakePdmSession(user)
-        self.component = component
+        self.components = list(components)
         self.mark_error = mark_error
         self.undo_error = undo_error
         self.set_mark_calls = []
         self.undo_calls = []
         self.delete_calls = []
-        self.baseline = None
+        self.baselines = None
 
     def SetUndoMark(self, visibility, name):
         self.set_mark_calls.append((visibility, name))
         if self.mark_error:
             raise RuntimeError("mark failed")
-        self.baseline = dict(self.component.attributes)
+        self.baselines = [dict(component.attributes) for component in self.components]
         return 42
 
     def UndoToMark(self, mark, name):
         self.undo_calls.append((mark, name))
         if self.undo_error:
             raise RuntimeError("undo failed")
-        self.component.attributes = dict(self.baseline)
+        for component, baseline in zip(self.components, self.baselines):
+            component.attributes = dict(baseline)
 
     def DeleteUndoMark(self, mark, name):
         self.delete_calls.append((mark, name))
@@ -202,14 +204,20 @@ class Journal29Tests(unittest.TestCase):
             tzinfo=datetime.timezone(datetime.timedelta(hours=8)),
         )
 
-    def make_context(self, attributes=None, managed=False, read_only=False):
-        component = FakeComponent(attributes=attributes)
-        part = FakePart(component, managed=managed, read_only=read_only)
-        session = FakeSession(part, component, managed=managed)
-        selection = FakeSelectionManager([component])
-        return component, part, session, selection
+    def make_context(
+        self, attributes=None, managed=False, read_only=False,
+        components=None, user="aqil",
+    ):
+        if components is None:
+            components = [FakeComponent(attributes=attributes)]
+        part = FakePart(components, managed=managed, read_only=read_only)
+        session = FakeSession(
+            part, components, managed=managed, user=user
+        )
+        selection = FakeSelectionManager(components)
+        return components, part, session, selection
 
-    def run_in_temp(self, session, selection, mode="DRY_RUN", **kwargs):
+    def run_in_temp(self, session, selection, mode=None, **kwargs):
         with tempfile.TemporaryDirectory() as folder:
             with mock.patch.object(self.journal, "io_root", return_value=folder):
                 csv_path, json_path, report = self.journal.run(
@@ -221,19 +229,11 @@ class Journal29Tests(unittest.TestCase):
                 self.assertEqual(persisted["verdict"], report["verdict"])
                 return report
 
-    def test_dry_run_is_default_and_does_not_write(self):
-        component, part, session, selection = self.make_context()
+    def test_apply_is_default_and_writes_exact_attribute(self):
+        components, part, session, selection = self.make_context()
+        component = components[0]
         report = self.run_in_temp(session, selection)
-        self.assertEqual(report["verdict"]["status"], "DRY_RUN_READY")
-        self.assertEqual(component.set_calls, [])
-        self.assertEqual(session.set_mark_calls, [])
-        self.assertNotIn("REFERENCE_COMPONENT", component.attributes)
-        self.assertFalse(report["configuration"]["force_load"])
-        self.assertFalse(report["configuration"]["automatic_save"])
-
-    def test_apply_writes_exact_blank_occurrence_attribute_and_leaves_undo(self):
-        component, part, session, selection = self.make_context()
-        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["mode"], "APPLY")
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
         self.assertEqual(
             component.set_calls,
@@ -241,119 +241,194 @@ class Journal29Tests(unittest.TestCase):
         )
         self.assertEqual(session.set_mark_calls, [("Visible", self.journal.UNDO_MARK_NAME)])
         self.assertEqual(session.undo_calls, [])
-        self.assertEqual(session.delete_calls, [])
         self.assertTrue(report["action"]["successful_change_left_undoable"])
-        control = report["after"]["controls"]["REFERENCE_COMPONENT"]
+        control = report["targets"][0]["after"]["controls"]["REFERENCE_COMPONENT"]
         self.assertEqual(control["type"], "STRING")
         self.assertEqual(control["raw_value"], "")
         self.assertFalse(control["inherited"])
 
-    def test_already_reference_only_is_idempotent(self):
-        component, part, session, selection = self.make_context(
+    def test_explicit_dry_run_preflights_batch_without_write(self):
+        components = [FakeComponent(tag=177), FakeComponent(name="028061/A", tag=178)]
+        components, part, session, selection = self.make_context(components=components)
+        report = self.run_in_temp(session, selection, mode="DRY_RUN")
+        self.assertEqual(report["verdict"]["status"], "DRY_RUN_READY")
+        self.assertEqual([target["status"] for target in report["targets"]], [
+            "DRY_RUN_READY", "DRY_RUN_READY",
+        ])
+        self.assertTrue(all(component.set_calls == [] for component in components))
+        self.assertEqual(session.set_mark_calls, [])
+
+    def test_atomic_batch_applies_every_eligible_component(self):
+        components = [FakeComponent(tag=177), FakeComponent(name="028061/A", tag=178)]
+        components, part, session, selection = self.make_context(components=components)
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
+        self.assertEqual(report["action"]["applied_count"], 2)
+        self.assertEqual(len(report["targets"]), 2)
+        self.assertTrue(all("REFERENCE_COMPONENT" in component.attributes for component in components))
+        self.assertEqual(len(session.set_mark_calls), 1)
+
+    def test_already_reference_only_is_noop_while_other_target_applies(self):
+        components = [
+            FakeComponent(tag=177, attributes={"REFERENCE_COMPONENT": ""}),
+            FakeComponent(name="028061/A", tag=178),
+        ]
+        components, part, session, selection = self.make_context(components=components)
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
+        self.assertEqual(components[0].set_calls, [])
+        self.assertEqual(len(components[1].set_calls), 1)
+        self.assertEqual(report["targets"][0]["status"], "ALREADY_REFERENCE_ONLY")
+        self.assertEqual(report["targets"][1]["status"], "APPLIED_VERIFIED")
+
+    def test_all_already_reference_only_is_idempotent(self):
+        components, part, session, selection = self.make_context(
             {"REFERENCE_COMPONENT": ""}
         )
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "ALREADY_REFERENCE_ONLY")
-        self.assertEqual(component.set_calls, [])
+        self.assertEqual(components[0].set_calls, [])
         self.assertEqual(session.set_mark_calls, [])
 
-    def test_conflicting_plist_control_blocks(self):
-        component, part, session, selection = self.make_context(
-            {"PLIST_IGNORE_MEMBER": ""}
+    def test_all_already_reference_only_does_not_require_checkout(self):
+        component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
+        components, part, session, selection = self.make_context(
+            components=[component], managed=True, read_only=True
         )
+        part.PDMPart.checked = False
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_CONTROL_CONFLICT")
+        self.assertEqual(report["verdict"]["status"], "ALREADY_REFERENCE_ONLY")
         self.assertEqual(component.set_calls, [])
 
-    def test_nonstandard_existing_reference_blocks(self):
-        component, part, session, selection = self.make_context(
-            {"REFERENCE_COMPONENT": "YES"}
-        )
+    def test_one_conflict_blocks_complete_batch(self):
+        components = [
+            FakeComponent(tag=177),
+            FakeComponent(tag=178, attributes={"PLIST_IGNORE_MEMBER": ""}),
+        ]
+        components, part, session, selection = self.make_context(components=components)
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_NONSTANDARD_REFERENCE")
-        self.assertEqual(component.set_calls, [])
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+        self.assertEqual(report["targets"][1]["status"], "BLOCKED_CONTROL_CONFLICT")
+        self.assertTrue(all(component.set_calls == [] for component in components))
+        self.assertEqual(session.set_mark_calls, [])
 
-    def test_inherited_reference_blocks(self):
-        component, part, session, selection = self.make_context(
-            {"REFERENCE_COMPONENT": ""}
-        )
+    def test_nonstandard_or_inherited_reference_blocks_batch(self):
+        component = FakeComponent(attributes={"REFERENCE_COMPONENT": "YES"})
+        components, part, session, selection = self.make_context(components=[component])
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+        self.assertEqual(report["targets"][0]["status"], "BLOCKED_NONSTANDARD_REFERENCE")
+
+        component.attributes["REFERENCE_COMPONENT"] = ""
         component.metadata["REFERENCE_COMPONENT"] = {"inherited": True}
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_NONSTANDARD_REFERENCE")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
 
-    def test_selection_must_be_exactly_one_component(self):
-        component, part, session, selection = self.make_context()
-        report = self.run_in_temp(
-            session, FakeSelectionManager([]), mode="APPLY"
-        )
+    def test_empty_duplicate_or_noncomponent_selection_blocks(self):
+        components, part, session, selection = self.make_context()
+        component = components[0]
+        report = self.run_in_temp(session, FakeSelectionManager([]), mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION")
-        self.assertEqual(component.set_calls, [])
 
         report = self.run_in_temp(
             session, FakeSelectionManager([component, component]), mode="APPLY"
         )
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+        self.assertTrue(all(target["status"].startswith("BLOCKED_") or target["status"] == "ELIGIBLE" for target in report["targets"]))
 
         report = self.run_in_temp(
             session, FakeSelectionManager([types.SimpleNamespace(Tag=123)]), mode="APPLY"
         )
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+        self.assertEqual(report["targets"][0]["status"], "BLOCKED_SELECTION")
 
-    def test_nested_or_suppressed_component_blocks(self):
-        component, part, session, selection = self.make_context()
-        component.Parent = FakeRoot(tag=6000)
-        report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION")
-        self.assertEqual(component.set_calls, [])
+    def test_selection_limit_blocks_without_writes(self):
+        components = [FakeComponent(tag=177), FakeComponent(tag=178)]
+        components, part, session, selection = self.make_context(components=components)
+        with mock.patch.dict(os.environ, {"NX_J29_MAX_SELECTION": "1"}):
+            report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION_LIMIT")
+        self.assertTrue(all(component.set_calls == [] for component in components))
 
-        component.Parent = part.root
-        component.IsSuppressed = True
+    def test_nested_or_suppressed_target_blocks_complete_batch(self):
+        components = [FakeComponent(tag=177), FakeComponent(tag=178)]
+        components, part, session, selection = self.make_context(components=components)
+        components[1].Parent = FakeRoot(tag=6000)
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "BLOCKED_SELECTION")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+        self.assertTrue(all(component.set_calls == [] for component in components))
+
+        components[1].Parent = part.root
+        components[1].IsSuppressed = True
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
 
     def test_apply_requires_proven_write_access(self):
-        component, part, session, selection = self.make_context(read_only=True)
+        components, part, session, selection = self.make_context(read_only=True)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_WRITE_ACCESS")
-        self.assertEqual(component.set_calls, [])
+        self.assertEqual(components[0].set_calls, [])
 
-        component, part, session, selection = self.make_context(managed=True)
+        components, part, session, selection = self.make_context(managed=True)
         part.PDMPart.checked = False
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_WRITE_ACCESS")
         self.assertIn("never performs checkout", report["verdict"]["message"])
 
+    def test_runtime_owner_format_matches_same_teamcenter_identifier(self):
+        user_id = "99946e1828964542b86c86d6c2cf3cbe"
+        components, part, session, selection = self.make_context(
+            managed=True, user=user_id
+        )
+        part.PDMPart.owner = "aqil ameran ({0})".format(user_id)
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
+        self.assertTrue(report["access"]["owner_is_current_user"])
+
+    def test_different_teamcenter_identifier_still_blocks(self):
+        components, part, session, selection = self.make_context(
+            managed=True, user="99946e1828964542b86c86d6c2cf3cbe"
+        )
+        part.PDMPart.owner = "other user (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)"
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "BLOCKED_WRITE_ACCESS")
+
     def test_managed_checkout_enum_shape_is_accepted_for_current_user(self):
-        component, part, session, selection = self.make_context(managed=True)
+        components, part, session, selection = self.make_context(managed=True)
         part.PDMPart.GetCheckedoutStatusAndUser = lambda: (
             types.SimpleNamespace(name="CheckedOut"), "aqil"
         )
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
 
-    def test_verification_failure_rolls_back_and_proves_absent_baseline(self):
-        component, part, session, selection = self.make_context()
-        component.force_wrong_value = "YES"
+    def test_second_target_verification_failure_rolls_back_complete_batch(self):
+        components = [
+            FakeComponent(tag=177), FakeComponent(tag=178), FakeComponent(tag=179)
+        ]
+        components[1].force_wrong_value = "YES"
+        components, part, session, selection = self.make_context(components=components)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
-        self.assertNotIn("REFERENCE_COMPONENT", component.attributes)
+        self.assertTrue(all("REFERENCE_COMPONENT" not in component.attributes for component in components))
         self.assertEqual(len(session.undo_calls), 1)
         self.assertEqual(len(session.delete_calls), 1)
         self.assertEqual(report["rollback"]["status"], "ROLLED_BACK")
+        self.assertEqual(report["targets"][2]["status"], "NOT_ATTEMPTED")
 
-    def test_write_exception_rolls_back(self):
-        component, part, session, selection = self.make_context()
-        component.set_error = "NX write rejected"
+    def test_write_exception_rolls_back_complete_batch(self):
+        components = [FakeComponent(tag=177), FakeComponent(tag=178)]
+        components[1].set_error = "NX write rejected"
+        components, part, session, selection = self.make_context(components=components)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
-        self.assertEqual(len(session.undo_calls), 1)
+        self.assertTrue(all("REFERENCE_COMPONENT" not in component.attributes for component in components))
 
     def test_context_must_be_same_work_and_display_assembly(self):
-        component, part, session, selection = self.make_context()
+        components, part, session, selection = self.make_context()
         session.Parts.Display = types.SimpleNamespace(Tag=999)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "FAILED_CONTEXT")
-        self.assertEqual(component.set_calls, [])
+        self.assertEqual(components[0].set_calls, [])
 
     def test_unload_is_deferred_to_nx_termination(self):
         self.assertEqual(self.journal.get_unload_option(None), "AtTermination")
@@ -369,11 +444,25 @@ class Journal29Tests(unittest.TestCase):
             self.assertNotIn(token, source)
 
     def test_configured_mode_supports_environment_override(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.journal.configured_mode(), "APPLY")
         with mock.patch.dict(os.environ, {"NX_J29_MODE": "apply"}):
             self.assertEqual(self.journal.configured_mode(), "APPLY")
         with mock.patch.dict(os.environ, {"NX_J29_MODE": "bad"}):
             with self.assertRaises(RuntimeError):
                 self.journal.configured_mode()
+
+    def test_configured_selection_limit(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                self.journal.configured_max_selection(),
+                self.journal.DEFAULT_MAX_SELECTION,
+            )
+        with mock.patch.dict(os.environ, {"NX_J29_MAX_SELECTION": "25"}):
+            self.assertEqual(self.journal.configured_max_selection(), 25)
+        with mock.patch.dict(os.environ, {"NX_J29_MAX_SELECTION": "0"}):
+            with self.assertRaises(RuntimeError):
+                self.journal.configured_max_selection()
 
 
 if __name__ == "__main__":

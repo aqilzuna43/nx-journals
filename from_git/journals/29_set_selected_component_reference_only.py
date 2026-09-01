@@ -1,16 +1,17 @@
 """
-Journal 29 - Set One Selected Component to Reference-Only
+Journal 29 - Set Selected Components to Reference-Only
 
-Adds the exact occurrence attribute proven by J28 V2 to one preselected
-direct component of the active assembly:
+Adds the exact occurrence attribute proven by J28 V2 to one or more
+preselected direct components of the active assembly:
 
     REFERENCE_COMPONENT = ""  (string, index -1, component-instance scope)
 
-DRY_RUN is the default. APPLY requires the active assembly to be both Work
-and Display part and already writable. J29 never scans the assembly tree,
-loads components, checks out, checks in, or saves. A verified APPLY remains
-unsaved under one visible NX undo mark. Any write/verification/evidence
-failure triggers UndoToMark and a baseline reread.
+APPLY is the default. It requires the active assembly to be both Work and
+Display part and already writable. J29 never scans the assembly tree, loads
+components, checks out, checks in, or saves. The complete selection is
+preflighted before one atomic batch write. A verified APPLY remains unsaved
+under one visible NX undo mark. Any write/verification/evidence failure
+triggers UndoToMark and a baseline reread for every selected occurrence.
 
 Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
@@ -20,19 +21,22 @@ import csv
 import datetime
 import json
 import os
+import re
 import traceback
 
 import NXOpen
 
 
-# User setting. Run DRY_RUN first; change to APPLY only after reviewing it.
-USER_MODE = "DRY_RUN"
+# User setting. APPLY is intentionally the operator-selected default; all
+# targets still pass a fail-closed batch preflight before any write occurs.
+USER_MODE = "APPLY"
 
-BUILD = "J29-NX2506-SELECTED-REFERENCE-ONLY-V1"
-SCHEMA_VERSION = 1
+BUILD = "J29-NX2506-BATCH-REFERENCE-ONLY-V2"
+SCHEMA_VERSION = 2
 OUTPUT_FOLDER = "NX_REFERENCE_ONLY"
-UNDO_MARK_NAME = "J29 Set selected component Reference-Only"
+UNDO_MARK_NAME = "J29 Set selected components Reference-Only"
 VALID_MODES = ("DRY_RUN", "APPLY")
+DEFAULT_MAX_SELECTION = 100
 REFERENCE_ATTRIBUTE = "REFERENCE_COMPONENT"
 CONFLICT_ATTRIBUTES = (
     "PLIST_IGNORE_MEMBER",
@@ -44,7 +48,8 @@ CSV_COLUMNS = (
     "RUN_TIMESTAMP", "JOURNAL_BUILD", "SCHEMA_VERSION", "MODE", "VERDICT",
     "ROW_TYPE", "DB_PART_NO", "DB_PART_REV", "ASSEMBLY_NAME",
     "MANAGED_MODE", "CHECKOUT_STATE", "CHECKOUT_OWNER", "CURRENT_USER",
-    "READ_ONLY", "SELECTION_COUNT", "TARGET_NAME", "TARGET_DISPLAY_NAME",
+    "READ_ONLY", "SELECTION_COUNT", "SELECTION_INDEX", "TARGET_STATUS",
+    "TARGET_NAME", "TARGET_DISPLAY_NAME",
     "TARGET_TAG", "PARENT_TAG", "PROTOTYPE_NAME", "PROTOTYPE_TAG",
     "SUPPRESSED", "REFERENCE_COMPONENT_BEFORE",
     "REFERENCE_COMPONENT_AFTER", "PLIST_IGNORE_MEMBER_PRESENT",
@@ -59,6 +64,10 @@ class VerificationError(RuntimeError):
         RuntimeError.__init__(self, " | ".join(messages))
         self.messages = list(messages)
         self.snapshot = snapshot
+
+
+class SelectionLimitError(RuntimeError):
+    pass
 
 
 def clean(value):
@@ -170,6 +179,21 @@ def configured_mode():
     return mode
 
 
+def configured_max_selection():
+    raw = clean(os.environ.get("NX_J29_MAX_SELECTION"))
+    if not raw:
+        return DEFAULT_MAX_SELECTION
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise RuntimeError(
+            "Invalid NX_J29_MAX_SELECTION {0!r}; expected a positive integer.".format(raw)
+        )
+    if value <= 0:
+        raise RuntimeError("NX_J29_MAX_SELECTION must be greater than zero.")
+    return value
+
+
 def get_string_attribute(nx_object, title):
     try:
         return clean(nx_object.GetStringAttribute(title))
@@ -218,27 +242,32 @@ def assembly_context(session):
     return work_part, root
 
 
-def selected_component(selection_manager):
+def selected_components(selection_manager, max_selection):
     try:
         count = int(selection_manager.GetNumSelectedObjects())
     except Exception as error:
         raise RuntimeError("Could not inspect NX preselection: " + error_text(error))
-    if count != 1:
+    if count < 1:
         raise RuntimeError(
-            "Select exactly one component in Assembly Navigator; observed {0} selected object(s).".format(count)
+            "Select at least one component row in Assembly Navigator."
         )
-    try:
-        selected = selection_manager.GetSelectedTaggedObject(0)
-    except Exception as error:
-        raise RuntimeError("Could not read the selected NX object: " + error_text(error))
-    required_methods = (
-        "HasInstanceUserAttribute", "GetInstanceUserAttribute",
-        "SetInstanceUserAttribute",
-    )
-    if not all(callable(getattr(selected, name, None)) for name in required_methods):
-        raise RuntimeError(
-            "The selected object is not an assembly component. Select its component row in Assembly Navigator."
+    if count > max_selection:
+        raise SelectionLimitError(
+            "Selection count {0} exceeds the configured J29 limit of {1}.".format(
+                count, max_selection
+            )
         )
+    selected = []
+    for index in range(count):
+        try:
+            component = selection_manager.GetSelectedTaggedObject(index)
+        except Exception as error:
+            raise RuntimeError(
+                "Could not read selected NX object {0}: {1}".format(
+                    index + 1, error_text(error)
+                )
+            )
+        selected.append(component)
     return selected, count
 
 
@@ -445,6 +474,35 @@ def current_teamcenter_user(session):
         return ""
 
 
+def teamcenter_identity_tokens(value):
+    """Return conservative identity tokens without fuzzy display-name matching."""
+    text = clean(value).casefold()
+    if not text:
+        return set()
+    tokens = {text}
+    for match in re.finditer(r"\(([^()]+)\)|\[([^\[\]]+)\]", text):
+        token = clean(match.group(1) or match.group(2)).casefold()
+        if token:
+            tokens.add(token)
+    for match in re.finditer(
+        r"(?<![0-9a-f])(?:[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12})(?![0-9a-f])",
+        text,
+    ):
+        tokens.add(match.group(0).replace("-", ""))
+    for match in re.finditer(
+        r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}",
+        text,
+    ):
+        tokens.add(match.group(0))
+    return tokens
+
+
+def same_teamcenter_user(owner, current_user):
+    owner_tokens = teamcenter_identity_tokens(owner)
+    user_tokens = teamcenter_identity_tokens(current_user)
+    return bool(owner_tokens and user_tokens and owner_tokens.intersection(user_tokens))
+
+
 def inspect_write_access(session, part):
     read_only = read_only_value(part)
     managed = managed_mode(session, part)
@@ -457,13 +515,15 @@ def inspect_write_access(session, part):
         return {
             "allowed": allowed, "managed": False, "checkout_state": "NATIVE",
             "checkout_owner": "", "current_user": "", "read_only": read_only,
+            "owner_is_current_user": None,
             "raw_checkout": "", "message": message,
         }
     state, owner, raw = checkout_status(part)
     user = current_teamcenter_user(session)
+    owner_is_current_user = same_teamcenter_user(owner, user)
     allowed = bool(
         state == "CHECKED_OUT" and owner and user
-        and owner.casefold() == user.casefold() and read_only is False
+        and owner_is_current_user and read_only is False
     )
     messages = []
     if state == "CHECKED_IN":
@@ -474,7 +534,7 @@ def inspect_write_access(session, part):
         messages.append("Checkout owner is unavailable.")
     elif not user:
         messages.append("Current Teamcenter user is unavailable.")
-    elif owner.casefold() != user.casefold():
+    elif not owner_is_current_user:
         messages.append("Parent assembly is checked out by another user: {0}.".format(owner))
     if read_only is True:
         messages.append("Parent assembly is read-only in this NX session.")
@@ -483,6 +543,7 @@ def inspect_write_access(session, part):
     return {
         "allowed": allowed, "managed": True, "checkout_state": state,
         "checkout_owner": owner, "current_user": user, "read_only": read_only,
+        "owner_is_current_user": owner_is_current_user,
         "raw_checkout": raw, "message": " ".join(messages),
     }
 
@@ -493,6 +554,7 @@ def empty_access(part=None, session=None):
         "managed": bool(part is not None and managed_mode(session, part)),
         "checkout_state": "NOT_INSPECTED", "checkout_owner": "",
         "current_user": "", "read_only": read_only_value(part) if part is not None else None,
+        "owner_is_current_user": None,
         "raw_checkout": "",
         "message": "Write access is inspected only for an APPLY candidate.",
     }
@@ -541,18 +603,20 @@ def base_report(mode, now, identity, access):
         "run_timestamp": now.isoformat(timespec="seconds"),
         "mode": mode,
         "configuration": {
-            "scope": "ONE_PRESELECTED_DIRECT_COMPONENT_OCCURRENCE",
+            "scope": "PRESELECTED_DIRECT_COMPONENT_OCCURRENCES_ATOMIC_BATCH",
             "attribute_title": REFERENCE_ATTRIBUTE,
             "attribute_type": "STRING", "attribute_index": -1,
             "attribute_value": "", "force_load": False,
+            "max_selection": None,
             "automatic_checkout": False, "automatic_save": False,
             "automatic_checkin": False,
         },
         "assembly": identity, "selection": {"count": 0, "source": "NX_PRESELECTION"},
-        "access": access, "before": None, "after_attempt": None, "after": None,
+        "access": access, "targets": [],
         "action": {
             "api": "Component.SetInstanceUserAttribute(REFERENCE_COMPONENT, -1, blank, Update.Option.Now)",
-            "attempted": False, "undo_mark_name": UNDO_MARK_NAME,
+            "attempted": False, "attempted_count": 0, "applied_count": 0,
+            "undo_mark_name": UNDO_MARK_NAME,
             "undo_mark_created": False, "successful_change_left_undoable": False,
             "verification_errors": [], "error": "",
         },
@@ -580,8 +644,6 @@ def control_summary(snapshot, title):
 
 def csv_rows(report):
     identity, access = report["assembly"], report["access"]
-    before, after = report.get("before"), report.get("after")
-    target = after or before or {}
     common = {
         "RUN_TIMESTAMP": report["run_timestamp"], "JOURNAL_BUILD": report["journal_build"],
         "SCHEMA_VERSION": report["schema_version"], "MODE": report["mode"],
@@ -600,21 +662,32 @@ def csv_rows(report):
         "STATUS": report["verdict"]["status"], "MESSAGE": report["verdict"]["message"],
     })
     rows = [summary]
-    if target:
+    for target in report.get("targets", []):
+        before = target.get("before")
+        after = target.get("after")
+        snapshot = after or target.get("after_attempt") or before or {}
+        controls = snapshot.get("controls", {})
         row = dict(common)
         row.update({
-            "ROW_TYPE": "TARGET", "TARGET_NAME": target.get("name", ""),
-            "TARGET_DISPLAY_NAME": target.get("display_name", ""), "TARGET_TAG": target.get("tag", ""),
-            "PARENT_TAG": target.get("parent_tag", ""),
-            "PROTOTYPE_NAME": target.get("prototype", {}).get("name", ""),
-            "PROTOTYPE_TAG": target.get("prototype", {}).get("tag", ""),
-            "SUPPRESSED": "YES" if target.get("suppressed") else "NO",
+            "ROW_TYPE": "TARGET", "SELECTION_INDEX": target.get("selection_index", ""),
+            "TARGET_STATUS": target.get("status", ""),
+            "TARGET_NAME": snapshot.get("name", target.get("selected_name", "")),
+            "TARGET_DISPLAY_NAME": snapshot.get("display_name", ""),
+            "TARGET_TAG": snapshot.get("tag", target.get("selected_tag", "")),
+            "PARENT_TAG": snapshot.get("parent_tag", ""),
+            "PROTOTYPE_NAME": snapshot.get("prototype", {}).get("name", ""),
+            "PROTOTYPE_TAG": snapshot.get("prototype", {}).get("tag", ""),
+            "SUPPRESSED": "YES" if snapshot.get("suppressed") else "NO",
             "REFERENCE_COMPONENT_BEFORE": control_summary(before, REFERENCE_ATTRIBUTE),
             "REFERENCE_COMPONENT_AFTER": control_summary(after, REFERENCE_ATTRIBUTE),
-            "PLIST_IGNORE_MEMBER_PRESENT": "YES" if target["controls"]["PLIST_IGNORE_MEMBER"]["present"] else "NO",
-            "PLIST_IGNORE_SUBASSEMBLY_PRESENT": "YES" if target["controls"]["PLIST_IGNORE_SUBASSEMBLY"]["present"] else "NO",
-            "ACTION": "SET_REFERENCE_ONLY" if report["action"]["attempted"] else "NO_WRITE",
-            "STATUS": report["verdict"]["status"], "MESSAGE": report["verdict"]["message"],
+            "PLIST_IGNORE_MEMBER_PRESENT": (
+                "YES" if controls.get("PLIST_IGNORE_MEMBER", {}).get("present") else "NO"
+            ),
+            "PLIST_IGNORE_SUBASSEMBLY_PRESENT": (
+                "YES" if controls.get("PLIST_IGNORE_SUBASSEMBLY", {}).get("present") else "NO"
+            ),
+            "ACTION": target.get("action", {}).get("status", "NO_WRITE"),
+            "STATUS": target.get("status", ""), "MESSAGE": target.get("message", ""),
         })
         rows.append(row)
     return rows
@@ -654,7 +727,7 @@ def delete_undo_mark(session, mark):
         return error_text(error)
 
 
-def rollback_to_before(session, mark, component, root, work_part, before):
+def rollback_to_before_batch(session, mark, entries, root, work_part):
     result = {
         "attempted": True, "status": "ROLLBACK_FAILED",
         "verification_errors": [], "error": "",
@@ -663,32 +736,59 @@ def rollback_to_before(session, mark, component, root, work_part, before):
         session.UndoToMark(mark, UNDO_MARK_NAME)
     except Exception as error:
         result["error"] = "UndoToMark failed: " + error_text(error)
+        return result
+    for entry in entries:
+        target = entry["report"]
+        before = target.get("before")
+        if before is None:
+            continue
         try:
-            after = component_snapshot(component, root, work_part)
-        except Exception as capture_error:
-            after = None
-            result["error"] += " | Rollback snapshot failed: " + error_text(capture_error)
-        return result, after
-    try:
-        after = component_snapshot(component, root, work_part)
-        errors = stable_snapshot_errors(before, after, expect_reference=False)
-        result["verification_errors"] = errors
-        if errors:
-            result["error"] = "Rollback verification did not restore the baseline."
-        else:
-            result["status"] = "ROLLED_BACK"
-    except Exception as error:
-        after = None
-        result["error"] = "Rollback snapshot failed: " + error_text(error)
+            after = component_snapshot(entry["component"], root, work_part)
+            target["after"] = after
+            expect_reference = before["controls"][REFERENCE_ATTRIBUTE]["present"]
+            errors = stable_snapshot_errors(
+                before, after, expect_reference=expect_reference
+            )
+            if errors:
+                result["verification_errors"].append({
+                    "selection_index": target["selection_index"],
+                    "target_tag": before["tag"], "errors": errors,
+                })
+            elif target["action"]["attempted"]:
+                target["status"] = "ROLLED_BACK"
+                target["message"] = "The batch write was rolled back to the verified baseline."
+                target["action"]["status"] = "ROLLED_BACK"
+            elif target["status"] == "ELIGIBLE":
+                target["status"] = "NOT_ATTEMPTED"
+                target["message"] = "The batch stopped before this eligible occurrence was written."
+        except Exception as error:
+            result["verification_errors"].append({
+                "selection_index": target["selection_index"],
+                "target_tag": before.get("tag", ""),
+                "errors": ["Rollback snapshot failed: " + error_text(error)],
+            })
+    if result["verification_errors"]:
+        result["error"] = "Rollback verification did not restore every selected baseline."
+    else:
+        result["status"] = "ROLLED_BACK"
     delete_error = delete_undo_mark(session, mark)
     if delete_error:
         result["error"] = " | ".join(
             item for item in (result["error"], "DeleteUndoMark failed: " + delete_error) if item
         )
-    return result, after
+    return result
 
 
-def perform_apply(session, work_part, root, component, before, report):
+def perform_apply_batch(session, work_part, root, entries, report):
+    eligible = [
+        entry for entry in entries if entry["report"]["status"] == "ELIGIBLE"
+    ]
+    if not eligible:
+        set_verdict(
+            report, "ALREADY_REFERENCE_ONLY",
+            "Every selected occurrence already has the exact J28-proven Reference-Only attribute; nothing was changed.",
+        )
+        return None
     try:
         mark = session.SetUndoMark(NXOpen.Session.MarkVisibility.Visible, UNDO_MARK_NAME)
         report["action"]["undo_mark_created"] = True
@@ -698,42 +798,55 @@ def perform_apply(session, work_part, root, component, before, report):
         return None
     report["action"]["attempted"] = True
     try:
-        component.SetInstanceUserAttribute(
-            REFERENCE_ATTRIBUTE,
-            -1,
-            "",
-            NXOpen.Update.Option.Now,
-        )
-        after = component_snapshot(component, root, work_part)
-        report["after_attempt"] = after
-        errors = stable_snapshot_errors(before, after, expect_reference=True)
-        report["action"]["verification_errors"] = errors
-        if errors:
-            raise VerificationError(errors, snapshot=after)
-        report["after"] = after
+        for entry in eligible:
+            component = entry["component"]
+            target = entry["report"]
+            before = target["before"]
+            target["action"]["attempted"] = True
+            target["action"]["status"] = "SET_REFERENCE_ONLY"
+            report["action"]["attempted_count"] += 1
+            try:
+                component.SetInstanceUserAttribute(
+                    REFERENCE_ATTRIBUTE, -1, "", NXOpen.Update.Option.Now,
+                )
+                after = component_snapshot(component, root, work_part)
+                target["after_attempt"] = after
+                errors = stable_snapshot_errors(
+                    before, after, expect_reference=True
+                )
+                target["action"]["verification_errors"] = errors
+                if errors:
+                    raise VerificationError(errors, snapshot=after)
+                target["after"] = after
+                target["status"] = "APPLIED_VERIFIED"
+                target["message"] = "The exact blank REFERENCE_COMPONENT occurrence attribute was written and verified."
+                report["action"]["applied_count"] += 1
+            except Exception as error:
+                target["action"]["error"] = error_text(error)
+                target["status"] = "WRITE_OR_VERIFY_FAILED"
+                target["message"] = target["action"]["error"]
+                raise
         report["action"]["successful_change_left_undoable"] = True
         set_verdict(
             report, "APPLIED_VERIFIED",
-            "The selected component occurrence now has the exact J28-proven blank string REFERENCE_COMPONENT attribute; the parent assembly remains unsaved under one visible NX undo mark.",
+            "Applied and verified {0} occurrence(s); {1} were already Reference-Only. The parent assembly remains unsaved under one visible NX undo mark.".format(
+                report["action"]["applied_count"],
+                len(entries) - len(eligible),
+            ),
         )
         return mark
     except Exception as error:
         report["action"]["error"] = error_text(error)
-        if isinstance(error, VerificationError) and error.snapshot is not None:
-            report["after_attempt"] = error.snapshot
-        rollback, final_snapshot = rollback_to_before(
-            session, mark, component, root, work_part, before
-        )
+        rollback = rollback_to_before_batch(session, mark, entries, root, work_part)
         report["rollback"] = rollback
-        report["after"] = final_snapshot
         if rollback["status"] == "ROLLED_BACK":
-            set_verdict(report, "ROLLED_BACK", "The occurrence write failed or did not match the J28 contract; the original state was restored.")
+            set_verdict(report, "ROLLED_BACK", "A batch write or verification failed; every selected occurrence was restored to its verified baseline.")
         else:
-            set_verdict(report, "ROLLBACK_FAILED", "The occurrence write failed and J29 could not prove restoration. Use NX Undo and inspect the parent assembly immediately.")
+            set_verdict(report, "ROLLBACK_FAILED", "The batch failed and J29 could not prove restoration for every occurrence. Use NX Undo and inspect the parent assembly immediately.")
         return None
 
 
-def write_with_apply_rollback(report, folder, stem, session, work_part, root, component, before, mark):
+def write_with_apply_rollback(report, folder, stem, session, work_part, root, entries, mark):
     try:
         return write_outputs(report, folder, stem)
     except Exception as error:
@@ -741,13 +854,10 @@ def write_with_apply_rollback(report, folder, stem, session, work_part, root, co
         if report["verdict"]["status"] != "APPLIED_VERIFIED" or mark is None:
             raise
     report["action"]["successful_change_left_undoable"] = False
-    rollback, final_snapshot = rollback_to_before(
-        session, mark, component, root, work_part, before
-    )
+    rollback = rollback_to_before_batch(session, mark, entries, root, work_part)
     report["rollback"] = rollback
-    report["after"] = final_snapshot
     if rollback["status"] == "ROLLED_BACK":
-        set_verdict(report, "ROLLED_BACK", "The verified occurrence write was rolled back because paired CSV/JSON evidence could not be completed.")
+        set_verdict(report, "ROLLED_BACK", "The verified batch was rolled back because paired CSV/JSON evidence could not be completed.")
     else:
         set_verdict(report, "ROLLBACK_FAILED", "Evidence writing failed and J29 could not prove restoration. Use NX Undo and inspect the parent assembly immediately.")
     try:
@@ -774,6 +884,15 @@ def run(session, selection_manager, run_datetime=None, mode=None):
     preflight_artifact_folder(folder)
 
     try:
+        max_selection = configured_max_selection()
+        report["configuration"]["max_selection"] = max_selection
+    except Exception as error:
+        report["errors"].append(error_text(error))
+        set_verdict(report, "FAILED_CONFIGURATION", error_text(error))
+        csv_path, json_path = write_outputs(report, folder, stem)
+        return csv_path, json_path, report
+
+    try:
         work_part, root = assembly_context(session)
     except Exception as error:
         report["errors"].append(error_text(error))
@@ -782,50 +901,114 @@ def run(session, selection_manager, run_datetime=None, mode=None):
         return csv_path, json_path, report
 
     try:
-        component, count = selected_component(selection_manager)
+        components, count = selected_components(selection_manager, max_selection)
         report["selection"]["count"] = count
-        before = component_snapshot(component, root, work_part)
+    except SelectionLimitError as error:
+        report["errors"].append(error_text(error))
+        set_verdict(report, "BLOCKED_SELECTION_LIMIT", error_text(error))
+        csv_path, json_path = write_outputs(report, folder, stem)
+        return csv_path, json_path, report
     except Exception as error:
         report["errors"].append(error_text(error))
         set_verdict(report, "BLOCKED_SELECTION", error_text(error))
         csv_path, json_path = write_outputs(report, folder, stem)
         return csv_path, json_path, report
 
-    report["before"] = before
-    reference = before["controls"][REFERENCE_ATTRIBUTE]
-    conflicts = [
-        title for title in CONFLICT_ATTRIBUTES
-        if before["controls"][title]["present"]
+    entries = []
+    seen_tags = set()
+    required_methods = (
+        "HasInstanceUserAttribute", "GetInstanceUserAttribute",
+        "SetInstanceUserAttribute",
+    )
+    for index, component in enumerate(components, 1):
+        target = {
+            "selection_index": index,
+            "selected_name": safe_name(component),
+            "selected_tag": object_tag(component),
+            "status": "INITIALIZING", "message": "",
+            "before": None, "after_attempt": None, "after": None,
+            "action": {
+                "attempted": False, "status": "NO_WRITE",
+                "verification_errors": [], "error": "",
+            },
+        }
+        report["targets"].append(target)
+        entry = {"component": component, "report": target}
+        entries.append(entry)
+        try:
+            if not all(callable(getattr(component, name, None)) for name in required_methods):
+                raise RuntimeError(
+                    "The selected object is not an assembly component. Select component rows in Assembly Navigator."
+                )
+            before = component_snapshot(component, root, work_part)
+            target["before"] = before
+            tag = before["tag"]
+            if tag in seen_tags:
+                raise RuntimeError("This component occurrence is duplicated in the selection.")
+            seen_tags.add(tag)
+            reference = before["controls"][REFERENCE_ATTRIBUTE]
+            conflicts = [
+                title for title in CONFLICT_ATTRIBUTES
+                if before["controls"][title]["present"]
+            ]
+            if conflicts:
+                target["status"] = "BLOCKED_CONTROL_CONFLICT"
+                target["message"] = "The occurrence already has {0}; J29 will not combine or replace native BoM controls.".format(
+                    ", ".join(conflicts)
+                )
+            elif reference["present"]:
+                errors = reference_contract_errors(before, require_present=True)
+                target["action"]["verification_errors"] = errors
+                if errors:
+                    target["status"] = "BLOCKED_NONSTANDARD_REFERENCE"
+                    target["message"] = "REFERENCE_COMPONENT exists but does not match the J28 V2 contract; J29 will not overwrite it."
+                else:
+                    target["status"] = "ALREADY_REFERENCE_ONLY"
+                    target["message"] = "The exact Reference-Only occurrence attribute is already present."
+                    target["after"] = before
+            else:
+                target["status"] = "ELIGIBLE"
+                target["message"] = "The occurrence is eligible for the exact blank REFERENCE_COMPONENT attribute."
+        except Exception as error:
+            target["status"] = "BLOCKED_SELECTION"
+            target["message"] = error_text(error)
+
+    blockers = [
+        target for target in report["targets"]
+        if target["status"].startswith("BLOCKED_")
     ]
     mark = None
-    if conflicts:
-        report["after"] = before
+    if blockers:
         set_verdict(
-            report, "BLOCKED_CONTROL_CONFLICT",
-            "The selected occurrence already has {0}; J29 will not combine or replace native BoM controls.".format(", ".join(conflicts)),
+            report, "BLOCKED_BATCH",
+            "The atomic batch contains {0} blocked target(s); nothing was changed. Review the per-target CSV/JSON statuses.".format(len(blockers)),
         )
-    elif reference["present"]:
-        contract_errors = reference_contract_errors(before, require_present=True)
-        report["after"] = before
-        if contract_errors:
-            report["action"]["verification_errors"] = contract_errors
-            set_verdict(report, "BLOCKED_NONSTANDARD_REFERENCE", "REFERENCE_COMPONENT exists but does not match the J28 V2 contract; J29 will not overwrite it.")
-        else:
-            set_verdict(report, "ALREADY_REFERENCE_ONLY", "The selected occurrence already has the exact J28-proven Reference-Only attribute; nothing was changed.")
     elif selected_mode == "DRY_RUN":
-        report["after"] = before
-        set_verdict(report, "DRY_RUN_READY", "The selected direct component is eligible; APPLY would add one blank string REFERENCE_COMPONENT occurrence attribute.")
+        eligible_count = 0
+        for target in report["targets"]:
+            if target["status"] == "ELIGIBLE":
+                target["status"] = "DRY_RUN_READY"
+                target["after"] = target["before"]
+                eligible_count += 1
+        if eligible_count:
+            set_verdict(report, "DRY_RUN_READY", "The complete selection passed preflight; APPLY would update {0} occurrence(s).".format(eligible_count))
+        else:
+            set_verdict(report, "ALREADY_REFERENCE_ONLY", "Every selected occurrence is already Reference-Only; nothing would change.")
+    elif not any(target["status"] == "ELIGIBLE" for target in report["targets"]):
+        set_verdict(
+            report, "ALREADY_REFERENCE_ONLY",
+            "Every selected occurrence is already Reference-Only; no write access or undo mark was required.",
+        )
     else:
         access = inspect_write_access(session, work_part)
         report["access"] = access
         if not access["allowed"]:
-            report["after"] = before
             set_verdict(report, "BLOCKED_WRITE_ACCESS", access["message"] or "J29 could not prove parent-assembly write access.")
         else:
-            mark = perform_apply(session, work_part, root, component, before, report)
+            mark = perform_apply_batch(session, work_part, root, entries, report)
 
     csv_path, json_path = write_with_apply_rollback(
-        report, folder, stem, session, work_part, root, component, before, mark
+        report, folder, stem, session, work_part, root, entries, mark
     )
     return csv_path, json_path, report
 
@@ -834,10 +1017,15 @@ def main():
     session = NXOpen.Session.GetSession()
     mode = configured_mode()
     log_line(session, "=" * 72)
-    log_line(session, "J29 SET ONE SELECTED COMPONENT TO REFERENCE-ONLY")
+    log_line(session, "J29 SET SELECTED COMPONENTS TO REFERENCE-ONLY")
     log_line(session, "Build: " + BUILD)
     log_line(session, "Mode: " + mode)
-    log_line(session, "Preselect exactly one direct component row in Assembly Navigator.")
+    log_line(
+        session,
+        "Preselect 1-{0} direct component rows in Assembly Navigator.".format(
+            configured_max_selection()
+        ),
+    )
     log_line(session, "J29 never scans/loads the tree, checks out, checks in, or saves.")
     log_line(session, "=" * 72)
     try:
@@ -853,7 +1041,7 @@ def main():
             log_line(session, "The parent assembly is modified but UNSAVED. Inspect and save manually if correct.")
             log_line(session, "Undo once to revert: " + UNDO_MARK_NAME)
         elif mode == "DRY_RUN" and report["verdict"]["status"] == "DRY_RUN_READY":
-            log_line(session, "Review both artifacts, ensure the parent assembly is writable, then set USER_MODE = \"APPLY\" and rerun with the same component selected.")
+            log_line(session, "Review both artifacts, ensure the parent assembly is writable, then rerun in APPLY with the same components selected.")
     except Exception as error:
         log_line(session, "J29 FAILED: " + error_text(error))
         log_line(session, traceback.format_exc())
