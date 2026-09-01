@@ -71,9 +71,13 @@ class FakeComponent:
         self.Prototype = FakePrototype(name=name + ";1", tag=tag + 10000)
         self.IsSuppressed = False
         self.attributes = dict(attributes or {})
+        self.attribute_events = []
         self.set_calls = []
+        self.delete_attribute_calls = []
         self.set_error = None
+        self.delete_error = None
         self.ignore_set = False
+        self.ignore_delete = False
         self.force_wrong_value = None
         self.metadata = {}
 
@@ -87,6 +91,7 @@ class FakeComponent:
         return FakeAttributeInfo(title, self.attributes[title], **metadata)
 
     def SetInstanceUserAttribute(self, title, index, value, update_option):
+        self.attribute_events.append(("SET", title))
         self.set_calls.append((title, index, value, update_option))
         if self.set_error:
             raise RuntimeError(self.set_error)
@@ -96,6 +101,18 @@ class FakeComponent:
                 if self.force_wrong_value is not None
                 else value
             )
+
+    def DeleteInstanceUserAttribute(
+        self, attribute_type, title, delete_entire_array, update_option
+    ):
+        self.attribute_events.append(("DELETE", title))
+        self.delete_attribute_calls.append(
+            (attribute_type, title, delete_entire_array, update_option)
+        )
+        if self.delete_error:
+            raise RuntimeError(self.delete_error)
+        if not self.ignore_delete:
+            self.attributes.pop(title, None)
 
 
 class FakeRoot:
@@ -258,6 +275,9 @@ class Journal29Tests(unittest.TestCase):
             "DRY_RUN_READY", "DRY_RUN_READY",
         ])
         self.assertTrue(all(component.set_calls == [] for component in components))
+        self.assertTrue(
+            all(component.delete_attribute_calls == [] for component in components)
+        )
         self.assertEqual(session.set_mark_calls, [])
 
     def test_atomic_batch_applies_every_eligible_component(self):
@@ -341,24 +361,58 @@ class Journal29Tests(unittest.TestCase):
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
 
-    def test_native_reference_component_is_read_only_evidence(self):
+    def test_native_reference_component_is_automatically_unticked(self):
         component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
         components, part, session, selection = self.make_context(
             components=[component]
         )
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
-        self.assertEqual(component.attributes["REFERENCE_COMPONENT"], "")
+        self.assertNotIn("REFERENCE_COMPONENT", component.attributes)
+        self.assertEqual(
+            component.delete_attribute_calls,
+            [("String", "REFERENCE_COMPONENT", True, "Now")],
+        )
+        self.assertEqual(component.attribute_events, [
+            ("SET", "CELESTICA_BOM_EXCLUDE_SUBTREE"),
+            ("DELETE", "REFERENCE_COMPONENT"),
+        ])
         self.assertEqual(
             component.attributes["CELESTICA_BOM_EXCLUDE_SUBTREE"], "YES"
         )
-        self.assertEqual(
+        self.assertTrue(
             report["targets"][0]["before"]["controls"][
                 "REFERENCE_COMPONENT"
-            ],
+            ]["present"]
+        )
+        self.assertFalse(
             report["targets"][0]["after"]["controls"][
                 "REFERENCE_COMPONENT"
-            ],
+            ]["present"]
+        )
+        self.assertEqual(report["action"]["reference_components_removed_count"], 1)
+
+    def test_existing_custom_marker_still_unticks_reference_only(self):
+        component = FakeComponent(attributes={
+            "CELESTICA_BOM_EXCLUDE_SUBTREE": "YES",
+            "REFERENCE_COMPONENT": "",
+        })
+        components, part, session, selection = self.make_context(
+            components=[component]
+        )
+
+        report = self.run_in_temp(session, selection, mode="APPLY")
+
+        self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
+        self.assertEqual(component.set_calls, [])
+        self.assertEqual(
+            component.delete_attribute_calls,
+            [("String", "REFERENCE_COMPONENT", True, "Now")],
+        )
+        self.assertNotIn("REFERENCE_COMPONENT", component.attributes)
+        self.assertEqual(
+            report["targets"][0]["action"]["status"],
+            "UNTICK_REFERENCE_ONLY",
         )
 
     def test_empty_duplicate_or_noncomponent_selection_blocks(self):
@@ -466,6 +520,35 @@ class Journal29Tests(unittest.TestCase):
             for component in components
         ))
 
+    def test_reference_untick_failure_rolls_back_custom_marker(self):
+        component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
+        component.delete_error = "NX reference untick rejected"
+        components, part, session, selection = self.make_context(
+            components=[component]
+        )
+
+        report = self.run_in_temp(session, selection, mode="APPLY")
+
+        self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
+        self.assertEqual(component.attributes, {"REFERENCE_COMPONENT": ""})
+        self.assertEqual(len(session.undo_calls), 1)
+
+    def test_reference_untick_readback_failure_rolls_back(self):
+        component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
+        component.ignore_delete = True
+        components, part, session, selection = self.make_context(
+            components=[component]
+        )
+
+        report = self.run_in_temp(session, selection, mode="APPLY")
+
+        self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
+        self.assertEqual(component.attributes, {"REFERENCE_COMPONENT": ""})
+        self.assertIn(
+            "REFERENCE_COMPONENT remains present",
+            report["targets"][0]["action"]["verification_errors"][0],
+        )
+
     def test_context_must_be_same_work_and_display_assembly(self):
         components, part, session, selection = self.make_context()
         session.Parts.Display = types.SimpleNamespace(Tag=999)
@@ -486,14 +569,15 @@ class Journal29Tests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
-    def test_source_never_mutates_native_reference_component(self):
+    def test_source_only_removes_native_reference_component(self):
         source = JOURNAL.read_text(encoding="utf-8")
         self.assertNotIn(
             "SetInstanceUserAttribute(\n                    REFERENCE_ATTRIBUTE",
             source,
         )
-        self.assertNotIn("DeleteInstanceUserAttribute", source)
-        self.assertIn("native REFERENCE_COMPONENT was unchanged", source)
+        self.assertIn("component.DeleteInstanceUserAttribute(", source)
+        self.assertIn("REFERENCE_ATTRIBUTE,", source)
+        self.assertIn("automatically unticks native Reference-Only", source)
 
     def test_configured_mode_supports_environment_override(self):
         with mock.patch.dict(os.environ, {}, clear=True):

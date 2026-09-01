@@ -13,8 +13,10 @@ preflighted before one atomic batch write. A verified APPLY remains unsaved
 under one visible NX undo mark. Any write/verification/evidence failure
 triggers UndoToMark and a baseline reread for every selected occurrence.
 
-J29 never changes NX's native REFERENCE_COMPONENT control. The operator uses
-the standard NX UI to untick Reference-Only when JT geometry must be retained.
+In the same atomic batch, J29 removes an existing native REFERENCE_COMPONENT
+instance attribute from each selected occurrence. This is the NXOpen
+equivalent of unticking Reference-Only, allowing the custom BoM exclusion to
+replace the native control while keeping JT geometry eligible.
 
 Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
@@ -34,8 +36,8 @@ import NXOpen
 # targets still pass a fail-closed batch preflight before any write occurs.
 USER_MODE = "APPLY"
 
-BUILD = "J29-NX2506-BOM-EXCLUSION-V3"
-SCHEMA_VERSION = 3
+BUILD = "J29-NX2506-BOM-EXCLUSION-V4"
+SCHEMA_VERSION = 4
 OUTPUT_FOLDER = "NX_BOM_EXCLUSION"
 UNDO_MARK_NAME = "J29 Set selected component BoM exclusions"
 VALID_MODES = ("DRY_RUN", "APPLY")
@@ -382,14 +384,22 @@ def bom_exclusion_contract_errors(snapshot, require_present):
     return errors
 
 
-def stable_snapshot_errors(before, after, expect_bom_exclusion):
+def stable_snapshot_errors(
+    before, after, expect_bom_exclusion, expect_reference_component
+):
     errors = []
     for field in ("tag", "name", "display_name", "parent_tag", "prototype", "suppressed"):
         if before[field] != after[field]:
             errors.append("Selected component field {0} changed unexpectedly.".format(field))
-    for title in (REFERENCE_ATTRIBUTE,) + CONFLICT_ATTRIBUTES:
+    for title in CONFLICT_ATTRIBUTES:
         if before["controls"][title] != after["controls"][title]:
             errors.append("{0} changed unexpectedly.".format(title))
+    reference = after["controls"][REFERENCE_ATTRIBUTE]
+    if expect_reference_component:
+        if before["controls"][REFERENCE_ATTRIBUTE] != reference:
+            errors.append("REFERENCE_COMPONENT was not restored to its baseline.")
+    elif reference["present"]:
+        errors.append("REFERENCE_COMPONENT remains present after automatic untick.")
     errors.extend(
         bom_exclusion_contract_errors(after, expect_bom_exclusion)
     )
@@ -616,7 +626,7 @@ def base_report(mode, now, identity, access):
             "attribute_title": BOM_EXCLUSION_ATTRIBUTE,
             "attribute_type": "STRING", "attribute_index": -1,
             "attribute_value": BOM_EXCLUSION_VALUE, "force_load": False,
-            "native_reference_attribute_read_only": True,
+            "remove_native_reference_component": True,
             "max_selection": None,
             "automatic_checkout": False, "automatic_save": False,
             "automatic_checkin": False,
@@ -624,8 +634,13 @@ def base_report(mode, now, identity, access):
         "assembly": identity, "selection": {"count": 0, "source": "NX_PRESELECTION"},
         "access": access, "targets": [],
         "action": {
-            "api": "Component.SetInstanceUserAttribute(CELESTICA_BOM_EXCLUDE_SUBTREE, -1, YES, Update.Option.Now)",
+            "api": (
+                "Component.SetInstanceUserAttribute(CELESTICA_BOM_EXCLUDE_SUBTREE, -1, YES, Update.Option.Now); "
+                "Component.DeleteInstanceUserAttribute(AttributeType.String, REFERENCE_COMPONENT, True, Update.Option.Now)"
+            ),
             "attempted": False, "attempted_count": 0, "applied_count": 0,
+            "bom_exclusions_written_count": 0,
+            "reference_components_removed_count": 0,
             "undo_mark_name": UNDO_MARK_NAME,
             "undo_mark_created": False, "successful_change_left_undoable": False,
             "verification_errors": [], "error": "",
@@ -758,8 +773,11 @@ def rollback_to_before_batch(session, mark, entries, root, work_part):
             after = component_snapshot(entry["component"], root, work_part)
             target["after"] = after
             expect_bom_exclusion = before["controls"][BOM_EXCLUSION_ATTRIBUTE]["present"]
+            expect_reference_component = before["controls"][REFERENCE_ATTRIBUTE]["present"]
             errors = stable_snapshot_errors(
-                before, after, expect_bom_exclusion=expect_bom_exclusion
+                before, after,
+                expect_bom_exclusion=expect_bom_exclusion,
+                expect_reference_component=expect_reference_component,
             )
             if errors:
                 result["verification_errors"].append({
@@ -815,24 +833,43 @@ def perform_apply_batch(session, work_part, root, entries, report):
             target = entry["report"]
             before = target["before"]
             target["action"]["attempted"] = True
-            target["action"]["status"] = "SET_BOM_EXCLUSION"
+            set_bom_exclusion = target["action"]["set_bom_exclusion"]
+            remove_reference = target["action"]["remove_reference_component"]
+            if set_bom_exclusion and remove_reference:
+                target["action"]["status"] = "SET_BOM_EXCLUSION_AND_UNTICK_REFERENCE_ONLY"
+            elif set_bom_exclusion:
+                target["action"]["status"] = "SET_BOM_EXCLUSION"
+            else:
+                target["action"]["status"] = "UNTICK_REFERENCE_ONLY"
             report["action"]["attempted_count"] += 1
             try:
-                component.SetInstanceUserAttribute(
-                    BOM_EXCLUSION_ATTRIBUTE, -1, BOM_EXCLUSION_VALUE,
-                    NXOpen.Update.Option.Now,
-                )
+                if set_bom_exclusion:
+                    component.SetInstanceUserAttribute(
+                        BOM_EXCLUSION_ATTRIBUTE, -1, BOM_EXCLUSION_VALUE,
+                        NXOpen.Update.Option.Now,
+                    )
+                    report["action"]["bom_exclusions_written_count"] += 1
+                if remove_reference:
+                    component.DeleteInstanceUserAttribute(
+                        NXOpen.NXObject.AttributeType.String,
+                        REFERENCE_ATTRIBUTE,
+                        True,
+                        NXOpen.Update.Option.Now,
+                    )
+                    report["action"]["reference_components_removed_count"] += 1
                 after = component_snapshot(component, root, work_part)
                 target["after_attempt"] = after
                 errors = stable_snapshot_errors(
-                    before, after, expect_bom_exclusion=True
+                    before, after,
+                    expect_bom_exclusion=True,
+                    expect_reference_component=False,
                 )
                 target["action"]["verification_errors"] = errors
                 if errors:
                     raise VerificationError(errors, snapshot=after)
                 target["after"] = after
                 target["status"] = "APPLIED_VERIFIED"
-                target["message"] = "The exact occurrence-level CELESTICA_BOM_EXCLUDE_SUBTREE=YES marker was written and verified; native REFERENCE_COMPONENT was unchanged."
+                target["message"] = "The exact occurrence-level CELESTICA_BOM_EXCLUDE_SUBTREE=YES state was verified and native Reference-Only was automatically unticked when present."
                 report["action"]["applied_count"] += 1
             except Exception as error:
                 target["action"]["error"] = error_text(error)
@@ -842,8 +879,10 @@ def perform_apply_batch(session, work_part, root, entries, report):
         report["action"]["successful_change_left_undoable"] = True
         set_verdict(
             report, "APPLIED_VERIFIED",
-            "Applied and verified {0} custom BoM exclusion(s); {1} were already excluded. Native REFERENCE_COMPONENT was unchanged. The parent assembly remains unsaved under one visible NX undo mark.".format(
+            "Applied and verified {0} occurrence update(s): wrote {1} custom BoM exclusion marker(s) and automatically unticked {2} native Reference-Only occurrence(s); {3} required no change. The parent assembly remains unsaved under one visible NX undo mark.".format(
                 report["action"]["applied_count"],
+                report["action"]["bom_exclusions_written_count"],
+                report["action"]["reference_components_removed_count"],
                 len(entries) - len(eligible),
             ),
         )
@@ -931,7 +970,7 @@ def run(session, selection_manager, run_datetime=None, mode=None):
     seen_tags = set()
     required_methods = (
         "HasInstanceUserAttribute", "GetInstanceUserAttribute",
-        "SetInstanceUserAttribute",
+        "SetInstanceUserAttribute", "DeleteInstanceUserAttribute",
     )
     for index, component in enumerate(components, 1):
         target = {
@@ -942,6 +981,8 @@ def run(session, selection_manager, run_datetime=None, mode=None):
             "before": None, "after_attempt": None, "after": None,
             "action": {
                 "attempted": False, "status": "NO_WRITE",
+                "set_bom_exclusion": False,
+                "remove_reference_component": False,
                 "verification_errors": [], "error": "",
             },
         }
@@ -960,6 +1001,7 @@ def run(session, selection_manager, run_datetime=None, mode=None):
                 raise RuntimeError("This component occurrence is duplicated in the selection.")
             seen_tags.add(tag)
             bom_exclusion = before["controls"][BOM_EXCLUSION_ATTRIBUTE]
+            reference_component = before["controls"][REFERENCE_ATTRIBUTE]
             conflicts = [
                 title for title in CONFLICT_ATTRIBUTES
                 if before["controls"][title]["present"]
@@ -975,13 +1017,19 @@ def run(session, selection_manager, run_datetime=None, mode=None):
                 if errors:
                     target["status"] = "BLOCKED_NONSTANDARD_BOM_EXCLUSION"
                     target["message"] = "CELESTICA_BOM_EXCLUDE_SUBTREE exists but is not the exact direct string value YES; J29 will not overwrite it."
+                elif reference_component["present"]:
+                    target["status"] = "ELIGIBLE"
+                    target["action"]["remove_reference_component"] = True
+                    target["message"] = "The custom BoM exclusion is already exact; APPLY will automatically untick native Reference-Only."
                 else:
                     target["status"] = "ALREADY_BOM_EXCLUDED"
-                    target["message"] = "The exact occurrence-level custom BoM exclusion marker is already present; native REFERENCE_COMPONENT is unchanged."
+                    target["message"] = "The exact custom BoM exclusion is present and native Reference-Only is already unticked."
                     target["after"] = before
             else:
                 target["status"] = "ELIGIBLE"
-                target["message"] = "The occurrence is eligible for CELESTICA_BOM_EXCLUDE_SUBTREE=YES; native REFERENCE_COMPONENT will remain unchanged."
+                target["action"]["set_bom_exclusion"] = True
+                target["action"]["remove_reference_component"] = reference_component["present"]
+                target["message"] = "APPLY will set CELESTICA_BOM_EXCLUDE_SUBTREE=YES and automatically untick native Reference-Only when present."
         except Exception as error:
             target["status"] = "BLOCKED_SELECTION"
             target["message"] = error_text(error)
@@ -1004,13 +1052,13 @@ def run(session, selection_manager, run_datetime=None, mode=None):
                 target["after"] = target["before"]
                 eligible_count += 1
         if eligible_count:
-            set_verdict(report, "DRY_RUN_READY", "The complete selection passed preflight; APPLY would update {0} occurrence(s).".format(eligible_count))
+            set_verdict(report, "DRY_RUN_READY", "The complete selection passed preflight; APPLY would update {0} occurrence(s) by setting a missing custom marker and/or automatically unticking native Reference-Only.".format(eligible_count))
         else:
             set_verdict(report, "ALREADY_BOM_EXCLUDED", "Every selected occurrence already has the custom BoM exclusion marker; nothing would change.")
     elif not any(target["status"] == "ELIGIBLE" for target in report["targets"]):
         set_verdict(
             report, "ALREADY_BOM_EXCLUDED",
-            "Every selected occurrence already has the custom BoM exclusion marker; no write access or undo mark was required.",
+            "Every selected occurrence already has the exact custom BoM exclusion marker and native Reference-Only is already unticked; no write access or undo mark was required.",
         )
     else:
         access = inspect_write_access(session, work_part)
@@ -1040,7 +1088,7 @@ def main():
         ),
     )
     log_line(session, "J29 never scans/loads the tree, checks out, checks in, or saves.")
-    log_line(session, "J29 never changes native REFERENCE_COMPONENT; untick it in the NX UI for JT visibility.")
+    log_line(session, "J29 automatically unticks native Reference-Only after establishing the custom BoM exclusion.")
     log_line(session, "=" * 72)
     try:
         selection_manager = NXOpen.UI.GetUI().SelectionManager
