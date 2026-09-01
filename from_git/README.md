@@ -43,7 +43,7 @@ Available production journals:
 26_move_solid_bodies_to_layer_1.py Guarded active-part solid-body layer migration
 27_move_assembly_components_to_layer_1.py Guarded direct-component layer migration
 28_probe_bom_structure.py      Memory-safe targeted BoM-control checkpoint
-29_set_selected_component_reference_only.py Atomic selected-occurrence batch Reference-Only writer
+29_set_selected_component_bom_exclusion.py Atomic selected-occurrence custom BoM-subtree exclusion writer
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312

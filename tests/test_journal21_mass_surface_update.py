@@ -1041,6 +1041,14 @@ class J21Tests(unittest.TestCase):
             "DB_PART_NO": "264MN000004A01",
             "DB_PART_REV": "A",
         }
+        custom = FakePart("264MN000006A01")
+        custom.IsFullyLoaded = False
+        custom.PartLoadState = "MinimallyLoaded"
+        custom.load_behavior = "invalid"
+        custom.string_attributes = {
+            "DB_PART_NO": "264MN000006A01",
+            "DB_PART_REV": "A",
+        }
         csys = FakePart("264MN000005A01")
         csys.IsFullyLoaded = False
         csys.PartLoadState = "MinimallyLoaded"
@@ -1059,6 +1067,13 @@ class J21Tests(unittest.TestCase):
                     reference,
                     string_attributes={"REFERENCE_COMPONENT": ""},
                 ),
+                FakeComponent(
+                    "CUSTOM-BOM-EXCLUDED-1",
+                    custom,
+                    string_attributes={
+                        "CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"
+                    },
+                ),
                 FakeComponent("CSYS_ORIGIN", csys),
             ],
         )
@@ -1076,9 +1091,11 @@ class J21Tests(unittest.TestCase):
         self.assertTrue(child_a.saved)
         self.assertFalse(suppressed.saved)
         self.assertFalse(reference.saved)
+        self.assertFalse(custom.saved)
         self.assertFalse(csys.saved)
         self.assertEqual(0, suppressed.load_calls)
         self.assertEqual(0, reference.load_calls)
+        self.assertEqual(0, custom.load_calls)
         self.assertEqual(0, csys.load_calls)
 
     def test_blank_attributes_report_partial(self):

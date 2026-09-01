@@ -588,6 +588,7 @@ class J04Tests(unittest.TestCase):
         empty_ref = FakePart("EMPTY_REF", attrs("EMPTY_REF"))
         yes_ref = FakePart("YES_REF", attrs("YES_REF"))
         plist = FakePart("PLIST", attrs("PLIST"))
+        custom = FakePart("CUSTOM", attrs("CUSTOM"))
         real = FakePart("REAL", attrs("REAL"))
         root.ComponentAssembly.RootComponent = FakeComponent(
             "ROOT-COMP",
@@ -607,6 +608,13 @@ class J04Tests(unittest.TestCase):
                     "PLIST_IGNORED",
                     plist,
                     string_attributes={"PLIST_IGNORE_MEMBER": "YES"},
+                ),
+                FakeComponent(
+                    "CUSTOM_BOM_EXCLUDED",
+                    custom,
+                    string_attributes={
+                        "CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"
+                    },
                 ),
                 FakeComponent("REAL-1", real),
             ],

@@ -35,6 +35,8 @@ CONTROL_COLUMNS = [
 # update CSV and must not create rows here.
 IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
 BOM_REFERENCE_ATTRIBUTES = ("REFERENCE_COMPONENT", "PLIST_IGNORE_MEMBER")
+BOM_EXCLUSION_ATTRIBUTE = "CELESTICA_BOM_EXCLUDE_SUBTREE"
+BOM_EXCLUSION_VALUE = "YES"
 # NX marks native reference components with an empty string; manual overrides
 # use YES/1/True/true/yes.
 BOM_REFERENCE_FLAG_VALUES = ("", "YES", "1", "True", "true", "yes")
@@ -333,6 +335,9 @@ def _is_bom_visible(component):
         raw = _component_string_attribute(component, title)
         if raw is not None and _clean(raw) in BOM_REFERENCE_FLAG_VALUES:
             return False
+    custom = _component_string_attribute(component, BOM_EXCLUSION_ATTRIBUTE)
+    if custom is not None and _clean(custom) == BOM_EXCLUSION_VALUE:
+        return False
     return True
 
 

@@ -13,7 +13,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 JOURNAL = (
     ROOT / "from_git" / "journals"
-    / "29_set_selected_component_reference_only.py"
+    / "29_set_selected_component_bom_exclusion.py"
 )
 
 
@@ -237,14 +237,16 @@ class Journal29Tests(unittest.TestCase):
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
         self.assertEqual(
             component.set_calls,
-            [("REFERENCE_COMPONENT", -1, "", "Now")],
+            [("CELESTICA_BOM_EXCLUDE_SUBTREE", -1, "YES", "Now")],
         )
         self.assertEqual(session.set_mark_calls, [("Visible", self.journal.UNDO_MARK_NAME)])
         self.assertEqual(session.undo_calls, [])
         self.assertTrue(report["action"]["successful_change_left_undoable"])
-        control = report["targets"][0]["after"]["controls"]["REFERENCE_COMPONENT"]
+        control = report["targets"][0]["after"]["controls"][
+            "CELESTICA_BOM_EXCLUDE_SUBTREE"
+        ]
         self.assertEqual(control["type"], "STRING")
-        self.assertEqual(control["raw_value"], "")
+        self.assertEqual(control["raw_value"], "YES")
         self.assertFalse(control["inherited"])
 
     def test_explicit_dry_run_preflights_batch_without_write(self):
@@ -265,12 +267,18 @@ class Journal29Tests(unittest.TestCase):
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
         self.assertEqual(report["action"]["applied_count"], 2)
         self.assertEqual(len(report["targets"]), 2)
-        self.assertTrue(all("REFERENCE_COMPONENT" in component.attributes for component in components))
+        self.assertTrue(all(
+            component.attributes.get("CELESTICA_BOM_EXCLUDE_SUBTREE") == "YES"
+            for component in components
+        ))
         self.assertEqual(len(session.set_mark_calls), 1)
 
-    def test_already_reference_only_is_noop_while_other_target_applies(self):
+    def test_already_bom_excluded_is_noop_while_other_target_applies(self):
         components = [
-            FakeComponent(tag=177, attributes={"REFERENCE_COMPONENT": ""}),
+            FakeComponent(
+                tag=177,
+                attributes={"CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"},
+            ),
             FakeComponent(name="028061/A", tag=178),
         ]
         components, part, session, selection = self.make_context(components=components)
@@ -278,26 +286,28 @@ class Journal29Tests(unittest.TestCase):
         self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
         self.assertEqual(components[0].set_calls, [])
         self.assertEqual(len(components[1].set_calls), 1)
-        self.assertEqual(report["targets"][0]["status"], "ALREADY_REFERENCE_ONLY")
+        self.assertEqual(report["targets"][0]["status"], "ALREADY_BOM_EXCLUDED")
         self.assertEqual(report["targets"][1]["status"], "APPLIED_VERIFIED")
 
-    def test_all_already_reference_only_is_idempotent(self):
+    def test_all_already_bom_excluded_is_idempotent(self):
         components, part, session, selection = self.make_context(
-            {"REFERENCE_COMPONENT": ""}
+            {"CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"}
         )
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "ALREADY_REFERENCE_ONLY")
+        self.assertEqual(report["verdict"]["status"], "ALREADY_BOM_EXCLUDED")
         self.assertEqual(components[0].set_calls, [])
         self.assertEqual(session.set_mark_calls, [])
 
-    def test_all_already_reference_only_does_not_require_checkout(self):
-        component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
+    def test_all_already_bom_excluded_does_not_require_checkout(self):
+        component = FakeComponent(
+            attributes={"CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"}
+        )
         components, part, session, selection = self.make_context(
             components=[component], managed=True, read_only=True
         )
         part.PDMPart.checked = False
         report = self.run_in_temp(session, selection, mode="APPLY")
-        self.assertEqual(report["verdict"]["status"], "ALREADY_REFERENCE_ONLY")
+        self.assertEqual(report["verdict"]["status"], "ALREADY_BOM_EXCLUDED")
         self.assertEqual(component.set_calls, [])
 
     def test_one_conflict_blocks_complete_batch(self):
@@ -312,17 +322,44 @@ class Journal29Tests(unittest.TestCase):
         self.assertTrue(all(component.set_calls == [] for component in components))
         self.assertEqual(session.set_mark_calls, [])
 
-    def test_nonstandard_or_inherited_reference_blocks_batch(self):
-        component = FakeComponent(attributes={"REFERENCE_COMPONENT": "YES"})
+    def test_nonstandard_or_inherited_bom_exclusion_blocks_batch(self):
+        component = FakeComponent(
+            attributes={"CELESTICA_BOM_EXCLUDE_SUBTREE": "NO"}
+        )
         components, part, session, selection = self.make_context(components=[component])
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
-        self.assertEqual(report["targets"][0]["status"], "BLOCKED_NONSTANDARD_REFERENCE")
+        self.assertEqual(
+            report["targets"][0]["status"],
+            "BLOCKED_NONSTANDARD_BOM_EXCLUSION",
+        )
 
-        component.attributes["REFERENCE_COMPONENT"] = ""
-        component.metadata["REFERENCE_COMPONENT"] = {"inherited": True}
+        component.attributes["CELESTICA_BOM_EXCLUDE_SUBTREE"] = "YES"
+        component.metadata["CELESTICA_BOM_EXCLUDE_SUBTREE"] = {
+            "inherited": True
+        }
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "BLOCKED_BATCH")
+
+    def test_native_reference_component_is_read_only_evidence(self):
+        component = FakeComponent(attributes={"REFERENCE_COMPONENT": ""})
+        components, part, session, selection = self.make_context(
+            components=[component]
+        )
+        report = self.run_in_temp(session, selection, mode="APPLY")
+        self.assertEqual(report["verdict"]["status"], "APPLIED_VERIFIED")
+        self.assertEqual(component.attributes["REFERENCE_COMPONENT"], "")
+        self.assertEqual(
+            component.attributes["CELESTICA_BOM_EXCLUDE_SUBTREE"], "YES"
+        )
+        self.assertEqual(
+            report["targets"][0]["before"]["controls"][
+                "REFERENCE_COMPONENT"
+            ],
+            report["targets"][0]["after"]["controls"][
+                "REFERENCE_COMPONENT"
+            ],
+        )
 
     def test_empty_duplicate_or_noncomponent_selection_blocks(self):
         components, part, session, selection = self.make_context()
@@ -405,11 +442,14 @@ class Journal29Tests(unittest.TestCase):
         components = [
             FakeComponent(tag=177), FakeComponent(tag=178), FakeComponent(tag=179)
         ]
-        components[1].force_wrong_value = "YES"
+        components[1].force_wrong_value = "NO"
         components, part, session, selection = self.make_context(components=components)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
-        self.assertTrue(all("REFERENCE_COMPONENT" not in component.attributes for component in components))
+        self.assertTrue(all(
+            "CELESTICA_BOM_EXCLUDE_SUBTREE" not in component.attributes
+            for component in components
+        ))
         self.assertEqual(len(session.undo_calls), 1)
         self.assertEqual(len(session.delete_calls), 1)
         self.assertEqual(report["rollback"]["status"], "ROLLED_BACK")
@@ -421,7 +461,10 @@ class Journal29Tests(unittest.TestCase):
         components, part, session, selection = self.make_context(components=components)
         report = self.run_in_temp(session, selection, mode="APPLY")
         self.assertEqual(report["verdict"]["status"], "ROLLED_BACK")
-        self.assertTrue(all("REFERENCE_COMPONENT" not in component.attributes for component in components))
+        self.assertTrue(all(
+            "CELESTICA_BOM_EXCLUDE_SUBTREE" not in component.attributes
+            for component in components
+        ))
 
     def test_context_must_be_same_work_and_display_assembly(self):
         components, part, session, selection = self.make_context()
@@ -442,6 +485,15 @@ class Journal29Tests(unittest.TestCase):
         )
         for token in forbidden:
             self.assertNotIn(token, source)
+
+    def test_source_never_mutates_native_reference_component(self):
+        source = JOURNAL.read_text(encoding="utf-8")
+        self.assertNotIn(
+            "SetInstanceUserAttribute(\n                    REFERENCE_ATTRIBUTE",
+            source,
+        )
+        self.assertNotIn("DeleteInstanceUserAttribute", source)
+        self.assertIn("native REFERENCE_COMPONENT was unchanged", source)
 
     def test_configured_mode_supports_environment_override(self):
         with mock.patch.dict(os.environ, {}, clear=True):

@@ -66,7 +66,7 @@ shared helpers from `from_git\utils`.
 | 23 | `from_git/journals/23_diagnose_hla_visibility.py` | Read-only, exact-target HLA visibility proof: tri-state NX probes, subtree/reference-set occurrence mapping, cross-view and same-prototype controls, hypothesis verdicts, and fact-cited root-cause conclusions |
 | 24 | `from_git/journals/24_repair_hla_isolate_visibility.py` | Guarded display-only causal test and repair: uses the NX Python one-input isolate API, tests the selected parent then mapped unsuppressed descendants, compares active/returned/layout views, records exact before/after JSON evidence, and provides an NX undo mark without saving |
 | 28 | `from_git/journals/28_probe_bom_structure.py` | Memory-safe read-only occurrence checkpoint using three targeted Reference-Only/parts-list control probes; no full attribute inventories or UF stable-ID calls |
-| 29 | `from_git/journals/29_set_selected_component_reference_only.py` | APPLY-default atomic batch Reference-Only writer for 1–100 selected direct occurrences; same-Teamcenter-user ID matching, per-target CSV/JSON, read-back verification, whole-batch undo rollback, no load/checkout/save |
+| 29 | `from_git/journals/29_set_selected_component_bom_exclusion.py` | APPLY-default atomic batch writer for the occurrence-level `CELESTICA_BOM_EXCLUDE_SUBTREE=YES` marker on 1–100 selected direct occurrences; leaves native `REFERENCE_COMPONENT` untouched, with same-Teamcenter-user ID matching, per-target CSV/JSON, read-back verification, whole-batch undo rollback, and no load/checkout/save |
 
 ## Key Runtime Notes
 

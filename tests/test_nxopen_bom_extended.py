@@ -404,6 +404,65 @@ class ExtendedBomAttributeTests(unittest.TestCase):
         row = next(csv.reader(io.StringIO(output.getvalue())))
         self.assertEqual("DRAFT", row[4])
 
+    def test_custom_bom_exclusion_is_occurrence_sensitive_and_prunes_subtree(self):
+        shared_prototype = FakeNxObject(
+            strings={"DB_PART_NO": "SHARED", "DB_PART_NAME": "SHARED PART"}
+        )
+        excluded_descendant = FakeNxObject(
+            prototype=FakeNxObject(
+                strings={"DB_PART_NO": "DESC", "DB_PART_NAME": "DESCENDANT"}
+            ),
+            name="DESC",
+            display_name="DESC/A",
+        )
+        excluded_occurrence = FakeNxObject(
+            strings={"CELESTICA_BOM_EXCLUDE_SUBTREE": "YES"},
+            prototype=shared_prototype,
+            name="SHARED-EXCLUDED",
+            display_name="SHARED/A",
+            children=[excluded_descendant],
+        )
+        included_occurrence = FakeNxObject(
+            prototype=shared_prototype,
+            name="SHARED-INCLUDED",
+            display_name="SHARED/A",
+        )
+        root = FakeNxObject(
+            strings={"DB_PART_NO": "ROOT", "DB_PART_NAME": "ROOT"},
+            name="ROOT",
+            display_name="ROOT/A",
+            children=[excluded_occurrence, included_occurrence],
+        )
+        output = io.StringIO()
+
+        self.module.walk_assembly_tree(root, 0, csv.writer(output), quantity=1)
+
+        rows = list(csv.reader(io.StringIO(output.getvalue())))
+        self.assertEqual(["ROOT", "SHARED"], [row[1] for row in rows])
+
+    def test_custom_bom_exclusion_requires_exact_yes(self):
+        prototype = FakeNxObject(
+            strings={"DB_PART_NO": "CHILD", "DB_PART_NAME": "CHILD"}
+        )
+        child = FakeNxObject(
+            strings={"CELESTICA_BOM_EXCLUDE_SUBTREE": "NO"},
+            prototype=prototype,
+            name="CHILD",
+            display_name="CHILD/A",
+        )
+        root = FakeNxObject(
+            strings={"DB_PART_NO": "ROOT", "DB_PART_NAME": "ROOT"},
+            children=[child],
+        )
+        output = io.StringIO()
+
+        self.module.walk_assembly_tree(root, 0, csv.writer(output), quantity=1)
+
+        self.assertEqual(
+            ["ROOT", "CHILD"],
+            [row[1] for row in csv.reader(io.StringIO(output.getvalue()))],
+        )
+
 
 class Journal04ModelPullTests(unittest.TestCase):
     @classmethod

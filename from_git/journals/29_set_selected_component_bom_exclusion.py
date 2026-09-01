@@ -1,10 +1,10 @@
 """
-Journal 29 - Set Selected Components to Reference-Only
+Journal 29 - Set Selected Component Occurrences to Custom BoM Exclusion
 
-Adds the exact occurrence attribute proven by J28 V2 to one or more
+Adds a Celestica-owned BoM-only occurrence attribute to one or more
 preselected direct components of the active assembly:
 
-    REFERENCE_COMPONENT = ""  (string, index -1, component-instance scope)
+    CELESTICA_BOM_EXCLUDE_SUBTREE = "YES"
 
 APPLY is the default. It requires the active assembly to be both Work and
 Display part and already writable. J29 never scans the assembly tree, loads
@@ -12,6 +12,9 @@ components, checks out, checks in, or saves. The complete selection is
 preflighted before one atomic batch write. A verified APPLY remains unsaved
 under one visible NX undo mark. Any write/verification/evidence failure
 triggers UndoToMark and a baseline reread for every selected occurrence.
+
+J29 never changes NX's native REFERENCE_COMPONENT control. The operator uses
+the standard NX UI to untick Reference-Only when JT geometry must be retained.
 
 Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
@@ -31,18 +34,22 @@ import NXOpen
 # targets still pass a fail-closed batch preflight before any write occurs.
 USER_MODE = "APPLY"
 
-BUILD = "J29-NX2506-BATCH-REFERENCE-ONLY-V2"
-SCHEMA_VERSION = 2
-OUTPUT_FOLDER = "NX_REFERENCE_ONLY"
-UNDO_MARK_NAME = "J29 Set selected components Reference-Only"
+BUILD = "J29-NX2506-BOM-EXCLUSION-V3"
+SCHEMA_VERSION = 3
+OUTPUT_FOLDER = "NX_BOM_EXCLUSION"
+UNDO_MARK_NAME = "J29 Set selected component BoM exclusions"
 VALID_MODES = ("DRY_RUN", "APPLY")
 DEFAULT_MAX_SELECTION = 100
 REFERENCE_ATTRIBUTE = "REFERENCE_COMPONENT"
+BOM_EXCLUSION_ATTRIBUTE = "CELESTICA_BOM_EXCLUDE_SUBTREE"
+BOM_EXCLUSION_VALUE = "YES"
 CONFLICT_ATTRIBUTES = (
     "PLIST_IGNORE_MEMBER",
     "PLIST_IGNORE_SUBASSEMBLY",
 )
-CONTROL_ATTRIBUTES = (REFERENCE_ATTRIBUTE,) + CONFLICT_ATTRIBUTES
+CONTROL_ATTRIBUTES = (
+    REFERENCE_ATTRIBUTE, BOM_EXCLUSION_ATTRIBUTE,
+) + CONFLICT_ATTRIBUTES
 
 CSV_COLUMNS = (
     "RUN_TIMESTAMP", "JOURNAL_BUILD", "SCHEMA_VERSION", "MODE", "VERDICT",
@@ -52,7 +59,8 @@ CSV_COLUMNS = (
     "TARGET_NAME", "TARGET_DISPLAY_NAME",
     "TARGET_TAG", "PARENT_TAG", "PROTOTYPE_NAME", "PROTOTYPE_TAG",
     "SUPPRESSED", "REFERENCE_COMPONENT_BEFORE",
-    "REFERENCE_COMPONENT_AFTER", "PLIST_IGNORE_MEMBER_PRESENT",
+    "REFERENCE_COMPONENT_AFTER", "BOM_EXCLUSION_BEFORE",
+    "BOM_EXCLUSION_AFTER", "PLIST_IGNORE_MEMBER_PRESENT",
     "PLIST_IGNORE_SUBASSEMBLY_PRESENT", "ACTION", "STATUS", "MESSAGE",
 )
 
@@ -353,37 +361,38 @@ def component_snapshot(component, root, work_part):
     }
 
 
-def reference_contract_errors(snapshot, require_present):
+def bom_exclusion_contract_errors(snapshot, require_present):
     errors = []
-    reference = snapshot["controls"][REFERENCE_ATTRIBUTE]
+    marker = snapshot["controls"][BOM_EXCLUSION_ATTRIBUTE]
     if require_present:
-        if not reference["present"]:
-            errors.append("REFERENCE_COMPONENT is absent after the write.")
-        if reference["type"] != "STRING":
-            errors.append("REFERENCE_COMPONENT is not a string attribute.")
-        if reference["raw_value"] != "":
-            errors.append("REFERENCE_COMPONENT is not blank.")
-        if reference["inherited"]:
-            errors.append("REFERENCE_COMPONENT is inherited instead of direct.")
-        if reference["owned_by_system"]:
-            errors.append("REFERENCE_COMPONENT is unexpectedly system-owned.")
-        if reference["pdm_based"]:
-            errors.append("REFERENCE_COMPONENT is unexpectedly PDM-based.")
-    else:
-        if reference["present"]:
-            errors.append("REFERENCE_COMPONENT was not restored to absent.")
+        if not marker["present"]:
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is absent after the write.")
+        if marker["type"] != "STRING":
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is not a string attribute.")
+        if marker["raw_value"] != BOM_EXCLUSION_VALUE:
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is not exactly YES.")
+        if marker["inherited"]:
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is inherited instead of direct.")
+        if marker["owned_by_system"]:
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is unexpectedly system-owned.")
+        if marker["pdm_based"]:
+            errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE is unexpectedly PDM-based.")
+    elif marker["present"]:
+        errors.append("CELESTICA_BOM_EXCLUDE_SUBTREE was not restored to absent.")
     return errors
 
 
-def stable_snapshot_errors(before, after, expect_reference):
+def stable_snapshot_errors(before, after, expect_bom_exclusion):
     errors = []
     for field in ("tag", "name", "display_name", "parent_tag", "prototype", "suppressed"):
         if before[field] != after[field]:
             errors.append("Selected component field {0} changed unexpectedly.".format(field))
-    for title in CONFLICT_ATTRIBUTES:
+    for title in (REFERENCE_ATTRIBUTE,) + CONFLICT_ATTRIBUTES:
         if before["controls"][title] != after["controls"][title]:
             errors.append("{0} changed unexpectedly.".format(title))
-    errors.extend(reference_contract_errors(after, expect_reference))
+    errors.extend(
+        bom_exclusion_contract_errors(after, expect_bom_exclusion)
+    )
     return errors
 
 
@@ -564,7 +573,7 @@ def unique_run_folder(identity, now):
     root = os.path.join(io_root(), OUTPUT_FOLDER)
     os.makedirs(root, exist_ok=True)
     token = filename_token(identity.get("number") or identity.get("name") or "UNKNOWN")
-    base = "J29_REFERENCE_ONLY_{0}_{1}".format(token, now.strftime("%Y%m%d_%H%M%S"))
+    base = "J29_BOM_EXCLUSION_{0}_{1}".format(token, now.strftime("%Y%m%d_%H%M%S"))
     folder = os.path.join(root, base)
     suffix = 1
     while os.path.exists(folder):
@@ -604,9 +613,10 @@ def base_report(mode, now, identity, access):
         "mode": mode,
         "configuration": {
             "scope": "PRESELECTED_DIRECT_COMPONENT_OCCURRENCES_ATOMIC_BATCH",
-            "attribute_title": REFERENCE_ATTRIBUTE,
+            "attribute_title": BOM_EXCLUSION_ATTRIBUTE,
             "attribute_type": "STRING", "attribute_index": -1,
-            "attribute_value": "", "force_load": False,
+            "attribute_value": BOM_EXCLUSION_VALUE, "force_load": False,
+            "native_reference_attribute_read_only": True,
             "max_selection": None,
             "automatic_checkout": False, "automatic_save": False,
             "automatic_checkin": False,
@@ -614,7 +624,7 @@ def base_report(mode, now, identity, access):
         "assembly": identity, "selection": {"count": 0, "source": "NX_PRESELECTION"},
         "access": access, "targets": [],
         "action": {
-            "api": "Component.SetInstanceUserAttribute(REFERENCE_COMPONENT, -1, blank, Update.Option.Now)",
+            "api": "Component.SetInstanceUserAttribute(CELESTICA_BOM_EXCLUDE_SUBTREE, -1, YES, Update.Option.Now)",
             "attempted": False, "attempted_count": 0, "applied_count": 0,
             "undo_mark_name": UNDO_MARK_NAME,
             "undo_mark_created": False, "successful_change_left_undoable": False,
@@ -680,6 +690,8 @@ def csv_rows(report):
             "SUPPRESSED": "YES" if snapshot.get("suppressed") else "NO",
             "REFERENCE_COMPONENT_BEFORE": control_summary(before, REFERENCE_ATTRIBUTE),
             "REFERENCE_COMPONENT_AFTER": control_summary(after, REFERENCE_ATTRIBUTE),
+            "BOM_EXCLUSION_BEFORE": control_summary(before, BOM_EXCLUSION_ATTRIBUTE),
+            "BOM_EXCLUSION_AFTER": control_summary(after, BOM_EXCLUSION_ATTRIBUTE),
             "PLIST_IGNORE_MEMBER_PRESENT": (
                 "YES" if controls.get("PLIST_IGNORE_MEMBER", {}).get("present") else "NO"
             ),
@@ -745,9 +757,9 @@ def rollback_to_before_batch(session, mark, entries, root, work_part):
         try:
             after = component_snapshot(entry["component"], root, work_part)
             target["after"] = after
-            expect_reference = before["controls"][REFERENCE_ATTRIBUTE]["present"]
+            expect_bom_exclusion = before["controls"][BOM_EXCLUSION_ATTRIBUTE]["present"]
             errors = stable_snapshot_errors(
-                before, after, expect_reference=expect_reference
+                before, after, expect_bom_exclusion=expect_bom_exclusion
             )
             if errors:
                 result["verification_errors"].append({
@@ -785,8 +797,8 @@ def perform_apply_batch(session, work_part, root, entries, report):
     ]
     if not eligible:
         set_verdict(
-            report, "ALREADY_REFERENCE_ONLY",
-            "Every selected occurrence already has the exact J28-proven Reference-Only attribute; nothing was changed.",
+            report, "ALREADY_BOM_EXCLUDED",
+            "Every selected occurrence already has the exact custom BoM exclusion marker; nothing was changed.",
         )
         return None
     try:
@@ -803,23 +815,24 @@ def perform_apply_batch(session, work_part, root, entries, report):
             target = entry["report"]
             before = target["before"]
             target["action"]["attempted"] = True
-            target["action"]["status"] = "SET_REFERENCE_ONLY"
+            target["action"]["status"] = "SET_BOM_EXCLUSION"
             report["action"]["attempted_count"] += 1
             try:
                 component.SetInstanceUserAttribute(
-                    REFERENCE_ATTRIBUTE, -1, "", NXOpen.Update.Option.Now,
+                    BOM_EXCLUSION_ATTRIBUTE, -1, BOM_EXCLUSION_VALUE,
+                    NXOpen.Update.Option.Now,
                 )
                 after = component_snapshot(component, root, work_part)
                 target["after_attempt"] = after
                 errors = stable_snapshot_errors(
-                    before, after, expect_reference=True
+                    before, after, expect_bom_exclusion=True
                 )
                 target["action"]["verification_errors"] = errors
                 if errors:
                     raise VerificationError(errors, snapshot=after)
                 target["after"] = after
                 target["status"] = "APPLIED_VERIFIED"
-                target["message"] = "The exact blank REFERENCE_COMPONENT occurrence attribute was written and verified."
+                target["message"] = "The exact occurrence-level CELESTICA_BOM_EXCLUDE_SUBTREE=YES marker was written and verified; native REFERENCE_COMPONENT was unchanged."
                 report["action"]["applied_count"] += 1
             except Exception as error:
                 target["action"]["error"] = error_text(error)
@@ -829,7 +842,7 @@ def perform_apply_batch(session, work_part, root, entries, report):
         report["action"]["successful_change_left_undoable"] = True
         set_verdict(
             report, "APPLIED_VERIFIED",
-            "Applied and verified {0} occurrence(s); {1} were already Reference-Only. The parent assembly remains unsaved under one visible NX undo mark.".format(
+            "Applied and verified {0} custom BoM exclusion(s); {1} were already excluded. Native REFERENCE_COMPONENT was unchanged. The parent assembly remains unsaved under one visible NX undo mark.".format(
                 report["action"]["applied_count"],
                 len(entries) - len(eligible),
             ),
@@ -946,7 +959,7 @@ def run(session, selection_manager, run_datetime=None, mode=None):
             if tag in seen_tags:
                 raise RuntimeError("This component occurrence is duplicated in the selection.")
             seen_tags.add(tag)
-            reference = before["controls"][REFERENCE_ATTRIBUTE]
+            bom_exclusion = before["controls"][BOM_EXCLUSION_ATTRIBUTE]
             conflicts = [
                 title for title in CONFLICT_ATTRIBUTES
                 if before["controls"][title]["present"]
@@ -956,19 +969,19 @@ def run(session, selection_manager, run_datetime=None, mode=None):
                 target["message"] = "The occurrence already has {0}; J29 will not combine or replace native BoM controls.".format(
                     ", ".join(conflicts)
                 )
-            elif reference["present"]:
-                errors = reference_contract_errors(before, require_present=True)
+            elif bom_exclusion["present"]:
+                errors = bom_exclusion_contract_errors(before, require_present=True)
                 target["action"]["verification_errors"] = errors
                 if errors:
-                    target["status"] = "BLOCKED_NONSTANDARD_REFERENCE"
-                    target["message"] = "REFERENCE_COMPONENT exists but does not match the J28 V2 contract; J29 will not overwrite it."
+                    target["status"] = "BLOCKED_NONSTANDARD_BOM_EXCLUSION"
+                    target["message"] = "CELESTICA_BOM_EXCLUDE_SUBTREE exists but is not the exact direct string value YES; J29 will not overwrite it."
                 else:
-                    target["status"] = "ALREADY_REFERENCE_ONLY"
-                    target["message"] = "The exact Reference-Only occurrence attribute is already present."
+                    target["status"] = "ALREADY_BOM_EXCLUDED"
+                    target["message"] = "The exact occurrence-level custom BoM exclusion marker is already present; native REFERENCE_COMPONENT is unchanged."
                     target["after"] = before
             else:
                 target["status"] = "ELIGIBLE"
-                target["message"] = "The occurrence is eligible for the exact blank REFERENCE_COMPONENT attribute."
+                target["message"] = "The occurrence is eligible for CELESTICA_BOM_EXCLUDE_SUBTREE=YES; native REFERENCE_COMPONENT will remain unchanged."
         except Exception as error:
             target["status"] = "BLOCKED_SELECTION"
             target["message"] = error_text(error)
@@ -993,11 +1006,11 @@ def run(session, selection_manager, run_datetime=None, mode=None):
         if eligible_count:
             set_verdict(report, "DRY_RUN_READY", "The complete selection passed preflight; APPLY would update {0} occurrence(s).".format(eligible_count))
         else:
-            set_verdict(report, "ALREADY_REFERENCE_ONLY", "Every selected occurrence is already Reference-Only; nothing would change.")
+            set_verdict(report, "ALREADY_BOM_EXCLUDED", "Every selected occurrence already has the custom BoM exclusion marker; nothing would change.")
     elif not any(target["status"] == "ELIGIBLE" for target in report["targets"]):
         set_verdict(
-            report, "ALREADY_REFERENCE_ONLY",
-            "Every selected occurrence is already Reference-Only; no write access or undo mark was required.",
+            report, "ALREADY_BOM_EXCLUDED",
+            "Every selected occurrence already has the custom BoM exclusion marker; no write access or undo mark was required.",
         )
     else:
         access = inspect_write_access(session, work_part)
@@ -1017,7 +1030,7 @@ def main():
     session = NXOpen.Session.GetSession()
     mode = configured_mode()
     log_line(session, "=" * 72)
-    log_line(session, "J29 SET SELECTED COMPONENTS TO REFERENCE-ONLY")
+    log_line(session, "J29 SET SELECTED COMPONENT OCCURRENCES TO CUSTOM BOM EXCLUSION")
     log_line(session, "Build: " + BUILD)
     log_line(session, "Mode: " + mode)
     log_line(
@@ -1027,6 +1040,7 @@ def main():
         ),
     )
     log_line(session, "J29 never scans/loads the tree, checks out, checks in, or saves.")
+    log_line(session, "J29 never changes native REFERENCE_COMPONENT; untick it in the NX UI for JT visibility.")
     log_line(session, "=" * 72)
     try:
         selection_manager = NXOpen.UI.GetUI().SelectionManager

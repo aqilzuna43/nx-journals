@@ -59,6 +59,8 @@ DEFAULT_LIFECYCLE = "DRAFT"
 # List of keywords in part names to automatically exclude from the BOM
 # (e.g., coordinate systems, datums, skeletons). Case-insensitive.
 IGNORE_KEYWORDS = ["CSYS", "COORDINATE", "DATUM", "REFERENCE", "SKELETON"]
+BOM_EXCLUSION_ATTRIBUTE = "CELESTICA_BOM_EXCLUDE_SUBTREE"
+BOM_EXCLUSION_VALUE = "YES"
 # ---------------------
 
 def get_safe_attribute(nx_object, attr_name, attr_type="String"):
@@ -148,12 +150,21 @@ def walk_assembly_tree(component, level, csv_writer, quantity=1):
                     should_ignore = True
                     break
                     
-            # 2. Skip if it's marked as a "Reference-Only" component in NX Properties
+            # 2. Skip native NX reference/parts-list controls or the Celestica
+            # occurrence-only BoM exclusion marker. The custom marker is kept
+            # separate from REFERENCE_COMPONENT so JT geometry remains eligible.
             is_ref = get_safe_attribute(child, "REFERENCE_COMPONENT")
             is_plist_ignore = get_safe_attribute(child, "PLIST_IGNORE_MEMBER")
+            is_custom_bom_exclusion = get_safe_attribute(
+                child, BOM_EXCLUSION_ATTRIBUTE
+            )
             
             # NX natively uses an empty string ("") to mark these, but we keep "YES" just in case of manual overrides
-            if is_ref in ["", "YES", "1", "True", "true", "yes"] or is_plist_ignore in ["", "YES", "1", "True", "true", "yes"]:
+            if (
+                is_ref in ["", "YES", "1", "True", "true", "yes"]
+                or is_plist_ignore in ["", "YES", "1", "True", "true", "yes"]
+                or is_custom_bom_exclusion == BOM_EXCLUSION_VALUE
+            ):
                 should_ignore = True
                 
             if should_ignore:
