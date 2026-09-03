@@ -29,9 +29,9 @@ import NXOpen.UF
 # ============================================================================
 # USER SETTINGS - EDIT ONLY THESE TWO LINES FOR NORMAL NX USE
 # Paste the full path of the Journal 14 input CSV between the quotes.
-USER_PART_NAME_CSV = r""
+USER_PART_NAME_CSV = r"C:\Users\my62022696\Desktop\NX_PART_NAME_UPDATE.csv"
 # Keep DRY_RUN for validation. The only other valid value is APPLY_APPROVED.
-USER_MODE = "DRY_RUN"
+USER_MODE = "APPLY_APPROVED"
 # Optional environment overrides:
 #   NX_PART_NAME_UPDATE_FILE=<full CSV path>
 #   NX_J14_MODE=DRY_RUN or APPLY_APPROVED

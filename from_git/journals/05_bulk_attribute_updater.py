@@ -25,9 +25,9 @@ import NXOpen.PDM
 # ============================================================================
 # USER SETTINGS - EDIT ONLY THESE TWO LINES FOR NORMAL NX USE
 # Paste the full path of the CSV created by Journal 04 between the quotes.
-USER_UPDATE_CSV = r""
+USER_UPDATE_CSV = r"C:\Users\my62022696\Desktop\NX_ATTRIBUTE_UPDATE_DB_264MN033036A01_A_20260903_234733.csv"
 # Keep DRY_RUN for validation. The only other valid value is APPLY_APPROVED.
-USER_MODE = "DRY_RUN"
+USER_MODE = "APPLY_APPROVED"
 # PowerShell variables NX_ATTRIBUTE_UPDATE_FILE and NX_J05_MODE, when set,
 # override these values for automated or advanced use.
 # ============================================================================
