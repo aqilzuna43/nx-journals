@@ -1,0 +1,72 @@
+{
+  "action": "UNFREEZE",
+  "after": {
+    "checkout": {
+      "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+      "owner": "aqil ameran (99946e1828964542b86c86d6c2cf3cbe)",
+      "owner_is_current_user": true,
+      "raw": "(True, 'aqil ameran (99946e1828964542b86c86d6c2cf3cbe)')",
+      "state": "CHECKED_OUT"
+    },
+    "component_name": "264MN033038A01/A",
+    "component_tag": "63618",
+    "db_part_rev": "A",
+    "part_identifier": "@DB/264MN033038A01/A",
+    "part_modified": false,
+    "part_number": "264MN033038A01",
+    "read_only": false,
+    "wae_attribute": {
+      "locked": false,
+      "not_saved": false,
+      "owned_by_system": false,
+      "pdm_based": false,
+      "type": "STRING",
+      "unset": false,
+      "value": "7"
+    },
+    "wae_version": 7,
+    "wae_version_raw": "7"
+  },
+  "before": {
+    "checkout": {
+      "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+      "owner": "",
+      "owner_is_current_user": null,
+      "raw": "(False, '')",
+      "state": "CHECKED_IN"
+    },
+    "component_name": "264MN033038A01/A",
+    "component_tag": "63618",
+    "db_part_rev": "A",
+    "part_identifier": "@DB/264MN033038A01/A",
+    "part_modified": false,
+    "part_number": "264MN033038A01",
+    "read_only": true,
+    "wae_attribute": {
+      "locked": false,
+      "not_saved": false,
+      "owned_by_system": false,
+      "pdm_based": false,
+      "type": "STRING",
+      "unset": false,
+      "value": "6"
+    },
+    "wae_version": 6,
+    "wae_version_raw": "6"
+  },
+  "build": "J31-NX2506-CAD-UNFREEZE-V3",
+  "message": "Selected component remains checked out at WAE_VERSION 7; CAD editing may begin.",
+  "mode": "APPLY",
+  "next_wae_version": 7,
+  "operation_raw": "<NXOpen.PDM.OperationErrors object at 0x000001D3970184B0>",
+  "operations": {
+    "checkin_attempted": false,
+    "checkout_attempted": true,
+    "formal_revision_created": false,
+    "save_attempted": true,
+    "wae_write_attempted": true
+  },
+  "result": "UNFROZEN_READY_FOR_EDIT",
+  "scope": "ONE_PRESELECTED_COMPONENT_PROTOTYPE",
+  "timestamp": "2026-09-04T01:13:15+08:00"
+}
