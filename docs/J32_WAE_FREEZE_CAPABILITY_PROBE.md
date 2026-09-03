@@ -14,10 +14,9 @@ Teamcenter-enforced WAE freeze without assuming that check-in is a lock.
 
 ## Safety boundary
 
-J32 reads runtime metadata and the known read-only checkout-status query. It
-does not invoke any discovered candidate API. It never checks out, checks in,
-saves, changes an attribute, applies a release status, starts a workflow, or
-creates a Teamcenter revision.
+J32 reads runtime metadata and known read-only status queries. It never checks
+out, checks in, saves, changes an attribute, applies a release status, starts
+a workflow, or creates a Teamcenter revision.
 
 The JSON includes public runtime member names and filtered candidates matching
 lock, release, status, workflow, access, checkout/check-in, lifecycle, and
@@ -25,6 +24,13 @@ related terms. V2 reads each candidate member without invoking it and records
 its `__doc__`, `__text_signature__`, annotations, overload representation,
 `repr`, and `inspect.signature` result. Where the Python binding permits it,
 read-only .NET reflection also records candidate parameter and return types.
+
+V3 additionally invokes only the documented read operations
+`GetNXWorkflows([part])`, `GetReleaseStatus()`, and
+`GetInternalReleaseStatus([part])`. It records a complete target snapshot
+before and after those calls and fails the read-only postcondition if checkout
+state, write access, modification state, identity, WAE version, or relevant
+attributes change.
 
 ## NX acceptance run
 

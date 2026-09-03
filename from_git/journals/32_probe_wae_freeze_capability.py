@@ -3,8 +3,8 @@
 Run with exactly one preselected Assembly Navigator component, or with no
 selection to inspect the active work part.  The journal inventories runtime
 members whose names may expose locking, lifecycle, workflow, release-status,
-or access-control capabilities.  It never invokes any candidate capability
-and never checks out, checks in, saves, releases, or writes an NX attribute.
+or access-control capabilities.  V3 invokes only documented read queries and
+never checks out, checks in, saves, releases, or writes an NX attribute.
 """
 
 import datetime
@@ -18,7 +18,7 @@ import NXOpen
 import NXOpen.PDM
 
 
-BUILD = "J32-NX2506-WAE-FREEZE-CAPABILITY-PROBE-V2"
+BUILD = "J32-NX2506-WAE-FREEZE-CAPABILITY-PROBE-V3"
 OUTPUT_FOLDER = "NX_WAE_CHANGE_CONTROL"
 CANDIDATE_PATTERN = re.compile(
     r"lock|unlock|release|status|workflow|access|checkout|checkin|reserve|"
@@ -309,6 +309,113 @@ def relevant_attributes(part):
     return rows
 
 
+def target_snapshot(session, component, part, source):
+    return {
+        "source": source,
+        "component_name": clean(safe_property(component, "DisplayName", ""))
+        or clean(safe_property(component, "Name", "")),
+        "component_tag": clean(safe_property(component, "Tag", "")),
+        "part_identifier": part_identifier(part),
+        "part_number": read_identity(part, "DB_PART_NO"),
+        "db_part_rev": read_identity(part, "DB_PART_REV"),
+        "wae_version": read_identity(part, "WAE_VERSION"),
+        "read_only": safe_property(part, "IsReadOnly"),
+        "modified": bool(safe_property(part, "IsModified", False)),
+        "checkout": checkout_snapshot(session, part),
+        "relevant_attributes": relevant_attributes(part),
+    }
+
+
+def read_workflows(pdm_session, part):
+    result = {
+        "api": "PdmSession.GetNXWorkflows",
+        "attempted": True,
+        "workflow_names": [],
+        "operation_errors_repr": "",
+        "raw_repr": "",
+        "error": "",
+    }
+    operation_errors = None
+    try:
+        method = getattr(pdm_session, "GetNXWorkflows", None)
+        if not callable(method):
+            raise RuntimeError("PdmSession.GetNXWorkflows is unavailable.")
+        raw = method([part])
+        result["raw_repr"] = repr(raw)[:12000]
+        if not isinstance(raw, (tuple, list)) or len(raw) < 2:
+            raise RuntimeError(
+                "GetNXWorkflows returned an unexpected value: {0}".format(
+                    result["raw_repr"]
+                )
+            )
+        operation_errors = raw[0]
+        names = raw[1]
+        result["operation_errors_repr"] = repr(operation_errors)[:4000]
+        if isinstance(names, str):
+            names = [names]
+        result["workflow_names"] = [clean(name) for name in names if clean(name)]
+    except Exception as error:
+        result["error"] = error_text(error)
+    finally:
+        dispose(operation_errors)
+    return result
+
+
+def read_release_status(pdm_part):
+    result = {
+        "api": "PdmPart.GetReleaseStatus",
+        "attempted": True,
+        "value": "",
+        "raw_repr": "",
+        "error": "",
+    }
+    try:
+        method = getattr(pdm_part, "GetReleaseStatus", None)
+        if not callable(method):
+            raise RuntimeError("PdmPart.GetReleaseStatus is unavailable.")
+        raw = method()
+        result["raw_repr"] = repr(raw)[:12000]
+        result["value"] = clean(raw)
+    except Exception as error:
+        result["error"] = error_text(error)
+    return result
+
+
+def read_internal_release_status(pdm_part, part):
+    result = {
+        "api": "PdmPart.GetInternalReleaseStatus",
+        "attempted": True,
+        "values": [],
+        "raw_repr": "",
+        "error": "",
+    }
+    try:
+        method = getattr(pdm_part, "GetInternalReleaseStatus", None)
+        if not callable(method):
+            raise RuntimeError("PdmPart.GetInternalReleaseStatus is unavailable.")
+        raw = method([part])
+        result["raw_repr"] = repr(raw)[:12000]
+        values = [raw] if isinstance(raw, str) else raw
+        result["values"] = [clean(value) for value in values]
+    except Exception as error:
+        result["error"] = error_text(error)
+    return result
+
+
+def snapshot_differences(before, after):
+    keys = (
+        "part_identifier",
+        "part_number",
+        "db_part_rev",
+        "wae_version",
+        "read_only",
+        "modified",
+        "checkout",
+        "relevant_attributes",
+    )
+    return [key for key in keys if before.get(key) != after.get(key)]
+
+
 def base_report():
     return {
         "build": BUILD,
@@ -325,9 +432,16 @@ def base_report():
             "attribute_write_attempted": False,
             "release_attempted": False,
             "workflow_attempted": False,
-            "candidate_api_invoked": False,
+            "mutating_candidate_api_invoked": False,
+            "read_only_api_calls_attempted": False,
         },
         "target": {},
+        "target_after_read_queries": {},
+        "read_only_postcondition": {
+            "unchanged": None,
+            "different_fields": [],
+        },
+        "read_api_results": {},
         "runtime_objects": [],
     }
 
@@ -338,20 +452,7 @@ def execute(session, selection_manager):
         component, part, source = resolve_target(session, selection_manager)
         pdm_part = safe_property(part, "PDMPart")
         pdm_session = safe_property(session, "PdmSession")
-        report["target"] = {
-            "source": source,
-            "component_name": clean(safe_property(component, "DisplayName", ""))
-            or clean(safe_property(component, "Name", "")),
-            "component_tag": clean(safe_property(component, "Tag", "")),
-            "part_identifier": part_identifier(part),
-            "part_number": read_identity(part, "DB_PART_NO"),
-            "db_part_rev": read_identity(part, "DB_PART_REV"),
-            "wae_version": read_identity(part, "WAE_VERSION"),
-            "read_only": safe_property(part, "IsReadOnly"),
-            "modified": bool(safe_property(part, "IsModified", False)),
-            "checkout": checkout_snapshot(session, part),
-            "relevant_attributes": relevant_attributes(part),
-        }
+        report["target"] = target_snapshot(session, component, part, source)
         objects = [
             ("target_part", part),
             ("target_pdm_part", pdm_part),
@@ -371,10 +472,38 @@ def execute(session, selection_manager):
                 })
             else:
                 report["runtime_objects"].append(inspect_object(label, value))
-        report["result"] = "PROBE_COMPLETE"
-        report["message"] = (
-            "Runtime capability inventory completed without invoking candidate APIs."
+        report["operations"]["read_only_api_calls_attempted"] = True
+        report["read_api_results"] = {
+            "get_nx_workflows": read_workflows(pdm_session, part),
+            "get_release_status": read_release_status(pdm_part),
+            "get_internal_release_status": read_internal_release_status(pdm_part, part),
+        }
+        report["target_after_read_queries"] = target_snapshot(
+            session, component, part, source
         )
+        differences = snapshot_differences(
+            report["target"], report["target_after_read_queries"]
+        )
+        report["read_only_postcondition"] = {
+            "unchanged": not differences,
+            "different_fields": differences,
+        }
+        query_errors = [
+            value["error"]
+            for value in report["read_api_results"].values()
+            if value["error"]
+        ]
+        if differences:
+            report["result"] = "READ_ONLY_POSTCONDITION_FAILED"
+            report["message"] = "Read-query state changed: " + ", ".join(differences)
+        elif query_errors:
+            report["result"] = "PROBE_COMPLETE_WITH_QUERY_ERRORS"
+            report["message"] = "Read-only query errors: " + " | ".join(query_errors)
+        else:
+            report["result"] = "PROBE_COMPLETE"
+            report["message"] = (
+                "Workflow and release-status queries completed with unchanged target state."
+            )
     except Exception as error:
         report["message"] = error_text(error)
         report["traceback"] = traceback.format_exc()
@@ -415,7 +544,7 @@ def main():
     session = NXOpen.Session.GetSession()
     log_line(session, "=" * 72)
     log_line(session, BUILD)
-    log_line(session, "READ ONLY: no candidate freeze/release/lock API will be invoked.")
+    log_line(session, "READ ONLY: no mutating freeze/release/lock API will be invoked.")
     try:
         selection_manager = NXOpen.UI.GetUI().SelectionManager
         report = execute(session, selection_manager)

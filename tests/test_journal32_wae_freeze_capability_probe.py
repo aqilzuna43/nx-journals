@@ -104,6 +104,51 @@ class TestJ32CapabilityProbe(unittest.TestCase):
         self.assertTrue(report["operations"])
         self.assertFalse(any(report["operations"].values()))
 
+    def test_v3_reads_workflow_names_and_releases_operation_errors(self):
+        operation_errors = types.SimpleNamespace(FreeResource=mock.Mock())
+        pdm_session = types.SimpleNamespace(
+            GetNXWorkflows=mock.Mock(
+                return_value=(operation_errors, ["WAE Freeze", "WAE Unfreeze"])
+            )
+        )
+        part = object()
+        result = self.journal.read_workflows(pdm_session, part)
+        pdm_session.GetNXWorkflows.assert_called_once_with([part])
+        operation_errors.FreeResource.assert_called_once_with()
+        self.assertEqual(["WAE Freeze", "WAE Unfreeze"], result["workflow_names"])
+        self.assertEqual("", result["error"])
+
+    def test_v3_reads_display_and_internal_release_status(self):
+        pdm_part = types.SimpleNamespace(
+            GetReleaseStatus=mock.Mock(return_value="WAE Frozen"),
+            GetInternalReleaseStatus=mock.Mock(return_value=["WAE_FROZEN"]),
+        )
+        part = object()
+        display = self.journal.read_release_status(pdm_part)
+        internal = self.journal.read_internal_release_status(pdm_part, part)
+        pdm_part.GetReleaseStatus.assert_called_once_with()
+        pdm_part.GetInternalReleaseStatus.assert_called_once_with([part])
+        self.assertEqual("WAE Frozen", display["value"])
+        self.assertEqual(["WAE_FROZEN"], internal["values"])
+
+    def test_snapshot_difference_detects_any_control_state_change(self):
+        before = {
+            "part_identifier": "@DB/P1/A",
+            "part_number": "P1",
+            "db_part_rev": "A",
+            "wae_version": "6",
+            "read_only": False,
+            "modified": False,
+            "checkout": {"state": "CHECKED_OUT"},
+            "relevant_attributes": [],
+        }
+        self.assertEqual([], self.journal.snapshot_differences(before, dict(before)))
+        after = dict(before)
+        after["wae_version"] = "7"
+        self.assertEqual(
+            ["wae_version"], self.journal.snapshot_differences(before, after)
+        )
+
     def test_source_never_calls_mutating_nx_methods(self):
         tree = ast.parse(JOURNAL_PATH.read_text(encoding="utf-8"))
         forbidden = {
