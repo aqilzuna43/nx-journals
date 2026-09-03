@@ -1,0 +1,155 @@
+{
+  "action": "FREEZE",
+  "build": "J30-NX2506-CAD-FREEZE-V3",
+  "counts": {
+    "blocked": 0,
+    "failed": 1,
+    "succeeded": 0
+  },
+  "duplicate_occurrences_collapsed": 0,
+  "failed_stage": "VERIFY_FROZEN_POSTCONDITIONS",
+  "message": "Frozen target still has write access: 264MN033038A01",
+  "mode": "APPLY",
+  "operation_raw": {
+    "checkin": "<NXOpen.PDM.OperationErrors object at 0x000001D3A4B1A450>",
+    "freeze_status": "<NXOpen.PDM.OperationErrors object at 0x000001D3A4B1A630>"
+  },
+  "operations": {
+    "checkin_attempted": true,
+    "checkout_attempted": false,
+    "formal_revision_created": false,
+    "freeze_status_attempted": true,
+    "save_attempted": true,
+    "unfreeze_status_attempted": false,
+    "wae_write_attempted": false
+  },
+  "preflight": {
+    "errors": [],
+    "passed": true
+  },
+  "required_workflow": "Part_Freeze_Process",
+  "result": "RECOVERY_REQUIRED",
+  "scope": "SELECTED_COMPONENT_PROTOTYPES_OR_ACTIVE_WORK_PART",
+  "selected_object_count": 1,
+  "target_source": "ASSEMBLY_NAVIGATOR_SELECTION",
+  "targeting_rule": "Use all preselected Assembly Navigator component prototypes; otherwise use only the active work part.",
+  "targets": [
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN033038A01/A",
+        "component_tag": "63618",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN033038A01/A",
+        "part_modified": false,
+        "part_number": "264MN033038A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "8"
+        },
+        "wae_version": 8,
+        "wae_version_raw": "8"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "aqil ameran (99946e1828964542b86c86d6c2cf3cbe)",
+          "owner_is_current_user": true,
+          "raw": "(True, 'aqil ameran (99946e1828964542b86c86d6c2cf3cbe)')",
+          "state": "CHECKED_OUT"
+        },
+        "component_name": "264MN033038A01/A",
+        "component_tag": "63618",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": true
+        },
+        "part_identifier": "@DB/264MN033038A01/A",
+        "part_modified": false,
+        "part_number": "264MN033038A01",
+        "read_only": false,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "8"
+        },
+        "wae_version": 8,
+        "wae_version_raw": "8"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V3",
+      "message": "Inspect before/after state and recover manually.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": true,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": true,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "SAVE_CHECKIN_AND_ASSIGN_FREEZE_STATUS",
+      "result": "RECOVERY_REQUIRED",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        1
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 1
+    }
+  ],
+  "timestamp": "2026-09-04T01:23:47+08:00",
+  "unique_target_count": 1,
+  "workflow_query": {
+    "names": [
+      "Design_Release_Process",
+      "Design_Release_Process_With_Approver",
+      "Part_Freeze_Process",
+      "Part_Unfreeze_Process"
+    ],
+    "operation_errors": "<NXOpen.PDM.OperationErrors object at 0x000001D3A4B191F0>",
+    "raw": "(<NXOpen.PDM.OperationErrors object at 0x000001D3A4B191F0>, ['Design_Release_Process', 'Design_Release_Process_With_Approver', 'Part_Freeze_Process', 'Part_Unfreeze_Process'])"
+  }
+}
