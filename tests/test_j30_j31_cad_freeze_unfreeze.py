@@ -24,7 +24,12 @@ def load_common():
 
 
 def snapshot(state, version=1, owner="", current_user="aqil", read_only=True,
-             release_status="", internal_status=None):
+             release_status="", internal_status=None, has_write_access=None,
+             pdm_modifiable=None):
+    if has_write_access is None:
+        has_write_access = not read_only
+    if pdm_modifiable is None:
+        pdm_modifiable = not read_only
     return {
         "component_name": "COMPONENT", "component_tag": "10",
         "part_identifier": "@DB/P1/A", "part_number": "P1",
@@ -46,8 +51,8 @@ def snapshot(state, version=1, owner="", current_user="aqil", read_only=True,
             "internal_raw": repr(internal_status or []), "errors": [],
         },
         "modifiability": {
-            "has_write_access": not read_only,
-            "pdm_modifiable": not read_only,
+            "has_write_access": has_write_access,
+            "pdm_modifiable": pdm_modifiable,
             "errors": [],
         },
         "read_only": read_only, "part_modified": False,
@@ -96,6 +101,15 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertIn('run_ui("UNFREEZE"', J31_PATH.read_text(encoding="utf-8"))
         self.assertIn('USER_MODE = "APPLY"', J30_PATH.read_text(encoding="utf-8"))
         self.assertIn('USER_MODE = "APPLY"', J31_PATH.read_text(encoding="utf-8"))
+        self.assertEqual("WAE-CHANGE-CONTROL-V4", self.common.COMMON_BUILD)
+        self.assertIn(
+            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"',
+            J30_PATH.read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"',
+            J31_PATH.read_text(encoding="utf-8"),
+        )
 
     def test_wae_version_is_strict_positive_integer(self):
         self.assertEqual(1, self.common.parse_wae_version("1"))
@@ -134,6 +148,88 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertEqual([0, 2], targets[0]["selected_indexes"])
         self.assertEqual(2, targets[0]["occurrence_count"])
 
+    def test_active_assembly_selection_is_excluded_when_children_are_selected(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        child_part = types.SimpleNamespace(PDMPart=object(), Tag=200)
+        root = types.SimpleNamespace(Prototype=work, IsSuppressed=False, Tag=10)
+        child = types.SimpleNamespace(
+            Prototype=child_part, IsSuppressed=False, Tag=11
+        )
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        report = self.common.batch_report("UNFREEZE", "J31", "APPLY")
+        targets, count = self.common.selected_or_work_targets(
+            session, FakeSelectionManager([root, child]), report
+        )
+        self.assertEqual(2, count)
+        self.assertEqual([child_part], [row["part"] for row in targets])
+        self.assertEqual(
+            "ACTIVE_WORK_PART_FALLBACK_CANDIDATE",
+            report["selected_objects"][0]["resolution"],
+        )
+
+    def test_selected_geometry_resolves_through_owning_component(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        child_part = types.SimpleNamespace(PDMPart=object(), Tag=200)
+        child = types.SimpleNamespace(
+            Prototype=child_part, IsSuppressed=False, Tag=11
+        )
+        face = types.SimpleNamespace(OwningComponent=child, Tag=501)
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        report = self.common.batch_report("UNFREEZE", "J31", "APPLY")
+        targets, _ = self.common.selected_or_work_targets(
+            session, FakeSelectionManager([face]), report
+        )
+        self.assertEqual([child_part], [row["part"] for row in targets])
+        self.assertEqual("OWNING_COMPONENT_SELECTION", targets[0]["source"])
+        self.assertEqual(
+            "OWNING_COMPONENT_PROTOTYPE",
+            report["selected_objects"][0]["resolution"],
+        )
+
+    def test_selected_managed_part_is_a_direct_target(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        selected_part = types.SimpleNamespace(PDMPart=object(), Tag=200)
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        targets, count = self.common.selected_or_work_targets(
+            session, FakeSelectionManager([selected_part])
+        )
+        self.assertEqual(1, count)
+        self.assertEqual([selected_part], [row["part"] for row in targets])
+        self.assertEqual("MANAGED_PART_SELECTION", targets[0]["source"])
+
+    def test_only_unresolved_selection_falls_back_to_active_work_part(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        unrelated = types.SimpleNamespace(Tag=400)
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        report = self.common.batch_report("UNFREEZE", "J31", "APPLY")
+        targets, count = self.common.selected_or_work_targets(
+            session, FakeSelectionManager([unrelated]), report
+        )
+        self.assertEqual(1, count)
+        self.assertEqual([work], [row["part"] for row in targets])
+        self.assertEqual("ACTIVE_WORK_PART", targets[0]["source"])
+        self.assertEqual([0], targets[0]["selected_indexes"])
+        self.assertEqual(
+            "IGNORED_FOR_ACTIVE_WORK_PART_FALLBACK",
+            report["selected_objects"][0]["resolution"],
+        )
+
+    def test_mixed_valid_and_unresolved_selection_blocks_complete_batch(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        child_part = types.SimpleNamespace(PDMPart=object(), Tag=200)
+        child = types.SimpleNamespace(
+            Prototype=child_part, IsSuppressed=False, Tag=11
+        )
+        unrelated = types.SimpleNamespace(Tag=400)
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        report = self.common.batch_report("UNFREEZE", "J31", "APPLY")
+        with self.assertRaisesRegex(RuntimeError, "complete batch was blocked"):
+            self.common.selected_or_work_targets(
+                session, FakeSelectionManager([child, unrelated]), report
+            )
+        self.assertEqual(2, report["selected_object_count"])
+        self.assertEqual(2, len(report["selected_objects"]))
+
     def test_selected_subassembly_does_not_recurse(self):
         prototype = types.SimpleNamespace(PDMPart=object(), Tag=300)
         component = types.SimpleNamespace(
@@ -145,12 +241,6 @@ class TestJ30J31Contract(unittest.TestCase):
         )
         self.assertEqual([prototype], [row["part"] for row in targets])
         component.GetChildren.assert_not_called()
-
-    def test_selected_non_component_is_rejected(self):
-        with self.assertRaisesRegex(RuntimeError, "not a loaded Assembly Navigator component"):
-            self.common.selected_or_work_targets(
-                object(), FakeSelectionManager([types.SimpleNamespace(Tag=400)])
-            )
 
     def test_freeze_and_unfreeze_status_classification(self):
         frozen = snapshot("CHECKED_IN", release_status="Frozen",
@@ -175,7 +265,10 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertEqual("ASSIGN_FREEZE_STATUS", report["planned_action"])
 
     def test_freeze_preflight_accepts_positive_frozen_read_only_target(self):
-        frozen = snapshot("CHECKED_IN", release_status="Frozen", read_only=True)
+        frozen = snapshot(
+            "CHECKED_IN", release_status="Frozen", read_only=True,
+            has_write_access=True, pdm_modifiable=False,
+        )
         with mock.patch.object(self.common, "target_snapshot", return_value=frozen):
             report = self.common.make_target_report(
                 "FREEZE", object(), target(object()), "J30", "APPLY", 0
@@ -242,8 +335,14 @@ class TestJ30J31Contract(unittest.TestCase):
             ready_report(self.common, "FREEZE", second_before,
                          "ASSIGN_FREEZE_STATUS", 2),
         ]
-        frozen_first = snapshot("CHECKED_IN", release_status="Frozen", read_only=True)
-        frozen_second = snapshot("CHECKED_IN", release_status="Frozen", read_only=True)
+        frozen_first = snapshot(
+            "CHECKED_IN", release_status="Frozen", read_only=True,
+            has_write_access=True, pdm_modifiable=False,
+        )
+        frozen_second = snapshot(
+            "CHECKED_IN", release_status="Frozen", read_only=True,
+            has_write_access=True, pdm_modifiable=False,
+        )
         batch = self.common.batch_report("FREEZE", "J30", "APPLY")
         with mock.patch.object(
             self.common, "target_snapshot",
@@ -314,6 +413,17 @@ class TestJ30J31Contract(unittest.TestCase):
             report = self.common.execute("FREEZE", object(), object(), "J30", "APPLY")
         self.assertEqual("RECOVERY_REQUIRED", report["result"])
         self.assertIn("Teamcenter failed", report["message"])
+
+    def test_recovery_recognizes_frozen_part_when_has_write_access_is_true(self):
+        before = snapshot("CHECKED_OUT", owner="aqil", read_only=False)
+        after = snapshot(
+            "CHECKED_IN", release_status="Frozen", read_only=True,
+            has_write_access=True, pdm_modifiable=False,
+        )
+        report = self.common.base_report("FREEZE", "J30", "APPLY")
+        report.update({"before": before, "after": after})
+        self.common.mark_recovery_results("FREEZE", [report])
+        self.assertEqual("FROZEN", report["result"])
 
     def test_dry_run_preflights_but_does_not_mutate(self):
         targets = [target(object())]

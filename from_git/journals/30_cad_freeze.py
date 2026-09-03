@@ -1,8 +1,9 @@
 """Journal 30 - freeze active CAD or selected assembly components.
 
 Preselect one or more component rows in Assembly Navigator and run this
-journal to freeze their unique loaded prototypes.  With no preselection, the
-active work part is the sole target. APPLY preflights the complete batch,
+journal to freeze their unique loaded prototypes. Geometry is normalized via
+its owning component. With no resolved component selection, the active work
+part is the sole target. APPLY preflights the complete batch,
 saves and checks in writable targets, applies Teamcenter's configured
 Part_Freeze_Process, and verifies a frozen/read-only status without changing
 the formal revision or WAE_VERSION.
@@ -15,7 +16,8 @@ import importlib.util
 import os
 
 
-BUILD = "J30-NX2506-CAD-FREEZE-V3"
+BUILD = "J30-NX2506-CAD-FREEZE-V4"
+EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"
 USER_MODE = "APPLY"  # APPLY or DRY_RUN
 
 
@@ -28,6 +30,13 @@ def _load_common():
     spec = importlib.util.spec_from_file_location("nx_wae_change_control_j30", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    actual_build = getattr(module, "COMMON_BUILD", "<missing>")
+    if actual_build != EXPECTED_COMMON_BUILD:
+        raise RuntimeError(
+            "J30 helper version mismatch: expected {0}, loaded {1} from {2}".format(
+                EXPECTED_COMMON_BUILD, actual_build, path
+            )
+        )
     return module
 
 

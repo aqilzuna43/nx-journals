@@ -12,6 +12,7 @@ import NXOpen.PDM
 
 VALID_ACTIONS = ("FREEZE", "UNFREEZE")
 VALID_MODES = ("DRY_RUN", "APPLY")
+COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"
 ATTRIBUTE_CATEGORY = "WAEItem"
 WAE_VERSION_TITLE = "WAE_VERSION"
 DB_PART_NO_TITLE = "DB_PART_NO"
@@ -77,6 +78,29 @@ def managed_mode(session, part):
     return part_identifier(part).upper().startswith("@DB/")
 
 
+def runtime_type_name(value):
+    value_type = type(value)
+    module_name = clean(getattr(value_type, "__module__", ""))
+    type_name = clean(getattr(value_type, "__name__", "")) or clean(value_type)
+    return "{0}.{1}".format(module_name, type_name) if module_name else type_name
+
+
+def selection_diagnostic(selected, index):
+    owner = safe_property(selected, "OwningComponent")
+    prototype = safe_property(selected, "Prototype")
+    return {
+        "index": index + 1,
+        "runtime_type": runtime_type_name(selected),
+        "tag": clean(safe_property(selected, "Tag")),
+        "name": clean(safe_property(selected, "DisplayName"))
+        or clean(safe_property(selected, "Name")),
+        "has_prototype": prototype is not None,
+        "has_pdm_part": safe_property(selected, "PDMPart") is not None,
+        "owning_component_tag": clean(safe_property(owner, "Tag")),
+        "resolution": "UNRESOLVED",
+    }
+
+
 def component_target(component, index):
     """Validate one selected Assembly Navigator component."""
     prototype = safe_property(component, "Prototype")
@@ -98,61 +122,117 @@ def component_target(component, index):
     return prototype
 
 
-def selected_or_work_targets(session, selection_manager):
-    """Resolve selected unique prototypes, or the active work part if none."""
+def active_work_target(session, selected_indexes=None):
+    parts = safe_property(session, "Parts")
+    work_part = safe_property(parts, "Work")
+    if work_part is None:
+        raise RuntimeError(
+            "No component target was resolved and there is no active work part."
+        )
+    if safe_property(work_part, "PDMPart") is None:
+        raise RuntimeError("The active work part has no PDMPart; open a managed CAD part.")
+    return {
+        "component": None,
+        "part": work_part,
+        "source": "ACTIVE_WORK_PART",
+        "selected_indexes": list(selected_indexes or []),
+        "occurrence_count": 1,
+    }
+
+
+def selected_or_work_targets(session, selection_manager, report=None):
+    """Resolve unique selected CAD parts, or fall back to the active work part."""
     try:
         count = int(selection_manager.GetNumSelectedObjects())
     except Exception as error:
         raise RuntimeError("Could not inspect NX preselection: " + error_text(error))
 
-    if count == 0:
-        parts = safe_property(session, "Parts")
-        work_part = safe_property(parts, "Work")
-        if work_part is None:
-            raise RuntimeError(
-                "No Assembly Navigator components are selected and there is no active work part."
-            )
-        if safe_property(work_part, "PDMPart") is None:
-            raise RuntimeError("The active work part has no PDMPart; open a managed CAD part.")
-        return [{
-            "component": None,
-            "part": work_part,
-            "source": "ACTIVE_WORK_PART",
-            "selected_indexes": [],
-            "occurrence_count": 1,
-        }], count
+    diagnostics = []
+    if report is not None:
+        report["selected_object_count"] = count
+        report["selected_objects"] = diagnostics
 
+    if count == 0:
+        return [active_work_target(session)], count
+
+    parts = safe_property(session, "Parts")
+    work_part = safe_property(parts, "Work")
     targets = []
     targets_by_key = {}
+    unresolved_indexes = []
+    active_part_indexes = []
     for index in range(count):
         try:
-            component = selection_manager.GetSelectedTaggedObject(index)
+            selected = selection_manager.GetSelectedTaggedObject(index)
         except Exception as error:
             raise RuntimeError(
                 "Could not read selected NX object {0}: {1}".format(
                     index + 1, error_text(error)
                 )
             )
-        prototype = component_target(component, index)
-        key = object_key(prototype)
+        diagnostic = selection_diagnostic(selected, index)
+        diagnostics.append(diagnostic)
+
+        component = None
+        part = None
+        source = ""
+        prototype_marker = object()
+        direct_prototype = safe_property(selected, "Prototype", prototype_marker)
+        if direct_prototype is not prototype_marker:
+            component = selected
+            part = component_target(component, index)
+            source = "ASSEMBLY_NAVIGATOR_SELECTION"
+            diagnostic["resolution"] = "COMPONENT_PROTOTYPE"
+        else:
+            owner = safe_property(selected, "OwningComponent")
+            if owner is not None:
+                component = owner
+                part = component_target(component, index)
+                source = "OWNING_COMPONENT_SELECTION"
+                diagnostic["resolution"] = "OWNING_COMPONENT_PROTOTYPE"
+            elif safe_property(selected, "PDMPart") is not None:
+                part = selected
+                source = "MANAGED_PART_SELECTION"
+                diagnostic["resolution"] = "MANAGED_PART"
+            else:
+                unresolved_indexes.append(index)
+                continue
+
+        if work_part is not None and same_nx_object(part, work_part):
+            active_part_indexes.append(index)
+            diagnostic["resolution"] = "ACTIVE_WORK_PART_FALLBACK_CANDIDATE"
+            continue
+
+        key = object_key(part)
         existing = targets_by_key.get(key)
         if existing is not None:
             existing["selected_indexes"].append(index)
             existing["occurrence_count"] += 1
+            if existing["component"] is None and component is not None:
+                existing["component"] = component
             continue
         target = {
             "component": component,
-            "part": prototype,
-            "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+            "part": part,
+            "source": source,
             "selected_indexes": [index],
             "occurrence_count": 1,
         }
         targets_by_key[key] = target
         targets.append(target)
-    if not targets:
+
+    if unresolved_indexes and targets:
+        unresolved = ", ".join(str(index + 1) for index in unresolved_indexes)
         raise RuntimeError(
-            "No unique loaded component prototypes were resolved from the selection."
+            "Selected object(s) {0} did not resolve to managed CAD targets; "
+            "the complete batch was blocked.".format(unresolved)
         )
+    if not targets:
+        fallback_indexes = active_part_indexes + unresolved_indexes
+        for diagnostic in diagnostics:
+            if diagnostic["resolution"] == "UNRESOLVED":
+                diagnostic["resolution"] = "IGNORED_FOR_ACTIVE_WORK_PART_FALLBACK"
+        return [active_work_target(session, fallback_indexes)], count
     return targets, count
 
 
@@ -639,6 +719,7 @@ def base_report(action, build, mode):
 def batch_report(action, build, mode):
     return {
         "build": build,
+        "helper_build": COMMON_BUILD,
         "timestamp": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "action": action,
         "mode": mode,
@@ -649,6 +730,7 @@ def batch_report(action, build, mode):
         ),
         "target_source": "",
         "selected_object_count": 0,
+        "selected_objects": [],
         "unique_target_count": 0,
         "duplicate_occurrences_collapsed": 0,
         "result": "BLOCKED",
@@ -703,8 +785,6 @@ def make_target_report(action, session, target, build, mode, index):
                 if (
                     before["checkout"]["state"] != "CHECKED_IN"
                     or before["read_only"] is not True
-                    or modifiability.get("errors")
-                    or modifiability.get("has_write_access") is not False
                     or modifiability.get("pdm_modifiable") is not False
                 ):
                     raise RuntimeError(
@@ -776,7 +856,6 @@ def mark_recovery_results(action, reports):
                     and after.get("wae_version") == before.get("wae_version")
                     and (after.get("checkout") or {}).get("state") == "CHECKED_IN"
                     and after.get("read_only") is True
-                    and (after.get("modifiability") or {}).get("has_write_access") is False
                     and (after.get("modifiability") or {}).get("pdm_modifiable") is False
                     and is_frozen_status(after)
                 )
@@ -860,14 +939,6 @@ def execute_freeze_batch(session, targets, reports, batch):
         if after["read_only"] is not True:
             raise RuntimeError("Frozen target is not read-only: " + after["part_number"])
         modifiability = after.get("modifiability") or {}
-        if modifiability.get("errors"):
-            raise RuntimeError(
-                "Frozen modifiability query failed for {0}: {1}.".format(
-                    after["part_number"], " | ".join(modifiability["errors"])
-                )
-            )
-        if modifiability.get("has_write_access") is not False:
-            raise RuntimeError("Frozen target still has write access: " + after["part_number"])
         if modifiability.get("pdm_modifiable") is not False:
             raise RuntimeError("Frozen target remains PDM-modifiable: " + after["part_number"])
         if not is_frozen_status(after):
@@ -973,14 +1044,18 @@ def execute(action, session, selection_manager, build, mode):
         raise RuntimeError("Mode must be DRY_RUN or APPLY.")
     report = batch_report(action, build, mode)
     try:
-        targets, selected_count = selected_or_work_targets(session, selection_manager)
+        targets, selected_count = selected_or_work_targets(
+            session, selection_manager, report
+        )
     except Exception as error:
         report["message"] = error_text(error)
         return report
 
     report["selected_object_count"] = selected_count
     report["unique_target_count"] = len(targets)
-    report["duplicate_occurrences_collapsed"] = max(0, selected_count - len(targets))
+    report["duplicate_occurrences_collapsed"] = sum(
+        max(0, target["occurrence_count"] - 1) for target in targets
+    )
     report["target_source"] = targets[0]["source"]
     required_workflow = FREEZE_WORKFLOW if action == "FREEZE" else UNFREEZE_WORKFLOW
     report["required_workflow"] = required_workflow
@@ -1084,7 +1159,7 @@ def run_ui(action, build, user_mode, environment_name):
     log_line(session, "{0} | {1}".format(build, mode))
     log_line(
         session,
-        "Target: all preselected Assembly Navigator components, or active work part when none are selected.",
+        "Target: unique selected component/owning-component CAD parts, or the active work part when none resolve.",
     )
     try:
         selection_manager = NXOpen.UI.GetUI().SelectionManager

@@ -23,17 +23,25 @@ normal NX/Teamcenter revise UI.
 
 ## Targeting rule
 
-- One or more preselected Assembly Navigator rows: process only their unique,
-  loaded component prototypes.
-- No preselection: process only the active NX work part.
+- One or more preselected Assembly Navigator component rows: process only
+  their unique, loaded prototypes.
+- Selected geometry is normalized through `OwningComponent`; a selected
+  managed part may also be used directly.
+- If NX reports no selection, or none of the reported selections resolves to
+  a component/managed-part target, process only the active NX work part. This
+  handles stale face/body/root selections that otherwise suppress fallback.
 - A selection always excludes the active parent assembly unless it is itself
   explicitly opened and targeted with no selection.
 - Selecting a subassembly targets only that subassembly CAD file; descendants
   are never traversed.
 - Repeated occurrences of one prototype are collapsed. J31 increments that
   prototype once, not once per occurrence.
-- A non-component, suppressed, unloaded, or unmanaged selected object blocks
-  the complete batch.
+- A suppressed, unloaded, or unmanaged component blocks the complete batch.
+  An unrelated selection mixed with valid CAD targets also blocks the batch;
+  unrelated selections are ignored only when active-work-part fallback is
+  used.
+- Audit JSON records the runtime type and resolution of every NX-selected
+  object in `selected_objects`.
 
 ## Complete-batch preflight
 
@@ -58,8 +66,9 @@ For every preflighted target:
 4. J30 calls `PdmSession.AssignFreezeStatus(parts,
    "Part_Freeze_Process")` once for every non-frozen target in the batch.
 5. Every final target must positively show a freeze status, `CHECKED_IN`,
-   read-only, `HasWriteAccess=False`, `IsModifiable()=False`, unchanged
-   `DB_PART_REV`, and unchanged `WAE_VERSION`.
+   read-only, `IsModifiable()=False`, unchanged `DB_PART_REV`, and unchanged
+   `WAE_VERSION`. `HasWriteAccess` remains diagnostic only: NX X 2506 runtime
+   evidence shows it may remain true for a genuinely frozen/read-only part.
 
 Only then does the batch report `ALL_TARGETS_FROZEN`.
 
@@ -94,6 +103,10 @@ rerun blindly; inspect the JSON and recover the affected targets first.
 Both journals default to `APPLY` for their NX toolbar buttons. Set
 `NX_J30_MODE=DRY_RUN` or `NX_J31_MODE=DRY_RUN` before starting NX for a
 non-mutating complete-batch preflight.
+
+J30 and J31 V4 require the shared helper build
+`WAE-CHANGE-CONTROL-V4`. A partial deployment stops with a helper-version
+mismatch instead of running older behavior under a newer journal build label.
 
 Audit JSON is written beneath:
 
