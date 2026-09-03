@@ -21,8 +21,10 @@ creates a Teamcenter revision.
 
 The JSON includes public runtime member names and filtered candidates matching
 lock, release, status, workflow, access, checkout/check-in, lifecycle, and
-related terms. Where the Python binding permits it, read-only .NET reflection
-also records candidate method parameter and return types.
+related terms. V2 reads each candidate member without invoking it and records
+its `__doc__`, `__text_signature__`, annotations, overload representation,
+`repr`, and `inspect.signature` result. Where the Python binding permits it,
+read-only .NET reflection also records candidate parameter and return types.
 
 ## NX acceptance run
 

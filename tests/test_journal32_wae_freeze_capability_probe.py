@@ -82,6 +82,22 @@ class TestJ32CapabilityProbe(unittest.TestCase):
         self.assertNotIn("Save", names)
         self.assertNotIn("Name", names)
 
+    def test_candidate_metadata_captures_signature_without_invocation(self):
+        calls = []
+
+        def assign_freeze_status(parts, include_secondary=False):
+            """Fake freeze signature for read-only metadata testing."""
+            calls.append((parts, include_secondary))
+
+        value = types.SimpleNamespace(AssignFreezeStatus=assign_freeze_status)
+        rows = self.journal.candidate_member_metadata(value)
+        self.assertEqual([], calls)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("AssignFreezeStatus", rows[0]["name"])
+        self.assertTrue(rows[0]["callable"])
+        self.assertIn("parts", rows[0]["inspect_signature"])
+        self.assertIn("Fake freeze signature", rows[0]["doc"])
+
     def test_report_declares_every_mutation_guard_false(self):
         report = self.journal.base_report()
         self.assertTrue(report["strictly_read_only"])

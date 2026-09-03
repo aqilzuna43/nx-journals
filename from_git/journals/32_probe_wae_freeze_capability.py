@@ -8,6 +8,7 @@ and never checks out, checks in, saves, releases, or writes an NX attribute.
 """
 
 import datetime
+import inspect
 import json
 import os
 import re
@@ -17,7 +18,7 @@ import NXOpen
 import NXOpen.PDM
 
 
-BUILD = "J32-NX2506-WAE-FREEZE-CAPABILITY-PROBE-V1"
+BUILD = "J32-NX2506-WAE-FREEZE-CAPABILITY-PROBE-V2"
 OUTPUT_FOLDER = "NX_WAE_CHANGE_CONTROL"
 CANDIDATE_PATTERN = re.compile(
     r"lock|unlock|release|status|workflow|access|checkout|checkin|reserve|"
@@ -173,6 +174,59 @@ def candidate_member_names(value):
     return [name for name in public_member_names(value) if CANDIDATE_PATTERN.search(name)]
 
 
+def annotation_strings(value):
+    annotations = getattr(value, "__annotations__", None)
+    if not isinstance(annotations, dict):
+        return {}
+    return {
+        clean(key): clean(annotation)
+        for key, annotation in annotations.items()
+    }
+
+
+def candidate_member_metadata(value, names=None):
+    """Inspect callable metadata without invoking any discovered member."""
+    rows = []
+    for name in names or candidate_member_names(value):
+        row = {
+            "name": name,
+            "lookup_error": "",
+            "python_type": "",
+            "callable": False,
+            "repr": "",
+            "doc": "",
+            "text_signature": "",
+            "inspect_signature": "",
+            "inspect_signature_error": "",
+            "annotations": {},
+            "overloads_repr": "",
+        }
+        try:
+            member = getattr(value, name)
+            row["python_type"] = object_type(member)
+            row["callable"] = callable(member)
+            row["repr"] = repr(member)[:4000]
+            row["doc"] = clean(getattr(member, "__doc__", ""))[:12000]
+            row["text_signature"] = clean(
+                getattr(member, "__text_signature__", "")
+            )[:4000]
+            row["annotations"] = annotation_strings(member)
+            overloads = getattr(member, "__overloads__", None)
+            if overloads is None:
+                overloads = getattr(member, "Overloads", None)
+            if overloads is not None:
+                row["overloads_repr"] = repr(overloads)[:12000]
+            if row["callable"]:
+                try:
+                    row["inspect_signature"] = str(inspect.signature(member))
+                except Exception as error:
+                    row["inspect_signature_error"] = error_text(error)
+        except Exception as error:
+            row["lookup_error"] = error_text(error)
+        rows.append(row)
+    return rows
+
+
 def reflection_signatures(value):
     """Read .NET metadata only; do not invoke any discovered candidate member."""
     result = {"runtime_type": "", "methods": [], "properties": [], "error": ""}
@@ -214,11 +268,13 @@ def reflection_signatures(value):
 
 def inspect_object(label, value):
     members = public_member_names(value)
+    candidates = [name for name in members if CANDIDATE_PATTERN.search(name)]
     return {
         "label": label,
         "python_type": object_type(value),
         "all_public_members": members,
-        "candidate_members": [name for name in members if CANDIDATE_PATTERN.search(name)],
+        "candidate_members": candidates,
+        "candidate_details": candidate_member_metadata(value, candidates),
         "dotnet_reflection": reflection_signatures(value),
     }
 
@@ -310,6 +366,7 @@ def execute(session, selection_manager):
                     "python_type": "",
                     "all_public_members": [],
                     "candidate_members": [],
+                    "candidate_details": [],
                     "dotnet_reflection": {"error": "Object unavailable"},
                 })
             else:
