@@ -67,6 +67,9 @@ shared helpers from `from_git\utils`.
 | 24 | `from_git/journals/24_repair_hla_isolate_visibility.py` | Guarded display-only causal test and repair: uses the NX Python one-input isolate API, tests the selected parent then mapped unsuppressed descendants, compares active/returned/layout views, records exact before/after JSON evidence, and provides an NX undo mark without saving |
 | 28 | `from_git/journals/28_probe_bom_structure.py` | Memory-safe read-only occurrence checkpoint using three targeted Reference-Only/parts-list control probes; no full attribute inventories or UF stable-ID calls |
 | 29 | `from_git/journals/29_set_selected_component_bom_exclusion.py` | APPLY-default atomic batch writer for the occurrence-level `CELESTICA_BOM_EXCLUDE_SUBTREE=YES` marker on 1–100 selected direct occurrences; automatically unticks native Reference-Only when present, with same-Teamcenter-user ID matching, per-target CSV/JSON, read-back verification, whole-batch undo rollback, and no load/checkout/save |
+| 30 | `from_git/journals/30_cad_freeze.py` | Native Teamcenter WAE freeze for the active work part or unique selected component prototypes |
+| 31 | `from_git/journals/31_cad_unfreeze.py` | Native WAE unfreeze, batch checkout, and one-version increment per unique target |
+| 32 | `from_git/journals/32_probe_wae_freeze_capability.py` | Read-only NX X 2506 freeze-workflow and release-status capability probe |
 
 ## Key Runtime Notes
 

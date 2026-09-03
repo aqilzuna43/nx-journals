@@ -1,10 +1,11 @@
-"""Journal 30 - freeze one selected CAD component at its current WAE version.
+"""Journal 30 - freeze active CAD or selected assembly components.
 
-Preselect exactly one component row in Assembly Navigator, then run this
-journal from its NX UI button.  APPLY saves only the selected component's
-loaded prototype, checks in only that prototype, and verifies that the formal
-Teamcenter revision and WAE_VERSION did not change.  A component that is
-already checked in is verified without mutation.
+Preselect one or more component rows in Assembly Navigator and run this
+journal to freeze their unique loaded prototypes.  With no preselection, the
+active work part is the sole target. APPLY preflights the complete batch,
+saves and checks in writable targets, applies Teamcenter's configured
+Part_Freeze_Process, and verifies a frozen/read-only status without changing
+the formal revision or WAE_VERSION.
 
 This journal never writes WAE_VERSION and never creates or revises a
 Teamcenter Item Revision.  Target: NX X 2506 embedded Python.
@@ -14,7 +15,7 @@ import importlib.util
 import os
 
 
-BUILD = "J30-NX2506-CAD-FREEZE-V1"
+BUILD = "J30-NX2506-CAD-FREEZE-V3"
 USER_MODE = "APPLY"  # APPLY or DRY_RUN
 
 

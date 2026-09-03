@@ -1,9 +1,10 @@
-"""Journal 31 - unfreeze one selected CAD component and advance WAE_VERSION.
+"""Journal 31 - unfreeze active CAD or selected assembly components.
 
-Preselect exactly one component row in Assembly Navigator, then run this
-journal from its NX UI button.  APPLY requires the selected component's
-loaded prototype to be checked in, explicitly checks out only that prototype,
-increments WAEItem/WAE_VERSION by exactly one, rereads it, saves it, and
+Preselect one or more component rows in Assembly Navigator and run this
+journal to unfreeze their unique loaded prototypes.  With no preselection,
+the active work part is the sole target. APPLY preflights the complete batch,
+applies Teamcenter's configured Part_Unfreeze_Process, checks out each target,
+increments WAEItem/WAE_VERSION by exactly one, rereads and saves it, and
 leaves it checked out for CAD editing.
 
 Rerunning against a checked-out component is blocked, preventing an accidental
@@ -15,7 +16,7 @@ import importlib.util
 import os
 
 
-BUILD = "J31-NX2506-CAD-UNFREEZE-V1"
+BUILD = "J31-NX2506-CAD-UNFREEZE-V3"
 USER_MODE = "APPLY"  # APPLY or DRY_RUN
 
 

@@ -44,8 +44,8 @@ Available production journals:
 27_move_assembly_components_to_layer_1.py Guarded direct-component layer migration
 28_probe_bom_structure.py      Memory-safe targeted BoM-control checkpoint
 29_set_selected_component_bom_exclusion.py Atomic custom BoM-subtree exclusion + native Reference-Only untick
-30_cad_freeze.py              Freeze one selected component at its current WAE version
-31_cad_unfreeze.py            Unfreeze one selected component and increment WAE_VERSION
+30_cad_freeze.py              Freeze active/selected CAD through Part_Freeze_Process
+31_cad_unfreeze.py            Unfreeze active/selected CAD and increment WAE_VERSION
 32_probe_wae_freeze_capability.py Read-only NX/Teamcenter WAE lock API inventory
 ```
 
@@ -167,13 +167,17 @@ matching `CLOSED_AUTO` matrix through `Parts.OpenDisplay`. Results are written
 under `NX_PDF_DIAGNOSTIC`. J12 does not change layer states, update or save the
 drawing, and closes only the drawing it opened.
 
-J30 and J31 are separate NX X 2506 UI-button journals for one preselected
-Assembly Navigator component. J30 saves and checks in only its loaded
-prototype, preserving `WAE_VERSION`. J31 requires that prototype to start
-checked in, checks out only that prototype, increments `WAE_VERSION` by exactly
-one, verifies and saves it, then leaves it checked out for CAD editing. Both
-journals read but never write `DB_PART_REV`, and neither scans or modifies the
-BoM. See `docs/J30_J31_CAD_FREEZE_UNFREEZE.md`.
+J30 and J31 are separate NX X 2506 UI-button journals. With selected Assembly
+Navigator rows they process every unique selected prototype; with no selection
+they process only the active work part. They never recurse into a selected
+subassembly. J30 saves/checks in as needed, then runs `Part_Freeze_Process` and
+verifies frozen, checked-in, read-only targets without changing `WAE_VERSION`.
+J31 requires that frozen baseline, runs `Part_Unfreeze_Process`, checks out the
+complete batch, increments each unique target's `WAE_VERSION` exactly once,
+verifies and saves it, then leaves it checked out for CAD editing. Complete
+preflight is all-or-nothing; a runtime failure stops immediately and reports
+`RECOVERY_REQUIRED`. Neither journal writes `DB_PART_REV` or traverses the BoM.
+See `docs/J30_J31_CAD_FREEZE_UNFREEZE.md`.
 
 J25 handles the migration case where one 3D Item/Revision has `dwg1`, `dwg2`,
 and other non-master drawing specifications but only one final DWG may remain.

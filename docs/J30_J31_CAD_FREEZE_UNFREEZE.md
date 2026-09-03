@@ -1,69 +1,123 @@
-# J30/J31 — Selected-component CAD Freeze and Unfreeze
+# J30/J31 — WAE CAD Freeze and Unfreeze
 
-These are two separate NX X 2506 UI-button entry journals backed by the shared
-`from_git/utils/wae_change_control.py` helper. They act on exactly one
-preselected component prototype and never traverse or modify the BoM.
-
-## Controlled lifecycle
+J30 and J31 are separate NX X 2506 UI-button journals. They use the native
+Teamcenter workflows proven by J32 runtime evidence:
 
 ```text
-Rev A / WAE 1 / CHECKED_IN
-  -> press J31 CAD Unfreeze
-  -> checkout selected prototype
-  -> WAE_VERSION 1 -> 2
-  -> reread and save
-  -> Rev A / WAE 2 / CHECKED_OUT (ready for CAD editing)
-
-After editing:
-  -> press J30 CAD Freeze
-  -> save selected prototype
-  -> check in selected prototype
-  -> Rev A / WAE 2 / CHECKED_IN (frozen baseline)
+J30: Part_Freeze_Process
+J31: Part_Unfreeze_Process
 ```
 
-Only the selected component prototype is targeted. `DB_PART_REV` is read and
-verified but never written. Formal Teamcenter revision changes continue through
-the normal NX/TCX UI.
+This separates formal configuration revision from working CAD iteration:
 
-## J30 CAD Freeze
+```text
+TCX Rev A / WAE 1 / editable
+  -> J30 Freeze
+TCX Rev A / WAE 1 / frozen baseline
+  -> J31 Unfreeze
+TCX Rev A / WAE 2 / editable
+```
 
-File: `from_git/journals/30_cad_freeze.py`
+Neither journal creates or writes `DB_PART_REV`. Formal changes still use the
+normal NX/Teamcenter revise UI.
 
-- Requires exactly one preselected, loaded, Teamcenter-managed component.
-- If already checked in, reports `FROZEN_VERIFIED` without mutation.
-- Otherwise requires checkout ownership by the current Teamcenter user.
-- Saves and checks in only the selected prototype.
-- Verifies `CHECKED_IN`, unchanged `DB_PART_REV`, and unchanged `WAE_VERSION`.
+## Targeting rule
 
-## J31 CAD Unfreeze
+- One or more preselected Assembly Navigator rows: process only their unique,
+  loaded component prototypes.
+- No preselection: process only the active NX work part.
+- A selection always excludes the active parent assembly unless it is itself
+  explicitly opened and targeted with no selection.
+- Selecting a subassembly targets only that subassembly CAD file; descendants
+  are never traversed.
+- Repeated occurrences of one prototype are collapsed. J31 increments that
+  prototype once, not once per occurrence.
+- A non-component, suppressed, unloaded, or unmanaged selected object blocks
+  the complete batch.
 
-File: `from_git/journals/31_cad_unfreeze.py`
+## Complete-batch preflight
 
-- Requires exactly one preselected, loaded, Teamcenter-managed component.
-- Requires the component to start positively `CHECKED_IN`.
-- Computes the next value internally; operators cannot enter an arbitrary value.
-- Checks out only the selected prototype with secondary inclusion disabled.
-- Writes only `WAEItem/WAE_VERSION`, rereads it, and saves the prototype.
-- Leaves the component checked out for CAD modification.
-- Blocks reruns while the component remains checked out, preventing a second increment.
+Before any mutation, both journals resolve every target, query the configured
+workflows, read checkout ownership, read display/internal release status, and
+validate `DB_PART_REV` plus the exact positive-integer `WAEItem/WAE_VERSION`.
 
-Both journals default to `APPLY` for direct NX button use. For a non-mutating
-preflight, set `NX_J30_MODE=DRY_RUN` or `NX_J31_MODE=DRY_RUN` before launching NX.
+If any unique target fails preflight, the result is `BLOCKED_BATCH` and nothing
+is saved, checked in/out, frozen/unfrozen, or written. A non-freeze release
+status also blocks the batch so these journals cannot bypass formal release.
 
-Audit JSON files are written beneath:
+## J30 Freeze
+
+For every preflighted target:
+
+1. An already frozen target must be checked in and read-only.
+2. A checked-in but unfrozen target still requires the freeze workflow;
+   check-in alone is not considered frozen.
+3. A checked-out target must be writable and owned by the current Teamcenter
+   user. J30 saves it without changing revision or WAE, then batch-checks in
+   only those checked-out targets.
+4. J30 calls `PdmSession.AssignFreezeStatus(parts,
+   "Part_Freeze_Process")` once for every non-frozen target in the batch.
+5. Every final target must positively show a freeze status, `CHECKED_IN`,
+   read-only, `HasWriteAccess=False`, `IsModifiable()=False`, unchanged
+   `DB_PART_REV`, and unchanged `WAE_VERSION`.
+
+Only then does the batch report `ALL_TARGETS_FROZEN`.
+
+## J31 Unfreeze
+
+Every target must start positively frozen and `CHECKED_IN`. A checked-out
+target blocks the complete batch, preventing a second WAE increment.
+
+1. J31 calls `PdmSession.AssignUnfreezeStatus(parts,
+   "Part_Unfreeze_Process")` once for the complete batch.
+2. It verifies that the freeze status is removed without changing revision,
+   WAE, or checkout state.
+3. It checks out all unique targets in one batch and verifies that every target
+   is writable, has write/modification access, and is owned by the current
+   Teamcenter user.
+4. For each unique prototype, J31 computes the next WAE value internally,
+   writes exactly `current + 1`, rereads it, saves, and verifies it.
+5. Every target remains checked out and unfrozen for CAD editing.
+
+Only then does the batch report `ALL_TARGETS_UNFROZEN`.
+
+## Runtime failure and recovery
+
+Teamcenter workflow, check-in/out, and saved attribute changes do not form one
+rollback transaction. If a mutation fails after execution begins, the journal
+stops immediately and reports `RECOVERY_REQUIRED`, the exact `failed_stage`,
+per-target operation flags, and fresh after-state snapshots. Operators must not
+rerun blindly; inspect the JSON and recover the affected targets first.
+
+## Output and modes
+
+Both journals default to `APPLY` for their NX toolbar buttons. Set
+`NX_J30_MODE=DRY_RUN` or `NX_J31_MODE=DRY_RUN` before starting NX for a
+non-mutating complete-batch preflight.
+
+Audit JSON is written beneath:
 
 ```text
 <NX_JOURNALS_IO_DIR or Desktop>/NX_WAE_CHANGE_CONTROL
 ```
 
-## Initial NX acceptance
+## NX X 2506 acceptance sequence
 
-NX is not installed on this repository host. Before normal production use:
+NX is not installed on this repository host. Local tests prove code and state
+contracts only; the following disposable runtime test is required:
 
-1. Deploy the complete `from_git` folder to the NX X 2506 machine.
-2. Use a disposable Rev A / WAE 1 component.
-3. Run J30 and J31 first with their mode temporarily set to `DRY_RUN`.
-4. Run J31 in `APPLY`; require `UNFROZEN_READY_FOR_EDIT`, WAE 2, and checked out.
-5. Make a harmless CAD edit, then run J30; require `FROZEN_CHECKED_IN`, WAE 2,
-   and checked in.
-6. Retain both JSON files as runtime proof before production rollout.
+1. Deploy the complete `from_git` directory.
+2. Open one disposable `Rev A / WAE 6` CAD part checked out by the operator.
+3. Run J30 in `DRY_RUN`, then `APPLY`.
+4. Require `ALL_TARGETS_FROZEN`, a positive freeze status, checked-in/read-only
+   state, and unchanged `Rev A / WAE 6`.
+5. Attempt normal NX checkout manually. It must be denied while frozen.
+6. Run J31 in `DRY_RUN`, then `APPLY`.
+7. Require `ALL_TARGETS_UNFROZEN`, no protected release status, checked-out and
+   writable state, unchanged Rev A, and WAE 7.
+8. Make and save a harmless CAD edit.
+9. Repeat with two selected unique components, then with duplicate occurrences
+   of one prototype; retain every JSON report as runtime evidence.
+
+Do not use production CAD until the one-part freeze/checkout-denial/unfreeze
+cycle is proven on the actual Teamcenter X tenant.
