@@ -1,0 +1,19 @@
+{
+  "action": "FREEZE",
+  "after": {},
+  "before": {},
+  "build": "J30-NX2506-CAD-FREEZE-V1",
+  "message": "Preselect exactly one component row in Assembly Navigator; found 0.",
+  "mode": "APPLY",
+  "operation_raw": "",
+  "operations": {
+    "checkin_attempted": false,
+    "checkout_attempted": false,
+    "formal_revision_created": false,
+    "save_attempted": false,
+    "wae_write_attempted": false
+  },
+  "result": "BLOCKED",
+  "scope": "ONE_PRESELECTED_COMPONENT_PROTOTYPE",
+  "timestamp": "2026-09-03T23:53:13+08:00"
+}
