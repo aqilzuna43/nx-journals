@@ -46,6 +46,7 @@ Available production journals:
 29_set_selected_component_bom_exclusion.py Atomic custom BoM-subtree exclusion + native Reference-Only untick
 30_cad_freeze.py              Freeze one selected component at its current WAE version
 31_cad_unfreeze.py            Unfreeze one selected component and increment WAE_VERSION
+32_probe_wae_freeze_capability.py Read-only NX/Teamcenter WAE lock API inventory
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
