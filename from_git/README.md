@@ -44,6 +44,8 @@ Available production journals:
 27_move_assembly_components_to_layer_1.py Guarded direct-component layer migration
 28_probe_bom_structure.py      Memory-safe targeted BoM-control checkpoint
 29_set_selected_component_bom_exclusion.py Atomic custom BoM-subtree exclusion + native Reference-Only untick
+30_cad_freeze.py              Freeze one selected component at its current WAE version
+31_cad_unfreeze.py            Unfreeze one selected component and increment WAE_VERSION
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -163,6 +165,14 @@ comparison PDFs. Close the drawing completely and rerun J12 to create the
 matching `CLOSED_AUTO` matrix through `Parts.OpenDisplay`. Results are written
 under `NX_PDF_DIAGNOSTIC`. J12 does not change layer states, update or save the
 drawing, and closes only the drawing it opened.
+
+J30 and J31 are separate NX X 2506 UI-button journals for one preselected
+Assembly Navigator component. J30 saves and checks in only its loaded
+prototype, preserving `WAE_VERSION`. J31 requires that prototype to start
+checked in, checks out only that prototype, increments `WAE_VERSION` by exactly
+one, verifies and saves it, then leaves it checked out for CAD editing. Both
+journals read but never write `DB_PART_REV`, and neither scans or modifies the
+BoM. See `docs/J30_J31_CAD_FREEZE_UNFREEZE.md`.
 
 J25 handles the migration case where one 3D Item/Revision has `dwg1`, `dwg2`,
 and other non-master drawing specifications but only one final DWG may remain.
