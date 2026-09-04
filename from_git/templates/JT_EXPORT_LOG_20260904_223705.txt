@@ -1,0 +1,18 @@
+﻿Journal 33 - CSV-driven JT export
+Journal build: J33-NX2506-DATAPACK-JT-V1
+Journal source: C:\Program Files\Siemens\NXX2506\NXBIN\python\from_git\journals\33_datapack_jt_export.py
+Input CSV: C:\Users\my62022696\Desktop\NX_EXPORT_SCOPE.csv
+JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; tessellation=NX; reference set=default; PMI=part+assembly
+Master resolver: exact @DB/<part>/<rev> with /master fallback
+Managed-mode flag: False (informational only; @DB opens are always attempted)
+Input rows: 1; unique JT requests: 1; ignored: 0; invalid: 0
+[1/1] 264MN024625A01 / A
+  Master already loaded: 264MN024625A01/A;1-ASSY-DCDC
+    JT rejected: FAILED_NO_OUTPUT_FILE - JT builder committed but no output file was created
+  JT: FAILED_NO_OUTPUT_FILE
+Export complete
+Success: 0
+Not found: 0
+Failed: 0
+JT files: 0
+Result report: C:\Users\my62022696\Desktop\NX_BULK_EXPORT\20260904_223705\REPORTS\JT_EXPORT_RESULT_20260904_223705.csv
