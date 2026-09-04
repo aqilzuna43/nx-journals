@@ -60,6 +60,9 @@ class Journal33JtExportTests(unittest.TestCase):
             RefsetOption=types.SimpleNamespace(Default="DEFAULT"),
             PmiOption=types.SimpleNamespace(PartAndAsm="PART_AND_ASM"),
         )
+        self.journal.NXOpen.ListCreator = types.SimpleNamespace(
+            TessellationOption=types.SimpleNamespace(Defined="DEFINED")
+        )
 
     def test_scope_requires_jt_but_accepts_j07_columns(self):
         headers, warnings = self.journal.resolve_headers(
@@ -137,7 +140,11 @@ class Journal33JtExportTests(unittest.TestCase):
 
     def test_jt_builder_contract_is_explicit(self):
         self.install_jt_enums()
-        builder = types.SimpleNamespace(LoadConfigSettings=mock.Mock())
+        appended = []
+        builder = types.SimpleNamespace(
+            NewLevel=lambda: types.SimpleNamespace(),
+            LodList=types.SimpleNamespace(Append=appended.append),
+        )
 
         self.journal.configure_jt_builder(
             builder,
@@ -146,19 +153,21 @@ class Journal33JtExportTests(unittest.TestCase):
         )
 
         self.assertEqual("tessUG.config", builder.ConfigFile)
-        builder.LoadConfigSettings.assert_called_once_with()
         self.assertEqual("part.jt", builder.OutputJtFile)
         self.assertEqual("MONOLITHIC", builder.JtfileStructure)
         self.assertEqual("ALL", builder.JtWrite)
         self.assertTrue(builder.JtParts)
         self.assertTrue(builder.AsmStructure)
         self.assertTrue(builder.PreciseGeom)
-        self.assertEqual("NX", builder.TessOption)
+        self.assertTrue(builder.AutolowLod)
         self.assertEqual("DEFAULT", builder.UseRefset)
         self.assertEqual("PART_AND_ASM", builder.IncludePmi)
         self.assertTrue(builder.ApplyPmi)
-        self.assertFalse(builder.MergeSolids)
-        self.assertFalse(builder.WireFrame)
+        self.assertEqual(1, len(appended))
+        level = appended[0]
+        self.assertEqual("DEFINED", level.TessOption)
+        self.assertEqual(0.001, level.Chordal)
+        self.assertEqual(20.0, level.Angular)
 
     def test_export_creates_one_versioned_jt_and_destroys_builder(self):
         self.install_jt_enums()
@@ -168,6 +177,10 @@ class Journal33JtExportTests(unittest.TestCase):
         class Builder:
             def __init__(self):
                 self.destroyed = False
+                self.LodList = types.SimpleNamespace(Append=lambda level: None)
+
+            def NewLevel(self):
+                return types.SimpleNamespace()
 
             def Commit(self):
                 Path(self.OutputJtFile).write_bytes(b"JT-test")
@@ -208,6 +221,8 @@ class Journal33JtExportTests(unittest.TestCase):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         builder = types.SimpleNamespace(
+            NewLevel=lambda: types.SimpleNamespace(),
+            LodList=types.SimpleNamespace(Append=lambda level: None),
             Commit=mock.Mock(),
             Destroy=mock.Mock(),
         )
@@ -242,6 +257,10 @@ class Journal33JtExportTests(unittest.TestCase):
         class Builder:
             def __init__(self):
                 self.destroyed = False
+                self.LodList = types.SimpleNamespace(Append=lambda level: None)
+
+            def NewLevel(self):
+                return types.SimpleNamespace()
 
             def Commit(self):
                 return None
@@ -287,6 +306,8 @@ class Journal33JtExportTests(unittest.TestCase):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         builder = types.SimpleNamespace(
+            NewLevel=lambda: types.SimpleNamespace(),
+            LodList=types.SimpleNamespace(Append=lambda level: None),
             Validate=mock.Mock(return_value=False),
             Commit=mock.Mock(),
             Destroy=mock.Mock(),
@@ -313,6 +334,56 @@ class Journal33JtExportTests(unittest.TestCase):
         self.assertEqual("FAILED_BUILDER_VALIDATION", result["result"])
         builder.Commit.assert_not_called()
         builder.Destroy.assert_called_once()
+
+    def test_unimplemented_validate_does_not_block_commit(self):
+        # NX 2506 JtCreator.Validate is declared but not implemented and
+        # raises NXException ("Not yet implemented") when called.
+        self.install_jt_enums()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+
+        class Builder:
+            def __init__(self):
+                self.destroyed = False
+                self.committed = False
+                self.LodList = types.SimpleNamespace(Append=lambda level: None)
+
+            def NewLevel(self):
+                return types.SimpleNamespace()
+
+            def Validate(self):
+                raise RuntimeError("Not yet implemented")
+
+            def Commit(self):
+                self.committed = True
+                Path(self.OutputJtFile).write_bytes(b"JT-test")
+
+            def Destroy(self):
+                self.destroyed = True
+
+        builder = Builder()
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                SetDisplay=mock.Mock(return_value=None),
+                SetWork=mock.Mock(),
+            ),
+            PvtransManager=types.SimpleNamespace(
+                CreateJtCreator=mock.Mock(return_value=builder)
+            ),
+        )
+
+        result = self.journal.export_jt_from_part(
+            session,
+            object(),
+            folder.name,
+            "264MN020016A01",
+            "A",
+            "2",
+        )
+
+        self.assertEqual("SUCCESS", result["result"])
+        self.assertTrue(builder.committed)
+        self.assertTrue(builder.destroyed)
 
     def test_exact_identity_mismatch_blocks_builder_commit(self):
         part = types.SimpleNamespace(

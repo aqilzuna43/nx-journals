@@ -245,9 +245,9 @@ timestamp notes are removed through an NX undo mark before J07 continues.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-PDF-STEP-JT-V10
+Journal build: J07-NX2506-PDF-STEP-JT-V11
 Drawing resolver: canonical Teamcenter specification identifier
-JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; tessellation=NX; reference set=default; PMI=part+assembly
+JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; reference set=default; PMI=part+assembly; LOD=defined 0.001 mm / 20 deg + auto-LOW
 ```
 
 ### Journal 07 outputs
@@ -270,15 +270,24 @@ multiple drawing items resolve, the drawing index is appended as `_DWG<n>` to
 avoid collisions.
 
 JT files use `<DB_PART_NO>_REV<DB_PART_REV>.jt`. J07 creates one monolithic
-JT per requested revision with assembly structure, precise geometry, NX
-tessellation, the default reference set, and part/assembly PMI.
+JT per requested revision with assembly structure, precise geometry, the
+default reference set, part/assembly PMI, and one explicit defined LOD level
+(0.001 mm chordal / 20 deg angular) plus auto-LOW - the same tessellation
+contract a recorded interactive File > Export > JT journal uses. An empty
+LOD list leaves the translator without a tessellation instruction and
+Commit() can return without writing a file.
 
-J07 resolves the Siemens translator configuration from the NX installation's
-`PVTRANS\tessUG.config`, assigns it to the JT builder, validates the builder,
-loads its settings, and keeps the builder alive for up to 120 seconds while
-waiting for a nonzero output file. The run log records the selected path on a
-line beginning `JT config:`. If the NX installation uses a custom location,
-set `NX_JT_CONFIG_FILE` to the full config-file path.
+J07 uses the NX JT translator defaults, like the interactive export dialog.
+If the NX installation ships `PVTRANS\tessUG.config` it is resolved and
+assigned to the builder; otherwise the translator defaults are used and the
+log says so. The resolved config path (or the defaults notice) is logged on a
+line beginning `JT config:`. Set `NX_JT_CONFIG_FILE` to pin a specific
+config file (it must exist). Builder validation is attempted only where NX
+implements it - NX 2506 JtCreator.Validate raises "Not yet implemented",
+which is logged and skipped so Commit() still runs. The builder is kept
+alive for up to 120 seconds while waiting for a nonzero output file; a
+failed wait now reports what the JT output folder actually contains,
+including any `.jt.jt`-style double extension.
 `NX_JT_OUTPUT_WAIT_SECONDS` can override the wait (0 to 600 seconds).
 
 Every Journal 07 PDF page receives the native NX draft watermark:
@@ -365,8 +374,8 @@ from_git\journals\33_datapack_jt_export.py
 The listing window must show:
 
 ```text
-Journal build: J33-NX2506-DATAPACK-JT-V2
-JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; tessellation=NX; reference set=default; PMI=part+assembly
+Journal build: J33-NX2506-DATAPACK-JT-V3
+JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; reference set=default; PMI=part+assembly; LOD=defined 0.001 mm / 20 deg + auto-LOW
 ```
 
 Each requested revision produces one monolithic JT file using the same
@@ -385,9 +394,11 @@ before reporting `SUCCESS`. J33 does not save, check out, check in, create a
 Teamcenter dataset, or upload the JT. It restores the original display/work
 parts and closes only parts it opened.
 
-Like J07, J33 requires `PVTRANS\tessUG.config`, logs the resolved path, loads
-the settings, validates the JT builder, and waits for the nonzero output
-before destroying the builder. `NX_JT_CONFIG_FILE` overrides config discovery and
+Like J07, J33 uses the NX JT translator defaults, resolves
+`PVTRANS\tessUG.config` only when the installation ships it, attempts
+builder validation only where NX implements it, and waits for the nonzero
+output before destroying the builder.
+`NX_JT_CONFIG_FILE` pins a custom config path (it must exist) and
 `NX_JT_OUTPUT_WAIT_SECONDS` overrides the default 120-second wait.
 
 The local tests validate parsing, exact-revision gates, builder settings,

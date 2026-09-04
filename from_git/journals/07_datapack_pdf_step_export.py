@@ -21,6 +21,8 @@ For STEP:
 For JT:
 - Reuse the same exact-revision master-part resolution used for STEP.
 - Export one monolithic JT with assembly structure, precise geometry, and PMI.
+- Tessellate with an explicit defined LOD level plus auto-LOW, mirroring a
+  recorded interactive File > Export > JT journal.
 - Verify that the expected JT file exists and is not zero bytes.
 
 Output names:
@@ -49,7 +51,7 @@ import NXOpen.Annotations
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-PDF-STEP-JT-V10"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-STEP-JT-V11"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -82,6 +84,8 @@ JT_CONFIG_ENVIRONMENT_VARIABLE = "NX_JT_CONFIG_FILE"
 JT_OUTPUT_WAIT_ENVIRONMENT_VARIABLE = "NX_JT_OUTPUT_WAIT_SECONDS"
 JT_OUTPUT_WAIT_SECONDS = 120.0
 JT_OUTPUT_POLL_SECONDS = 0.5
+JT_LOD_CHORDAL_TOLERANCE = 0.001
+JT_LOD_ANGULAR_TOLERANCE = 20.0
 
 TRUE_VALUES = {"YES", "Y", "TRUE", "1", "X"}
 FALSE_VALUES = {"", "NO", "N", "FALSE", "0"}
@@ -2106,6 +2110,12 @@ def jt_config_candidates():
 
 
 def resolve_jt_config_file():
+    """Resolve an NX JT tessellation config, or None when not required.
+
+    The interactive File > Export > JT dialog runs without any config file,
+    so a failed auto-discovery is informational, not fatal. An explicit
+    NX_JT_CONFIG_FILE pin that points to a missing file is an error.
+    """
     candidates = jt_config_candidates()
     for candidate in candidates:
         if os.path.isfile(candidate):
@@ -2119,13 +2129,7 @@ def resolve_jt_config_file():
                 candidates[0] if candidates else override,
             )
         )
-    raise RuntimeError(
-        "NX JT config tessUG.config was not found. Checked: {0}. "
-        "Set {1} to the full config-file path.".format(
-            "; ".join(candidates) if candidates else "no candidate paths",
-            JT_CONFIG_ENVIRONMENT_VARIABLE,
-        )
-    )
+    return None
 
 
 def jt_output_wait_seconds():
@@ -2157,32 +2161,75 @@ def wait_for_nonzero_file(path, timeout_seconds, poll_seconds=JT_OUTPUT_POLL_SEC
         time.sleep(min(max(0.01, poll_seconds), remaining))
 
 
-def configure_jt_builder(builder, output_path, config_path):
-    """Apply the explicit J07/J33 JT translation contract."""
-    builder.ConfigFile = config_path
-    load_config = getattr(builder, "LoadConfigSettings", None)
-    if callable(load_config):
-        load_config()
-    builder.OutputJtFile = output_path
+def describe_jt_output_surroundings(output_folder, output_path):
+    """Collect visible evidence when the JT translator commits without output."""
+    evidence = []
+    expected_name = os.path.basename(output_path)
+    folders = (
+        ("JT folder", output_folder),
+        ("JT parent", os.path.dirname(output_folder)),
+    )
+    for label, folder in folders:
+        if not os.path.isdir(folder):
+            evidence.append("{0} does not exist: {1}".format(label, folder))
+            continue
+        try:
+            entries = sorted(os.listdir(folder))
+        except Exception as error:
+            evidence.append("{0} unreadable: {1}".format(label, error))
+            continue
+        jt_entries = [name for name in entries if name.lower().endswith(".jt")]
+        if not jt_entries:
+            evidence.append("{0} contains no *.jt file".format(label))
+            continue
+        evidence.append(
+            "{0} *.jt entries: {1}".format(label, ", ".join(jt_entries))
+        )
+        if expected_name + ".jt" in jt_entries:
+            evidence.append(
+                "possible double extension: NX appended .jt to the "
+                "requested output name"
+            )
+    return " | ".join(evidence)
+
+
+def configure_jt_builder(builder, output_path, config_path=None):
+    """Apply the explicit J07/J33 JT translation contract.
+
+    Mirrors a recorded interactive File > Export > JT journal: an explicit
+    LOD level is appended to the builder LodList (an empty LodList leaves the
+    translator without a tessellation instruction and Commit() can return
+    without writing a file), AutolowLod stays on, and OutputJtFile is the
+    last input before Commit(). A config file is applied only when one was
+    resolved; the interactive export dialog runs without any config file.
+    """
+    if config_path:
+        builder.ConfigFile = config_path
     builder.JtfileStructure = NXOpen.JtCreator.FileStructure.Monolithic
     builder.JtWrite = NXOpen.JtCreator.FileWrite.All
     builder.JtParts = True
     builder.AsmStructure = True
     builder.PreciseGeom = True
-    builder.TessOption = NXOpen.JtCreator.TessellationOption.Nx
     builder.UseRefset = NXOpen.JtCreator.RefsetOption.Default
     builder.IncludePmi = NXOpen.JtCreator.PmiOption.PartAndAsm
     builder.ApplyPmi = True
-    builder.AppendRefset = False
-    builder.MergeSolids = False
-    builder.MergeSheets = False
-    builder.WireFrame = False
+    builder.AutolowLod = True
+    level = builder.NewLevel()
+    level.TessOption = NXOpen.ListCreator.TessellationOption.Defined
+    level.Chordal = JT_LOD_CHORDAL_TOLERANCE
+    level.Angular = JT_LOD_ANGULAR_TOLERANCE
+    builder.LodList.Append(level)
+    builder.OutputJtFile = output_path
 
 
 def jt_settings_summary():
     return (
         "monolithic; write=all; assembly structure=yes; precise geometry=yes; "
-        "tessellation=NX; reference set=default; PMI=part+assembly"
+        "reference set=default; PMI=part+assembly; "
+        "LOD=defined {0:g} mm / {1:g} deg + auto-LOW".format(
+            JT_LOD_CHORDAL_TOLERANCE,
+            JT_LOD_ANGULAR_TOLERANCE,
+        )
     )
 
 
@@ -2216,7 +2263,17 @@ def export_jt_from_part(
         }
 
     wait_seconds = jt_output_wait_seconds()
-    log_line(session, "    JT config: {0}".format(config_path), log_buffer)
+    if config_path:
+        log_line(session, "    JT config: {0}".format(config_path), log_buffer)
+    else:
+        log_line(
+            session,
+            "    JT config: none found - translator defaults will be used "
+            "(set {0} to pin a config)".format(
+                JT_CONFIG_ENVIRONMENT_VARIABLE
+            ),
+            log_buffer,
+        )
     log_line(
         session,
         "    JT output wait: up to {0:.1f} seconds".format(wait_seconds),
@@ -2230,21 +2287,32 @@ def export_jt_from_part(
         configure_jt_builder(builder, output_path, config_path)
         validate = getattr(builder, "Validate", None)
         if callable(validate):
-            valid = bool(validate())
-            log_line(
-                session,
-                "    JT builder validation: {0}".format(valid),
-                log_buffer,
-            )
-            if not valid:
-                return {
-                    "result": "FAILED_BUILDER_VALIDATION",
-                    "path": "",
-                    "size": "",
-                    "message": (
-                        "JT builder validation failed with config {0}"
-                    ).format(config_path),
-                }
+            try:
+                valid = bool(validate())
+                log_line(
+                    session,
+                    "    JT builder validation: {0}".format(valid),
+                    log_buffer,
+                )
+                if not valid:
+                    return {
+                        "result": "FAILED_BUILDER_VALIDATION",
+                        "path": "",
+                        "size": "",
+                        "message": (
+                            "JT builder validation failed with config {0}"
+                        ).format(config_path),
+                    }
+            except Exception as validation_error:
+                # NX 2506 JtCreator.Validate is declared but not
+                # implemented; calling it raises NXException. Proceed to
+                # Commit like a recorded interactive Export JT journal.
+                log_line(
+                    session,
+                    "    JT builder validation unavailable ({0}); "
+                    "proceeding to Commit".format(validation_error),
+                    log_buffer,
+                )
         builder.Commit()
         file_size, waited_seconds = wait_for_nonzero_file(
             output_path,
@@ -2254,14 +2322,21 @@ def export_jt_from_part(
         builder.Destroy()
 
     if VERIFY_OUTPUT_FILES and file_size is None:
+        message = (
+            "JT builder committed with config {0}, but no nonzero output "
+            "file was created within {1:.1f} seconds"
+        ).format(config_path or "(none)", waited_seconds)
+        evidence = describe_jt_output_surroundings(
+            output_folder,
+            output_path,
+        )
+        if evidence:
+            message += " | " + evidence
         return {
             "result": "FAILED_NO_OUTPUT_FILE",
             "path": "",
             "size": "",
-            "message": (
-                "JT builder committed with config {0}, but no nonzero output "
-                "file was created within {1:.1f} seconds"
-            ).format(config_path, waited_seconds),
+            "message": message,
         }
 
     if file_size is None:
