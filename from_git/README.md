@@ -47,6 +47,7 @@ Available production journals:
 30_cad_freeze.py              Freeze active/selected CAD through Part_Freeze_Process
 31_cad_unfreeze.py            Unfreeze active/selected CAD and increment WAE_VERSION
 32_probe_wae_freeze_capability.py Read-only NX/Teamcenter WAE lock API inventory
+33_datapack_jt_export.py      DataPack-controlled exact-revision JT export
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -147,6 +148,18 @@ reuses loaded drawings or opens the canonical Teamcenter specification
 `@DB/<part>/<revision>/specification/<part>-<revision>-dwg<n>`. It does not
 search for a different revision, modify or save NX parts, or require a JSON
 configuration file.
+
+J33 is J07's standalone JT companion. Add the `JT` control column to the same
+`NX_EXPORT_SCOPE.csv`; accepted aliases are `JT`, `Export_JT`, and `EXPORT_JT`.
+It merges duplicate exact part/revision requests, reuses an exact loaded 3D
+master or opens `@DB/<part>/<revision>` with `/master` fallback, and verifies
+the resolved identity before export. Each enabled row creates one monolithic
+`JT\<number>_REV<revision>.<WAE_VERSION>.jt` plus a UTF-8-BOM result CSV and
+text log in the timestamped `NX_BULK_EXPORT` run folder. Missing `WAE_VERSION`
+uses a revision-only filename and records a warning. J33 restores display/work
+parts, closes only journal-opened parts, and never saves, checks out, checks
+in, creates a Teamcenter dataset, or uploads output. NX runtime geometry,
+assembly structure, and PMI still require office-machine acceptance evidence.
 
 For the NX X 2506 closed-drawing test, deploy this complete folder, fully close
 `264MN028607A01/A/dwg1`, and run

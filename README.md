@@ -70,6 +70,7 @@ shared helpers from `from_git\utils`.
 | 30 | `from_git/journals/30_cad_freeze.py` | Native Teamcenter WAE freeze for the active work part or unique selected component prototypes |
 | 31 | `from_git/journals/31_cad_unfreeze.py` | Native WAE unfreeze, batch checkout, and one-version increment per unique target |
 | 32 | `from_git/journals/32_probe_wae_freeze_capability.py` | Read-only NX X 2506 freeze-workflow and release-status capability probe |
+| 33 | `from_git/journals/33_datapack_jt_export.py` | Exports DataPack-controlled exact Teamcenter revisions to monolithic JT files |
 
 ## Key Runtime Notes
 
@@ -193,8 +194,8 @@ open its canonical Teamcenter specification:
 
 1. Refresh and filter the FZ-PowerSystem DataPack tracker to the required BTP
    scope.
-2. Export or copy the selected rows to CSV and confirm the `PDF` and `STEP`
-   controls.
+2. Export or copy the selected rows to CSV and confirm the `PDF`, `STEP`, and
+   `JT` controls. J07 reads PDF and STEP; J33 reads JT.
 3. Use `from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv` as the starting
    format, then save the working file with the exact name
    `NX_EXPORT_SCOPE.csv`.
@@ -210,6 +211,7 @@ Required logical columns and accepted aliases:
 | Revision | `DB_PART_REV`, `Item Rev`, `REVISION`, `Revision` |
 | PDF control | `PDF`, `Export_PDF`, `EXPORT_PDF` |
 | STEP control | `STEP`, `Export_STEP`, `EXPORT_STEP` |
+| JT control (J33) | `JT`, `Export_JT`, `EXPORT_JT` |
 
 Optional traceability columns are `DATA_PACK_STATUS`/`Status`,
 `PRIMARY_MODULE`/`Primary Module`, `PART_DESCRIPTION`/`Part Description`, and
@@ -321,6 +323,57 @@ Journal 09 can be redirected without editing the file by setting
 `NX_TEST_PART_NO`, `NX_TEST_PART_REV`, `NX_TEST_DWG_INDEX`, or
 `NX_TEST_EXPECTED_SHEET_COUNT` in the NX environment.
 
+## Journal 33 - DataPack JT Export
+
+Journal 33 is the JT companion to J07 and uses the same exact
+`NX_EXPORT_SCOPE.csv` file. J33 requires the part-number, revision, and `JT`
+logical columns; the PDF and STEP columns remain available for J07 but are
+ignored by J33. Enabled values are `YES`, `Y`, `TRUE`, `1`, or `X`. Disabled
+rows are ignored, duplicate part/revision requests are merged, and invalid
+controls are retained in the audit report.
+
+J33 reuses an exact loaded 3D master or attempts the exact Teamcenter names
+`@DB/<part>/<revision>` and `@DB/<part>/<revision>/master`. It never searches
+for a different revision. Before committing the export, it verifies the
+resolved part's `DB_PART_NO` and `DB_PART_REV` against the CSV request.
+
+Run it from NX with:
+
+```text
+NX > Tools > Journal > Play
+from_git\journals\33_datapack_jt_export.py
+```
+
+The listing window must show:
+
+```text
+Journal build: J33-NX2506-DATAPACK-JT-V1
+JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; tessellation=NX; reference set=default; PMI=part+assembly
+```
+
+Each requested revision produces one monolithic JT file using the same
+versioned filename convention as J07:
+
+```text
+<I/O root>\NX_BULK_EXPORT\YYYYMMDD_HHMMSS\
+  JT\<DB_PART_NO>_REV<DB_PART_REV>.<WAE_VERSION>.jt
+  REPORTS\JT_EXPORT_RESULT_YYYYMMDD_HHMMSS.csv
+  LOGS\JT_EXPORT_LOG_YYYYMMDD_HHMMSS.txt
+```
+
+If `WAE_VERSION` is unavailable, J33 uses the revision-only filename and
+records a warning. It verifies that the expected JT exists and is nonzero
+before reporting `SUCCESS`. J33 does not save, check out, check in, create a
+Teamcenter dataset, or upload the JT. It restores the original display/work
+parts and closes only parts it opened.
+
+The local tests validate parsing, exact-revision gates, builder settings,
+filenames, reports, and output-file checks. They cannot validate JT geometry
+on this host. For NX X 2506 acceptance, run J33 on one known leaf part and one
+known assembly, retain the result CSV/log, then open the generated JT in an
+independent viewer and confirm the expected solids, assembly structure, and
+PMI.
+
 ### Journal 12 PDF symbol diagnostic
 
 Use Journal 12 when symbols such as omega or pi are visible in NX but absent
@@ -359,6 +412,7 @@ it opened.
 | J22 | `NX_MASS_SURFACE_UPDATE\J22_DIAGNOSTIC_<root>_<timestamp>.csv` and `.json` |
 | J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_EVIDENCE_<target>_<timestamp>.csv` and `.json` |
 | J25 | `NX_TC_SINGLE_DRAWING_CLEANUP\<timestamp>\` with CSV, JSON, log, and `BACKUP\` |
+| J33 | `NX_BULK_EXPORT\<timestamp>\JT\<number>_REV<rev>.<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
 
 ## Notes
 
@@ -372,6 +426,7 @@ it opened.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
 - J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
+- J33 is a separate self-contained JT journal. It reads the J07 DataPack scope's `JT` control, verifies the exact resolved master identity, and creates one monolithic JT per requested revision without modifying NX or Teamcenter data.
 - J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.
 - J21 APPLY calls `LoadThisPartFully()` on each unique BoM-visible target that needs it and re-traverses until newly exposed descendants are discovered. It never calls assembly-wide `LoadFully()`, so suppressed/reference/keyword-excluded structure remains out of scope. APPLY then scans every prototype and makes only targets missing the exact `NX_MassPropRollupMass` title the work part; existing values (including `0.0`) are trusted without checkout inspection, native update, or save. Missing targets run bottom-up through NX's native `CreateMassPropertiesBuilder` path (`UpdateOnSave` + `UpdateNow` + `Commit`). Load failures block the affected target and missing ancestors while safe sibling branches continue. J21 never checks out parts or writes reserved titles directly; selected checked-in, read-only, and other-user targets are skipped and reported. `NX_J21_MODE=REFRESH_ALL` retains V5's full rebuild and all-or-nothing load gate, `DRY_RUN` does not load or save, and `SMOKE` forces one active-work-part update.
 - J22 is a fast one-part diagnostic (run on a disposable part): it tests the classic compute APIs, the native mass-properties builder (CreateMassPropertiesBuilder + UpdateOnSave + UpdateNow + Commit), and per-category AttributePropertiesBuilder writes, and dumps all attributes before/after so the working mechanism and category on a given NX build are visible.
