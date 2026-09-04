@@ -55,7 +55,10 @@ WAE instructions block that identity without blocking unrelated identities.
   the controlled J4/J5 process before freezing.
 - Alphabetic mismatch such as `Rev A / WAE B` is blocked for lifecycle/data
   repair. The freeze journal never guesses or corrects it.
-- J31 remains numeric-only and must never unfreeze an alphabetic final-release
+- J30 uses the same WAE classification: positive numeric working values and
+  matching alphabetic final baselines may be frozen without changing WAE.
+- J31 remains numeric-only and explicitly reports
+  `BLOCKED_FINAL_RELEASE_BASELINE` instead of unfreezing an alphabetic final
   baseline. A later engineering change uses the normal Teamcenter revision
   process.
 

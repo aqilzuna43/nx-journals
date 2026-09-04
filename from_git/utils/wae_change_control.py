@@ -12,7 +12,7 @@ import NXOpen.PDM
 
 VALID_ACTIONS = ("FREEZE", "UNFREEZE")
 VALID_MODES = ("DRY_RUN", "APPLY")
-COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"
+COMMON_BUILD = "WAE-CHANGE-CONTROL-V5"
 ATTRIBUTE_CATEGORY = "WAEItem"
 WAE_VERSION_TITLE = "WAE_VERSION"
 DB_PART_NO_TITLE = "DB_PART_NO"
@@ -140,7 +140,9 @@ def active_work_target(session, selected_indexes=None):
     }
 
 
-def selected_or_work_targets(session, selection_manager, report=None):
+def selected_or_work_targets(
+    session, selection_manager, report=None, allow_partial_selection=False
+):
     """Resolve unique selected CAD parts, or fall back to the active work part."""
     try:
         count = int(selection_manager.GetNumSelectedObjects())
@@ -221,11 +223,17 @@ def selected_or_work_targets(session, selection_manager, report=None):
         targets_by_key[key] = target
         targets.append(target)
 
-    if unresolved_indexes and targets:
+    if unresolved_indexes and targets and not allow_partial_selection:
         unresolved = ", ".join(str(index + 1) for index in unresolved_indexes)
         raise RuntimeError(
             "Selected object(s) {0} did not resolve to managed CAD targets; "
             "the complete batch was blocked.".format(unresolved)
+        )
+    if unresolved_indexes and targets and report is not None:
+        unresolved = ", ".join(str(index + 1) for index in unresolved_indexes)
+        report.setdefault("selection_warnings", []).append(
+            "Selected object(s) {0} did not resolve to managed CAD targets and "
+            "were skipped by J30.".format(unresolved)
         )
     if not targets:
         fallback_indexes = active_part_indexes + unresolved_indexes
@@ -299,6 +307,28 @@ def parse_wae_version(value):
             "WAE_VERSION must be a positive whole number; found {0!r}.".format(raw)
         )
     return int(raw)
+
+
+def classify_wae_version(value, revision):
+    """Classify the shared J30/J31 lifecycle value without changing it."""
+    raw = clean(value)
+    db_revision = clean(revision)
+    if not raw:
+        return "", "WAE_VERSION is blank."
+    if re.fullmatch(r"[1-9][0-9]*", raw):
+        return "NUMERIC_WORKING", ""
+    if re.fullmatch(r"[A-Za-z]+", raw):
+        if raw.casefold() == db_revision.casefold():
+            return "ALPHABETIC_FINAL", ""
+        return "", (
+            "Alphabetic WAE_VERSION {0!r} does not match DB_PART_REV {1!r}.".format(
+                raw, db_revision
+            )
+        )
+    return "", (
+        "WAE_VERSION is neither a positive whole number nor a matching "
+        "alphabetic revision."
+    )
 
 
 def checkout_result(raw):
@@ -498,7 +528,6 @@ def modifiability_snapshot(part):
 
 def target_snapshot(session, component, part):
     wae = read_wae_attribute(part)
-    version = parse_wae_version(wae["value"])
     part_number = read_identity(part, DB_PART_NO_TITLE)
     revision = read_identity(part, DB_PART_REV_TITLE)
     if not managed_mode(session, part):
@@ -507,6 +536,12 @@ def target_snapshot(session, component, part):
         raise RuntimeError("DB_PART_NO is blank or unavailable.")
     if not revision:
         raise RuntimeError("DB_PART_REV is blank or unavailable.")
+    wae_class, wae_error = classify_wae_version(wae["value"], revision)
+    version = (
+        int(clean(wae["value"]))
+        if wae_class == "NUMERIC_WORKING"
+        else clean(wae["value"])
+    )
     return {
         "component_name": clean(safe_property(component, "DisplayName"))
         or clean(safe_property(component, "Name"))
@@ -517,6 +552,8 @@ def target_snapshot(session, component, part):
         "db_part_rev": revision,
         "wae_version": version,
         "wae_version_raw": wae["value"],
+        "wae_class": wae_class,
+        "wae_validation_error": wae_error,
         "wae_attribute": wae,
         "checkout": checkout_snapshot(session, part),
         "release_status": release_status_snapshot(part),
@@ -695,12 +732,14 @@ def base_report(action, build, mode):
         "mode": mode,
         "scope": "ONE_RESOLVED_CAD_PART",
         "result": "PREFLIGHT_PENDING",
+        "block_reason": "",
         "message": "",
         "target_index": 0,
         "source": "",
         "selected_indexes": [],
         "selected_occurrence_count": 1,
         "planned_action": "",
+        "failed_stage": "",
         "before": {},
         "after": {},
         "operations": {
@@ -770,6 +809,24 @@ def make_target_report(action, session, target, build, mode, index):
     try:
         before = target_snapshot(session, target["component"], target["part"])
         report["before"] = before
+        wae_error = before.get("wae_validation_error", "")
+        if wae_error:
+            report["result"] = (
+                "BLOCKED_MISSING_WAE_VERSION"
+                if not clean(before.get("wae_version_raw"))
+                else "BLOCKED_INVALID_WAE_VERSION"
+            )
+            report["block_reason"] = report["result"]
+            report["message"] = wae_error
+            return report
+        if action == "UNFREEZE" and before.get("wae_class") == "ALPHABETIC_FINAL":
+            report["result"] = "BLOCKED_FINAL_RELEASE_BASELINE"
+            report["block_reason"] = report["result"]
+            report["message"] = (
+                "WAE_VERSION {0!r} matches TCX revision {1!r} and is an immutable "
+                "final-release baseline. Create the next formal TCX revision instead."
+            ).format(before["wae_version_raw"], before["db_part_rev"])
+            return report
         status_errors = (before.get("release_status") or {}).get("errors") or []
         if status_errors:
             raise RuntimeError("Release-status query failed: " + " | ".join(status_errors))
@@ -819,15 +876,22 @@ def make_target_report(action, session, target, build, mode, index):
         report["result"] = "PREFLIGHT_READY"
         report["message"] = "Target preflight passed."
     except Exception as error:
-        report["result"] = "PREFLIGHT_BLOCKED"
-        report["message"] = error_text(error)
+        message = error_text(error)
+        if "WAE_VERSION" in message and ("blank" in message or "found 0" in message):
+            report["result"] = "BLOCKED_MISSING_WAE_VERSION"
+        else:
+            report["result"] = "PREFLIGHT_BLOCKED"
+        report["block_reason"] = report["result"]
+        report["message"] = message
     return report
 
 
 def verify_identity_unchanged(before, after, stage):
     if after["db_part_rev"] != before["db_part_rev"]:
         raise RuntimeError("DB_PART_REV changed during {0}.".format(stage))
-    if after["wae_version"] != before["wae_version"]:
+    if clean(after.get("wae_version_raw")).casefold() != clean(
+        before.get("wae_version_raw")
+    ).casefold():
         raise RuntimeError("WAE_VERSION changed during {0}.".format(stage))
 
 
@@ -842,7 +906,10 @@ def capture_after_states(session, targets, reports):
 
 
 def mark_recovery_results(action, reports):
-    completed_results = ("FROZEN", "UNFROZEN_READY_FOR_EDIT")
+    completed_results = (
+        "ALREADY_FROZEN", "FROZEN", "FROZEN_WITH_WARNING",
+        "UNFROZEN_READY_FOR_EDIT", "UNFROZEN_WITH_WARNING",
+    )
     for report in reports:
         if report["result"] in completed_results:
             continue
@@ -853,15 +920,16 @@ def mark_recovery_results(action, reports):
             if action == "FREEZE":
                 completed = (
                     after.get("db_part_rev") == before.get("db_part_rev")
-                    and after.get("wae_version") == before.get("wae_version")
+                    and clean(after.get("wae_version_raw")).casefold()
+                    == clean(before.get("wae_version_raw")).casefold()
                     and (after.get("checkout") or {}).get("state") == "CHECKED_IN"
                     and after.get("read_only") is True
                     and (after.get("modifiability") or {}).get("pdm_modifiable") is False
                     and is_frozen_status(after)
                 )
                 if completed:
-                    report["result"] = "FROZEN"
-                    report["message"] = "Completed before the later batch failure."
+                    report["result"] = "FROZEN_WITH_WARNING"
+                    report["message"] = "Verified Frozen despite a reported operation failure."
             else:
                 completed = (
                     after.get("db_part_rev") == before.get("db_part_rev")
@@ -875,130 +943,170 @@ def mark_recovery_results(action, reports):
                     and not has_other_release_status(after)
                 )
                 if completed:
-                    report["result"] = "UNFROZEN_READY_FOR_EDIT"
-                    report["message"] = "Completed before the later batch failure."
+                    report["result"] = "UNFROZEN_WITH_WARNING"
+                    report["message"] = "Verified complete despite a reported operation failure."
         if not completed:
             report["result"] = "RECOVERY_REQUIRED"
             report["message"] = "Inspect before/after state and recover manually."
 
 
-def execute_freeze_batch(session, targets, reports, batch):
-    to_checkin = [
-        (target, report)
-        for target, report in zip(targets, reports)
-        if report["planned_action"] == "SAVE_CHECKIN_AND_ASSIGN_FREEZE_STATUS"
-    ]
-    to_freeze = [
-        (target, report)
-        for target, report in zip(targets, reports)
-        if report["planned_action"] != "ALREADY_FROZEN"
-    ]
+def frozen_postconditions(before, after):
+    return (
+        clean(after.get("part_number")).casefold()
+        == clean(before.get("part_number")).casefold()
+        and clean(after.get("db_part_rev")).casefold()
+        == clean(before.get("db_part_rev")).casefold()
+        and clean(after.get("wae_version_raw")).casefold()
+        == clean(before.get("wae_version_raw")).casefold()
+        and (after.get("checkout") or {}).get("state") == "CHECKED_IN"
+        and after.get("read_only") is True
+        and (after.get("modifiability") or {}).get("pdm_modifiable") is False
+        and is_frozen_status(after)
+        and not has_other_release_status(after)
+    )
 
-    for target, report in to_checkin:
-        batch["failed_stage"] = "SAVE_BEFORE_CHECKIN"
-        batch["operations"]["save_attempted"] = True
-        report["operations"]["save_attempted"] = True
-        save_part(target["part"])
-        saved = target_snapshot(session, target["component"], target["part"])
-        verify_identity_unchanged(report["before"], saved, "freeze save")
 
-    if to_checkin:
-        batch["failed_stage"] = "BATCH_CHECKIN"
-        batch["operations"]["checkin_attempted"] = True
-        for _, report in to_checkin:
-            report["operations"]["checkin_attempted"] = True
-        batch["operation_raw"]["checkin"] = checkin_parts(
-            [target["part"] for target, _ in to_checkin]
-        )
-        for target, report in to_checkin:
-            checked_in = target_snapshot(session, target["component"], target["part"])
-            verify_identity_unchanged(report["before"], checked_in, "check-in")
-            if checked_in["checkout"]["state"] != "CHECKED_IN":
-                raise RuntimeError(
-                    "Check-in postcondition failed for {0}.".format(
-                        checked_in["part_number"]
-                    )
-                )
+def completed_unfreeze_postconditions(report, after):
+    before = report.get("before") or {}
+    return (
+        clean(after.get("part_number")).casefold()
+        == clean(before.get("part_number")).casefold()
+        and clean(after.get("db_part_rev")).casefold()
+        == clean(before.get("db_part_rev")).casefold()
+        and after.get("wae_version") == report.get("next_wae_version")
+        and (after.get("checkout") or {}).get("state") == "CHECKED_OUT"
+        and (after.get("checkout") or {}).get("owner_is_current_user") is True
+        and after.get("read_only") is False
+        and (after.get("modifiability") or {}).get("has_write_access") is True
+        and (after.get("modifiability") or {}).get("pdm_modifiable") is True
+        and not is_frozen_status(after)
+        and not has_other_release_status(after)
+    )
 
-    if to_freeze:
-        batch["failed_stage"] = "ASSIGN_FREEZE_STATUS"
-        batch["operations"]["freeze_status_attempted"] = True
-        for _, report in to_freeze:
-            report["operations"]["freeze_status_attempted"] = True
-        batch["operation_raw"]["freeze_status"] = assign_status_workflow(
-            session, [target["part"] for target, _ in to_freeze], "FREEZE"
-        )
 
-    batch["failed_stage"] = "VERIFY_FROZEN_POSTCONDITIONS"
-    for target, report in zip(targets, reports):
+def snapshot_after(session, target, report):
+    try:
         after = target_snapshot(session, target["component"], target["part"])
         report["after"] = after
-        verify_identity_unchanged(report["before"], after, "freeze")
-        if after["checkout"]["state"] != "CHECKED_IN":
-            raise RuntimeError("Frozen target is not checked in: " + after["part_number"])
-        if after["read_only"] is not True:
-            raise RuntimeError("Frozen target is not read-only: " + after["part_number"])
-        modifiability = after.get("modifiability") or {}
-        if modifiability.get("pdm_modifiable") is not False:
-            raise RuntimeError("Frozen target remains PDM-modifiable: " + after["part_number"])
-        if not is_frozen_status(after):
-            raise RuntimeError(
-                "Freeze status was not observed for {0}; status={1}.".format(
-                    after["part_number"], release_status_values(after)
+        return after, ""
+    except Exception as error:
+        message = error_text(error)
+        report["after_snapshot_error"] = message
+        return {}, message
+
+
+def execute_freeze_batch(session, targets, reports, batch):
+    """Freeze exact identities independently; one failure does not stop others."""
+    for target, report in zip(targets, reports):
+        if report["planned_action"] == "ALREADY_FROZEN":
+            report["after"] = report["before"]
+            report["result"] = "ALREADY_FROZEN"
+            report["message"] = "Target is already a verified Frozen baseline."
+            continue
+
+        operation_error = ""
+        try:
+            if report["planned_action"] == "SAVE_CHECKIN_AND_ASSIGN_FREEZE_STATUS":
+                report["failed_stage"] = "SAVE_BEFORE_CHECKIN"
+                batch["operations"]["save_attempted"] = True
+                report["operations"]["save_attempted"] = True
+                save_part(target["part"])
+                saved = target_snapshot(session, target["component"], target["part"])
+                verify_identity_unchanged(report["before"], saved, "freeze save")
+
+                report["failed_stage"] = "CHECKIN"
+                batch["operations"]["checkin_attempted"] = True
+                report["operations"]["checkin_attempted"] = True
+                report["operation_raw"]["checkin"] = checkin_part(target["part"])
+                checked_in = target_snapshot(
+                    session, target["component"], target["part"]
                 )
+                verify_identity_unchanged(report["before"], checked_in, "check-in")
+                if checked_in["checkout"]["state"] != "CHECKED_IN":
+                    raise RuntimeError("Check-in postcondition failed.")
+
+            report["failed_stage"] = "ASSIGN_FREEZE_STATUS"
+            batch["operations"]["freeze_status_attempted"] = True
+            report["operations"]["freeze_status_attempted"] = True
+            report["operation_raw"]["freeze_status"] = assign_status_workflow(
+                session, [target["part"]], "FREEZE"
             )
-        report["result"] = "FROZEN"
-        report["message"] = "Freeze status, check-in, read-only state, revision, and WAE verified."
+        except Exception as error:
+            operation_error = error_text(error)
+            report["operation_raw"]["warning"] = operation_error
+
+        report["failed_stage"] = "VERIFY_FROZEN_POSTCONDITIONS"
+        after, verification_error = snapshot_after(session, target, report)
+        if after and frozen_postconditions(report["before"], after):
+            report["failed_stage"] = ""
+            report["result"] = "FROZEN_WITH_WARNING" if operation_error else "FROZEN"
+            report["message"] = (
+                "Verified Frozen despite operation warning: " + operation_error
+                if operation_error else
+                "Freeze status, check-in, read-only state, revision, and WAE verified."
+            )
+        else:
+            report["result"] = "FAILED_FREEZE_WORKFLOW"
+            report["message"] = operation_error or verification_error or (
+                "Freeze workflow returned without a valid Frozen final state."
+            )
 
 
 def execute_unfreeze_batch(session, targets, reports, batch):
-    parts = [target["part"] for target in targets]
-    batch["failed_stage"] = "ASSIGN_UNFREEZE_STATUS"
-    batch["operations"]["unfreeze_status_attempted"] = True
-    for report in reports:
-        report["operations"]["unfreeze_status_attempted"] = True
-    batch["operation_raw"]["unfreeze_status"] = assign_status_workflow(
-        session, parts, "UNFREEZE"
-    )
-
-    batch["failed_stage"] = "VERIFY_UNFREEZE_STATUS"
+    """Run each target end-to-end and stop only on an incomplete mutation."""
+    stop_remaining = False
     for target, report in zip(targets, reports):
-        unfrozen = target_snapshot(session, target["component"], target["part"])
-        verify_identity_unchanged(report["before"], unfrozen, "unfreeze status assignment")
-        if is_frozen_status(unfrozen) or has_other_release_status(unfrozen):
-            raise RuntimeError(
-                "Unfreeze status postcondition failed for {0}; status={1}.".format(
-                    unfrozen["part_number"], release_status_values(unfrozen)
-                )
-            )
-        if unfrozen["checkout"]["state"] != "CHECKED_IN":
-            raise RuntimeError("Unfreeze unexpectedly changed checkout state.")
+        if stop_remaining:
+            report["result"] = "NOT_ATTEMPTED_AFTER_RECOVERY_REQUIRED"
+            report["message"] = "A prior target requires recovery; this target was not changed."
+            continue
 
-    batch["failed_stage"] = "BATCH_CHECKOUT"
-    batch["operations"]["checkout_attempted"] = True
-    for report in reports:
-        report["operations"]["checkout_attempted"] = True
-    batch["operation_raw"]["checkout"] = checkout_parts(parts)
-
-    batch["failed_stage"] = "VERIFY_CHECKOUT"
-    for target, report in zip(targets, reports):
-        checked_out = target_snapshot(session, target["component"], target["part"])
-        verify_identity_unchanged(report["before"], checked_out, "checkout")
-        owned_error = validate_owned_checkout(checked_out)
-        if owned_error:
-            raise RuntimeError(
-                "Checkout postcondition failed for {0}: {1}".format(
-                    checked_out["part_number"], owned_error
-                )
-            )
-
-    for target, report in zip(targets, reports):
         mark = None
         mark_name = "J31 WAE_VERSION increment"
+        operation_warning = ""
         try:
-            batch["failed_stage"] = "WAE_INCREMENT_TARGET_{0}".format(
-                report["target_index"]
+            report["failed_stage"] = "ASSIGN_UNFREEZE_STATUS"
+            batch["operations"]["unfreeze_status_attempted"] = True
+            report["operations"]["unfreeze_status_attempted"] = True
+            try:
+                report["operation_raw"]["unfreeze_status"] = assign_status_workflow(
+                    session, [target["part"]], "UNFREEZE"
+                )
+            except Exception as error:
+                operation_warning = error_text(error)
+                report["operation_raw"]["unfreeze_warning"] = operation_warning
+
+            report["failed_stage"] = "VERIFY_UNFREEZE_STATUS"
+            unfrozen = target_snapshot(session, target["component"], target["part"])
+            report["after"] = unfrozen
+            verify_identity_unchanged(
+                report["before"], unfrozen, "unfreeze status assignment"
             )
+            if is_frozen_status(unfrozen) or has_other_release_status(unfrozen):
+                if frozen_postconditions(report["before"], unfrozen):
+                    report["result"] = "FAILED_UNFREEZE_WORKFLOW"
+                    report["message"] = operation_warning or (
+                        "Unfreeze workflow returned but the target remained safely Frozen."
+                    )
+                    continue
+                raise RuntimeError("Unfreeze left an inconsistent controlled status.")
+            if unfrozen["checkout"]["state"] != "CHECKED_IN":
+                raise RuntimeError("Unfreeze unexpectedly changed checkout state.")
+
+            report["failed_stage"] = "CHECKOUT"
+            batch["operations"]["checkout_attempted"] = True
+            report["operations"]["checkout_attempted"] = True
+            report["operation_raw"]["checkout"] = checkout_part(target["part"])
+
+            report["failed_stage"] = "VERIFY_CHECKOUT"
+            checked_out = target_snapshot(session, target["component"], target["part"])
+            report["after"] = checked_out
+            verify_identity_unchanged(report["before"], checked_out, "checkout")
+            owned_error = validate_owned_checkout(checked_out)
+            if owned_error:
+                raise RuntimeError("Checkout postcondition failed: " + owned_error)
+
+            report["failed_stage"] = "WAE_INCREMENT"
             mark = session.SetUndoMark(
                 NXOpen.Session.MarkVisibility.Invisible, mark_name
             )
@@ -1014,25 +1122,129 @@ def execute_unfreeze_batch(session, targets, reports, batch):
             save_part(target["part"])
             after = target_snapshot(session, target["component"], target["part"])
             report["after"] = after
-            owned_error = validate_owned_checkout(after)
-            if owned_error:
-                raise RuntimeError("Post-save checkout state failed: " + owned_error)
-            if after["db_part_rev"] != report["before"]["db_part_rev"]:
-                raise RuntimeError("DB_PART_REV changed during unfreeze.")
-            if after["wae_version"] != next_version:
-                raise RuntimeError("Saved WAE_VERSION does not match controlled increment.")
-            if is_frozen_status(after) or has_other_release_status(after):
-                raise RuntimeError("Release status returned after controlled increment.")
-            report["result"] = "UNFROZEN_READY_FOR_EDIT"
-            report["message"] = "Unfrozen, checked out, and advanced to WAE_VERSION {0}.".format(
-                next_version
+            if not completed_unfreeze_postconditions(report, after):
+                raise RuntimeError("Final unfreeze/WAE postconditions were not satisfied.")
+            report["failed_stage"] = ""
+            report["result"] = (
+                "UNFROZEN_WITH_WARNING" if operation_warning
+                else "UNFROZEN_READY_FOR_EDIT"
             )
+            report["message"] = (
+                "Unfrozen and advanced to WAE_VERSION {0} despite workflow warning: {1}"
+                .format(next_version, operation_warning)
+                if operation_warning else
+                "Unfrozen, checked out, and advanced to WAE_VERSION {0}.".format(
+                    next_version
+                )
+            )
+        except Exception as error:
+            failure = error_text(error)
+            after, verification_error = snapshot_after(session, target, report)
+            if after and completed_unfreeze_postconditions(report, after):
+                report["failed_stage"] = ""
+                report["result"] = "UNFROZEN_WITH_WARNING"
+                report["message"] = "Verified complete despite operation warning: " + failure
+            elif after and frozen_postconditions(report["before"], after):
+                report["result"] = "FAILED_UNFREEZE_WORKFLOW"
+                report["message"] = failure
+            else:
+                report["result"] = "RECOVERY_REQUIRED"
+                report["message"] = failure or verification_error
+                batch["failed_stage"] = report["failed_stage"]
+                stop_remaining = True
         finally:
             if mark is not None:
                 try:
                     session.DeleteUndoMark(mark, mark_name)
                 except Exception:
                     pass
+    return stop_remaining
+
+
+def collapse_exact_identity_targets(targets, reports):
+    """Collapse loaded NX proxies by authoritative Teamcenter part/revision identity."""
+    collapsed_targets = []
+    collapsed_reports = []
+    by_identity = {}
+    for target, report in zip(targets, reports):
+        before = report.get("before") or {}
+        number = clean(before.get("part_number"))
+        revision = clean(before.get("db_part_rev"))
+        key = (number.casefold(), revision.casefold()) if number and revision else None
+        if key is None or key not in by_identity:
+            if key is not None:
+                by_identity[key] = len(collapsed_targets)
+            collapsed_targets.append(target)
+            collapsed_reports.append(report)
+            continue
+
+        existing_index = by_identity[key]
+        existing_target = collapsed_targets[existing_index]
+        existing_report = collapsed_reports[existing_index]
+        existing_target["selected_indexes"].extend(target["selected_indexes"])
+        existing_target["occurrence_count"] += target["occurrence_count"]
+        existing_report["selected_indexes"] = sorted(set(
+            existing_report["selected_indexes"] + report["selected_indexes"]
+        ))
+        existing_report["selected_occurrence_count"] += report[
+            "selected_occurrence_count"
+        ]
+        existing_before = existing_report.get("before") or {}
+        if (
+            clean(existing_before.get("wae_version_raw")).casefold()
+            != clean(before.get("wae_version_raw")).casefold()
+        ):
+            existing_report["result"] = "PREFLIGHT_BLOCKED"
+            existing_report["block_reason"] = "BLOCKED_CONFLICTING_LOADED_STATE"
+            existing_report["message"] = (
+                "Loaded NX objects for the same DB_PART_NO + DB_PART_REV expose "
+                "different WAE_VERSION values. Reload the assembly before retrying."
+            )
+
+    for index, report in enumerate(collapsed_reports):
+        report["target_index"] = index + 1
+    return collapsed_targets, collapsed_reports
+
+
+def preflight_workflow(session, target, target_report, required_workflow):
+    if target_report["result"] != "PREFLIGHT_READY":
+        return
+    if target_report.get("planned_action") == "ALREADY_FROZEN":
+        return
+    try:
+        query = get_available_workflows(session, [target["part"]])
+        target_report["workflow_query"] = query
+        if required_workflow not in query["names"]:
+            raise RuntimeError(
+                "Required workflow {0!r} is unavailable; found {1}.".format(
+                    required_workflow, query["names"]
+                )
+            )
+    except Exception as error:
+        target_report["result"] = "PREFLIGHT_BLOCKED"
+        target_report["block_reason"] = "BLOCKED_WORKFLOW_UNAVAILABLE"
+        target_report["message"] = error_text(error)
+
+
+def result_counts(target_reports):
+    success_results = {
+        "ALREADY_FROZEN", "FROZEN", "FROZEN_WITH_WARNING",
+        "UNFROZEN_READY_FOR_EDIT", "UNFROZEN_WITH_WARNING",
+        "DRY_RUN_READY",
+    }
+    blocked_results = {
+        "PREFLIGHT_BLOCKED", "BLOCKED_MISSING_WAE_VERSION",
+        "BLOCKED_INVALID_WAE_VERSION", "BLOCKED_FINAL_RELEASE_BASELINE",
+        "NOT_ATTEMPTED_BATCH_BLOCKED", "NOT_ATTEMPTED_AFTER_RECOVERY_REQUIRED",
+    }
+    return {
+        "succeeded": sum(1 for row in target_reports if row["result"] in success_results),
+        "blocked": sum(1 for row in target_reports if row["result"] in blocked_results),
+        "failed": sum(
+            1 for row in target_reports
+            if row["result"] not in success_results and row["result"] not in blocked_results
+        ),
+    }
 
 
 def execute(action, session, selection_manager, build, mode):
@@ -1045,79 +1257,114 @@ def execute(action, session, selection_manager, build, mode):
     report = batch_report(action, build, mode)
     try:
         targets, selected_count = selected_or_work_targets(
-            session, selection_manager, report
+            session, selection_manager, report,
+            allow_partial_selection=(action == "FREEZE"),
         )
     except Exception as error:
         report["message"] = error_text(error)
         return report
 
     report["selected_object_count"] = selected_count
+    report["target_source"] = targets[0]["source"]
+    required_workflow = FREEZE_WORKFLOW if action == "FREEZE" else UNFREEZE_WORKFLOW
+    report["required_workflow"] = required_workflow
+    report["preflight"]["errors"].extend(report.get("selection_warnings") or [])
+    for index, target in enumerate(targets):
+        target_report = make_target_report(action, session, target, build, mode, index)
+        report["targets"].append(target_report)
+
+    targets, report["targets"] = collapse_exact_identity_targets(
+        targets, report["targets"]
+    )
     report["unique_target_count"] = len(targets)
     report["duplicate_occurrences_collapsed"] = sum(
         max(0, target["occurrence_count"] - 1) for target in targets
     )
-    report["target_source"] = targets[0]["source"]
-    required_workflow = FREEZE_WORKFLOW if action == "FREEZE" else UNFREEZE_WORKFLOW
-    report["required_workflow"] = required_workflow
-    try:
-        report["workflow_query"] = get_available_workflows(
-            session, [target["part"] for target in targets]
-        )
-        if required_workflow not in report["workflow_query"]["names"]:
-            raise RuntimeError(
-                "Required workflow {0!r} is unavailable; found {1}.".format(
-                    required_workflow, report["workflow_query"]["names"]
+
+    for target, target_report in zip(targets, report["targets"]):
+        preflight_workflow(session, target, target_report, required_workflow)
+        if target_report["result"] != "PREFLIGHT_READY":
+            report["preflight"]["errors"].append(
+                "Target {0}: {1}".format(
+                    target_report["target_index"], target_report["message"]
                 )
             )
-    except Exception as error:
-        report["preflight"]["errors"].append(error_text(error))
 
-    for index, target in enumerate(targets):
-        target_report = make_target_report(action, session, target, build, mode, index)
-        report["targets"].append(target_report)
-        if target_report["result"] == "PREFLIGHT_BLOCKED":
-            report["preflight"]["errors"].append(
-                "Target {0}: {1}".format(index + 1, target_report["message"])
-            )
-
-    if report["preflight"]["errors"]:
+    if action == "UNFREEZE" and report["preflight"]["errors"]:
+        for target_report in report["targets"]:
+            if target_report["result"] == "PREFLIGHT_READY":
+                target_report["result"] = "NOT_ATTEMPTED_BATCH_BLOCKED"
+                target_report["message"] = (
+                    "Another selected target failed J31 preflight; nothing was changed."
+                )
         report["result"] = "BLOCKED_BATCH"
         report["message"] = "Complete batch preflight failed; nothing changed."
-        report["counts"]["blocked"] = len(targets)
+        report["counts"] = result_counts(report["targets"])
         return report
-    report["preflight"]["passed"] = True
+
+    ready_pairs = [
+        (target, target_report)
+        for target, target_report in zip(targets, report["targets"])
+        if target_report["result"] == "PREFLIGHT_READY"
+    ]
+    report["preflight"]["passed"] = not report["preflight"]["errors"]
+    if not ready_pairs:
+        report["result"] = "BLOCKED_ALL_TARGETS"
+        report["message"] = "No target passed preflight; nothing changed."
+        report["counts"] = result_counts(report["targets"])
+        return report
 
     if mode == "DRY_RUN":
-        report["result"] = "DRY_RUN_READY"
-        report["message"] = "Complete batch preflight passed; no mutations attempted."
-        for target_report in report["targets"]:
+        for _, target_report in ready_pairs:
             target_report["result"] = "DRY_RUN_READY"
-        report["counts"]["succeeded"] = len(targets)
+        report["counts"] = result_counts(report["targets"])
+        report["result"] = (
+            "DRY_RUN_READY" if not report["preflight"]["errors"]
+            else "DRY_RUN_PARTIAL"
+        )
+        report["message"] = (
+            "Preflight completed; no mutations attempted. "
+            "Review each target result before APPLY."
+        )
         return report
 
+    ready_targets = [pair[0] for pair in ready_pairs]
+    ready_reports = [pair[1] for pair in ready_pairs]
+    unexpected_runtime_error = ""
     try:
         if action == "FREEZE":
-            execute_freeze_batch(session, targets, report["targets"], report)
-            report["result"] = "ALL_TARGETS_FROZEN"
+            execute_freeze_batch(session, ready_targets, ready_reports, report)
         else:
-            execute_unfreeze_batch(session, targets, report["targets"], report)
-            report["result"] = "ALL_TARGETS_UNFROZEN"
+            execute_unfreeze_batch(session, ready_targets, ready_reports, report)
+    except Exception as error:
+        unexpected_runtime_error = error_text(error)
+        capture_after_states(session, ready_targets, ready_reports)
+        mark_recovery_results(action, ready_reports)
+        report["failed_stage"] = report["failed_stage"] or "UNEXPECTED_RUNTIME_ERROR"
+        report["message"] = unexpected_runtime_error
+
+    report["counts"] = result_counts(report["targets"])
+    if report["counts"]["succeeded"] == len(report["targets"]):
+        report["result"] = (
+            "ALL_TARGETS_FROZEN" if action == "FREEZE" else "ALL_TARGETS_UNFROZEN"
+        )
         report["failed_stage"] = ""
-        report["counts"]["succeeded"] = len(targets)
         report["message"] = "All {0} unique target(s) completed and verified.".format(
             len(targets)
         )
-    except Exception as error:
-        capture_after_states(session, targets, report["targets"])
-        mark_recovery_results(action, report["targets"])
+    elif any(row["result"] == "RECOVERY_REQUIRED" for row in report["targets"]):
         report["result"] = "RECOVERY_REQUIRED"
-        report["message"] = error_text(error)
-        report["counts"]["succeeded"] = sum(
-            1
-            for target_report in report["targets"]
-            if target_report["result"] in ("FROZEN", "UNFROZEN_READY_FOR_EDIT")
+        report["message"] = unexpected_runtime_error or (
+            "A J31 target is in an incomplete state. Inspect it before rerunning."
         )
-        report["counts"]["failed"] = len(targets) - report["counts"]["succeeded"]
+    elif report["counts"]["succeeded"]:
+        report["result"] = "PARTIAL_COMPLETION"
+        report["message"] = (
+            "Safe targets completed; blocked or failed targets were isolated and reported."
+        )
+    else:
+        report["result"] = "NO_TARGETS_COMPLETED"
+        report["message"] = "No selected target completed; review target results."
     return report
 
 

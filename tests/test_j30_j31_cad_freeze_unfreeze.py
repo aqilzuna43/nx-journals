@@ -25,16 +25,21 @@ def load_common():
 
 def snapshot(state, version=1, owner="", current_user="aqil", read_only=True,
              release_status="", internal_status=None, has_write_access=None,
-             pdm_modifiable=None):
+             pdm_modifiable=None, part_number="P1", revision="A"):
     if has_write_access is None:
         has_write_access = not read_only
     if pdm_modifiable is None:
         pdm_modifiable = not read_only
     return {
         "component_name": "COMPONENT", "component_tag": "10",
-        "part_identifier": "@DB/P1/A", "part_number": "P1",
-        "db_part_rev": "A", "wae_version": version,
+        "part_identifier": "@DB/{0}/{1}".format(part_number, revision),
+        "part_number": part_number,
+        "db_part_rev": revision, "wae_version": version,
         "wae_version_raw": str(version),
+        "wae_class": (
+            "NUMERIC_WORKING" if isinstance(version, int) else "ALPHABETIC_FINAL"
+        ),
+        "wae_validation_error": "",
         "wae_attribute": {
             "value": str(version), "type": "STRING", "unset": False,
             "locked": False, "owned_by_system": False, "pdm_based": False,
@@ -101,13 +106,13 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertIn('run_ui("UNFREEZE"', J31_PATH.read_text(encoding="utf-8"))
         self.assertIn('USER_MODE = "APPLY"', J30_PATH.read_text(encoding="utf-8"))
         self.assertIn('USER_MODE = "APPLY"', J31_PATH.read_text(encoding="utf-8"))
-        self.assertEqual("WAE-CHANGE-CONTROL-V4", self.common.COMMON_BUILD)
+        self.assertEqual("WAE-CHANGE-CONTROL-V5", self.common.COMMON_BUILD)
         self.assertIn(
-            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"',
+            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V5"',
             J30_PATH.read_text(encoding="utf-8"),
         )
         self.assertIn(
-            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V4"',
+            'EXPECTED_COMMON_BUILD = "WAE-CHANGE-CONTROL-V5"',
             J31_PATH.read_text(encoding="utf-8"),
         )
 
@@ -117,6 +122,16 @@ class TestJ30J31Contract(unittest.TestCase):
         for invalid in ("", "0", "-1", "1.0", "A"):
             with self.subTest(invalid=invalid), self.assertRaises(RuntimeError):
                 self.common.parse_wae_version(invalid)
+
+    def test_action_neutral_wae_classification_matches_j34_j35(self):
+        self.assertEqual(
+            ("NUMERIC_WORKING", ""), self.common.classify_wae_version("7", "A")
+        )
+        self.assertEqual(
+            ("ALPHABETIC_FINAL", ""), self.common.classify_wae_version("e", "E")
+        )
+        self.assertTrue(self.common.classify_wae_version("B", "A")[1])
+        self.assertTrue(self.common.classify_wae_version("", "A")[1])
 
     def test_no_preselection_targets_only_active_work_part(self):
         work = types.SimpleNamespace(PDMPart=object(), Tag=100)
@@ -230,6 +245,22 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertEqual(2, report["selected_object_count"])
         self.assertEqual(2, len(report["selected_objects"]))
 
+    def test_j30_mixed_selection_skips_unresolved_and_keeps_valid_target(self):
+        work = types.SimpleNamespace(PDMPart=object(), Tag=100)
+        child_part = types.SimpleNamespace(PDMPart=object(), Tag=200)
+        child = types.SimpleNamespace(
+            Prototype=child_part, IsSuppressed=False, Tag=11
+        )
+        unrelated = types.SimpleNamespace(Tag=400)
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(Work=work))
+        report = self.common.batch_report("FREEZE", "J30", "APPLY")
+        targets, _ = self.common.selected_or_work_targets(
+            session, FakeSelectionManager([child, unrelated]), report,
+            allow_partial_selection=True,
+        )
+        self.assertEqual([child_part], [row["part"] for row in targets])
+        self.assertEqual(1, len(report["selection_warnings"]))
+
     def test_selected_subassembly_does_not_recurse(self):
         prototype = types.SimpleNamespace(PDMPart=object(), Tag=300)
         component = types.SimpleNamespace(
@@ -276,6 +307,38 @@ class TestJ30J31Contract(unittest.TestCase):
         self.assertEqual("PREFLIGHT_READY", report["result"])
         self.assertEqual("ALREADY_FROZEN", report["planned_action"])
 
+    def test_freeze_accepts_matching_alphabetic_final_baseline(self):
+        final = snapshot("CHECKED_IN", version="E", revision="E", read_only=True)
+        with mock.patch.object(self.common, "target_snapshot", return_value=final):
+            report = self.common.make_target_report(
+                "FREEZE", object(), target(object()), "J30", "APPLY", 0
+            )
+        self.assertEqual("PREFLIGHT_READY", report["result"])
+        self.assertEqual("ASSIGN_FREEZE_STATUS", report["planned_action"])
+
+    def test_unfreeze_blocks_matching_alphabetic_final_baseline(self):
+        final = snapshot(
+            "CHECKED_IN", version="E", revision="E", release_status="Frozen"
+        )
+        with mock.patch.object(self.common, "target_snapshot", return_value=final):
+            report = self.common.make_target_report(
+                "UNFREEZE", object(), target(object()), "J31", "APPLY", 0
+            )
+        self.assertEqual("BLOCKED_FINAL_RELEASE_BASELINE", report["result"])
+        self.assertIn("immutable", report["message"])
+
+    def test_missing_wae_has_explicit_block_result(self):
+        missing = snapshot("CHECKED_IN")
+        missing.update({
+            "wae_version": "", "wae_version_raw": "", "wae_class": "",
+            "wae_validation_error": "WAE_VERSION is blank.",
+        })
+        with mock.patch.object(self.common, "target_snapshot", return_value=missing):
+            report = self.common.make_target_report(
+                "FREEZE", object(), target(object()), "J30", "APPLY", 0
+            )
+        self.assertEqual("BLOCKED_MISSING_WAE_VERSION", report["result"])
+
     def test_unfreeze_preflight_requires_positive_freeze_status(self):
         with mock.patch.object(
             self.common, "target_snapshot", return_value=snapshot("CHECKED_IN")
@@ -300,7 +363,7 @@ class TestJ30J31Contract(unittest.TestCase):
         unfreeze_method.assert_called_once_with(parts, "Part_Unfreeze_Process")
         self.assertEqual(2, errors.FreeResource.call_count)
 
-    def test_complete_batch_preflight_blocks_every_mutation(self):
+    def test_freeze_preflight_skips_bad_target_and_runs_safe_target(self):
         targets = [target(object()), target(object())]
         good = ready_report(
             self.common, "FREEZE",
@@ -317,11 +380,50 @@ class TestJ30J31Contract(unittest.TestCase):
             return_value={"names": ["Part_Freeze_Process"]}
         ), mock.patch.object(
             self.common, "make_target_report", side_effect=[good, blocked]
-        ), mock.patch.object(self.common, "execute_freeze_batch") as mutate:
+        ), mock.patch.object(
+            self.common, "execute_freeze_batch",
+            side_effect=lambda session, targets, reports, batch: reports[0].update(
+                {"result": "FROZEN"}
+            ),
+        ) as mutate:
             report = self.common.execute("FREEZE", object(), object(), "J30", "APPLY")
-        self.assertEqual("BLOCKED_BATCH", report["result"])
+        self.assertEqual("PARTIAL_COMPLETION", report["result"])
         self.assertFalse(report["preflight"]["passed"])
+        mutate.assert_called_once()
+        self.assertEqual(1, report["counts"]["succeeded"])
+        self.assertEqual(1, report["counts"]["blocked"])
+
+    def test_unfreeze_keeps_complete_selection_preflight(self):
+        targets = [target(object()), target(object())]
+        good = ready_report(
+            self.common, "UNFREEZE",
+            snapshot("CHECKED_IN", version=2, release_status="Frozen"),
+            "UNFREEZE_CHECKOUT_INCREMENT_AND_SAVE", 1,
+        )
+        final = self.common.base_report("UNFREEZE", "J31", "APPLY")
+        final.update({
+            "target_index": 2,
+            "before": snapshot(
+                "CHECKED_IN", version="B", revision="B", part_number="P2",
+                release_status="Frozen",
+            ),
+            "result": "BLOCKED_FINAL_RELEASE_BASELINE",
+            "message": "immutable final baseline",
+        })
+        with mock.patch.object(
+            self.common, "selected_or_work_targets", return_value=(targets, 2)
+        ), mock.patch.object(
+            self.common, "get_available_workflows",
+            return_value={"names": ["Part_Unfreeze_Process"]},
+        ), mock.patch.object(
+            self.common, "make_target_report", side_effect=[good, final]
+        ), mock.patch.object(self.common, "execute_unfreeze_batch") as mutate:
+            report = self.common.execute(
+                "UNFREEZE", object(), object(), "J31", "APPLY"
+            )
+        self.assertEqual("BLOCKED_BATCH", report["result"])
         mutate.assert_not_called()
+        self.assertEqual("NOT_ATTEMPTED_BATCH_BLOCKED", report["targets"][0]["result"])
 
     def test_freeze_batch_saves_checkins_assigns_status_and_verifies(self):
         session = object()
@@ -355,8 +457,61 @@ class TestJ30J31Contract(unittest.TestCase):
             self.common.execute_freeze_batch(session, targets, reports, batch)
         save.assert_called_once_with(first_part)
         checkin.assert_called_once_with([first_part])
-        assign.assert_called_once_with(session, [first_part, second_part], "FREEZE")
+        self.assertEqual(2, assign.call_count)
+        assign.assert_has_calls([
+            mock.call(session, [first_part], "FREEZE"),
+            mock.call(session, [second_part], "FREEZE"),
+        ])
         self.assertEqual(["FROZEN", "FROZEN"], [row["result"] for row in reports])
+
+    def test_freeze_workflow_error_is_warning_when_final_state_is_frozen(self):
+        part = object()
+        before = snapshot("CHECKED_IN", read_only=True)
+        frozen = snapshot(
+            "CHECKED_IN", release_status="Frozen", read_only=True,
+            has_write_access=True, pdm_modifiable=False,
+        )
+        report = ready_report(
+            self.common, "FREEZE", before, "ASSIGN_FREEZE_STATUS"
+        )
+        batch = self.common.batch_report("FREEZE", "J30", "APPLY")
+        with mock.patch.object(
+            self.common, "assign_status_workflow", side_effect=RuntimeError("3520110")
+        ), mock.patch.object(self.common, "target_snapshot", return_value=frozen):
+            self.common.execute_freeze_batch(
+                object(), [target(part)], [report], batch
+            )
+        self.assertEqual("FROZEN_WITH_WARNING", report["result"])
+        self.assertIn("3520110", report["message"])
+
+    def test_freeze_failure_isolated_and_later_target_continues(self):
+        first, second = object(), object()
+        first_before = snapshot("CHECKED_IN", read_only=True, part_number="P1")
+        second_before = snapshot("CHECKED_IN", read_only=True, part_number="P2")
+        reports = [
+            ready_report(self.common, "FREEZE", first_before, "ASSIGN_FREEZE_STATUS", 1),
+            ready_report(self.common, "FREEZE", second_before, "ASSIGN_FREEZE_STATUS", 2),
+        ]
+        unchanged = snapshot("CHECKED_IN", read_only=True, part_number="P1")
+        frozen = snapshot(
+            "CHECKED_IN", read_only=True, release_status="Frozen",
+            pdm_modifiable=False, part_number="P2",
+        )
+        batch = self.common.batch_report("FREEZE", "J30", "APPLY")
+        with mock.patch.object(
+            self.common, "assign_status_workflow",
+            side_effect=[RuntimeError("first failed"), "second ok"],
+        ) as assign, mock.patch.object(
+            self.common, "target_snapshot", side_effect=[unchanged, frozen]
+        ):
+            self.common.execute_freeze_batch(
+                object(), [target(first), target(second)], reports, batch
+            )
+        self.assertEqual(2, assign.call_count)
+        self.assertEqual(
+            ["FAILED_FREEZE_WORKFLOW", "FROZEN"],
+            [row["result"] for row in reports],
+        )
 
     def test_unfreeze_batch_status_checkout_increment_save_sequence(self):
         part = object()
@@ -392,6 +547,55 @@ class TestJ30J31Contract(unittest.TestCase):
         save.assert_called_once_with(part)
         self.assertEqual("UNFROZEN_READY_FOR_EDIT", report["result"])
 
+    def test_unfreeze_incomplete_target_stops_later_targets(self):
+        first, second = object(), object()
+        frozen_first = snapshot("CHECKED_IN", version=6, release_status="Frozen")
+        frozen_second = snapshot(
+            "CHECKED_IN", version=3, release_status="Frozen", part_number="P2"
+        )
+        reports = [
+            ready_report(
+                self.common, "UNFREEZE", frozen_first,
+                "UNFREEZE_CHECKOUT_INCREMENT_AND_SAVE", 1,
+            ),
+            ready_report(
+                self.common, "UNFREEZE", frozen_second,
+                "UNFREEZE_CHECKOUT_INCREMENT_AND_SAVE", 2,
+            ),
+        ]
+        unfrozen = snapshot("CHECKED_IN", version=6, read_only=True)
+        batch = self.common.batch_report("UNFREEZE", "J31", "APPLY")
+        with mock.patch.object(
+            self.common, "assign_status_workflow", return_value="unfreeze"
+        ) as assign, mock.patch.object(
+            self.common, "target_snapshot", side_effect=[unfrozen, unfrozen]
+        ), mock.patch.object(
+            self.common, "checkout_part", side_effect=RuntimeError("checkout failed")
+        ):
+            stopped = self.common.execute_unfreeze_batch(
+                object(), [target(first), target(second)], reports, batch
+            )
+        self.assertTrue(stopped)
+        self.assertEqual(1, assign.call_count)
+        self.assertEqual("RECOVERY_REQUIRED", reports[0]["result"])
+        self.assertEqual("NOT_ATTEMPTED_AFTER_RECOVERY_REQUIRED", reports[1]["result"])
+
+    def test_exact_teamcenter_identity_collapses_distinct_loaded_proxies(self):
+        targets = [target(object(), indexes=[0]), target(object(), indexes=[1])]
+        reports = [
+            ready_report(self.common, "FREEZE", snapshot("CHECKED_IN"),
+                         "ASSIGN_FREEZE_STATUS", 1),
+            ready_report(self.common, "FREEZE", snapshot("CHECKED_IN"),
+                         "ASSIGN_FREEZE_STATUS", 2),
+        ]
+        collapsed_targets, collapsed_reports = self.common.collapse_exact_identity_targets(
+            targets, reports
+        )
+        self.assertEqual(1, len(collapsed_targets))
+        self.assertEqual(1, len(collapsed_reports))
+        self.assertEqual([0, 1], collapsed_targets[0]["selected_indexes"])
+        self.assertEqual(2, collapsed_reports[0]["selected_occurrence_count"])
+
     def test_runtime_failure_stops_and_requires_recovery(self):
         targets = [target(object())]
         ready = ready_report(
@@ -423,7 +627,7 @@ class TestJ30J31Contract(unittest.TestCase):
         report = self.common.base_report("FREEZE", "J30", "APPLY")
         report.update({"before": before, "after": after})
         self.common.mark_recovery_results("FREEZE", [report])
-        self.assertEqual("FROZEN", report["result"])
+        self.assertEqual("FROZEN_WITH_WARNING", report["result"])
 
     def test_dry_run_preflights_but_does_not_mutate(self):
         targets = [target(object())]
