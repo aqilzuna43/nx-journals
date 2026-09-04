@@ -71,6 +71,8 @@ shared helpers from `from_git\utils`.
 | 31 | `from_git/journals/31_cad_unfreeze.py` | Native WAE unfreeze, batch checkout, and one-version increment per unique target |
 | 32 | `from_git/journals/32_probe_wae_freeze_capability.py` | Read-only NX X 2506 freeze-workflow and release-status capability probe |
 | 33 | `from_git/journals/33_datapack_jt_export.py` | Exports DataPack-controlled exact Teamcenter revisions to monolithic JT files |
+| 34 | `from_git/admin_freeze/34_validate_freeze_csv.py` | Validates the fixed administrative freeze CSV without mutation |
+| 35 | `from_git/admin_freeze/35_apply_freeze_csv.py` | Independently freezes every validated safe identity and continues past failures |
 
 ## Key Runtime Notes
 
@@ -413,6 +415,7 @@ it opened.
 | J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_EVIDENCE_<target>_<timestamp>.csv` and `.json` |
 | J25 | `NX_TC_SINGLE_DRAWING_CLEANUP\<timestamp>\` with CSV, JSON, log, and `BACKUP\` |
 | J33 | `NX_BULK_EXPORT\<timestamp>\JT\<number>_REV<rev>.<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
+| J34/J35 | `from_git\admin_freeze\reports\J34_VALIDATE_<timestamp>.*` and `J35_APPLY_<timestamp>.*` |
 
 ## Notes
 

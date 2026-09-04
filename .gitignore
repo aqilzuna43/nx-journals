@@ -17,6 +17,11 @@
 !from_git/templates/NX_ATTRIBUTE_CORRECTIONS_TEMPLATE.csv
 !from_git/templates/NX_TC_NEW_DRAWING_SPECIFICATION_TEMPLATE.csv
 !from_git/templates/NX_TC_SINGLE_DRAWING_SCOPE_TEMPLATE.csv
+!from_git/admin_freeze/NX_ADMIN_FREEZE_SCOPE.csv
+
+# J34/J35 runtime state and reports (commit proof artifacts explicitly when needed)
+from_git/admin_freeze/NX_ADMIN_FREEZE_VALIDATION.json
+from_git/admin_freeze/reports/
 
 # Python
 __pycache__/

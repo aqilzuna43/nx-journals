@@ -7,6 +7,7 @@ Keep these folders together:
 ```text
 from_git/
   config/
+  admin_freeze/
   journals/
   templates/
   utils/
@@ -48,6 +49,8 @@ Available production journals:
 31_cad_unfreeze.py            Unfreeze active/selected CAD and increment WAE_VERSION
 32_probe_wae_freeze_capability.py Read-only NX/Teamcenter WAE lock API inventory
 33_datapack_jt_export.py      DataPack-controlled exact-revision JT export
+admin_freeze/34_validate_freeze_csv.py Validate fixed administrative freeze CSV
+admin_freeze/35_apply_freeze_csv.py Apply validated rows independently
 ```
 
 J04, J05, and J11 are intentionally self-contained to avoid NX2312
@@ -68,6 +71,11 @@ The Journal 05 save gate is enabled as `SAVE_CHANGED_PARTS`.
 
 Other journals still use shared helpers from `utils`, so keep the full folder
 together.
+
+J34/J35 are a self-contained freeze-only package under `admin_freeze`. They
+read `NX_ADMIN_FREEZE_SCOPE.csv` beside the scripts, require a matching J34
+validation manifest before J35 applies, and write timestamped evidence under
+`admin_freeze/reports`. See `docs/J34_J35_ADMIN_FREEZE.md`.
 
 J04 reads unique 3D master prototypes from the active assembly state only.
 Suppressed occurrences and their complete subtrees are excluded, and only
