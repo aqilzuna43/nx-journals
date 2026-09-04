@@ -21,6 +21,7 @@ Run via: NX > Tools > Journal > Play
 import csv
 import datetime
 import os
+import time
 import traceback
 
 import NXOpen
@@ -28,10 +29,14 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J33-NX2506-DATAPACK-JT-V1"
+JOURNAL_BUILD_ID = "J33-NX2506-DATAPACK-JT-V2"
 WAE_VERSION_ATTRIBUTE = "WAE_VERSION"
 VERIFY_OUTPUT_FILES = True
 CLOSE_PARTS_OPENED_BY_JOURNAL = True
+JT_CONFIG_ENVIRONMENT_VARIABLE = "NX_JT_CONFIG_FILE"
+JT_OUTPUT_WAIT_ENVIRONMENT_VARIABLE = "NX_JT_OUTPUT_WAIT_SECONDS"
+JT_OUTPUT_WAIT_SECONDS = 120.0
+JT_OUTPUT_POLL_SECONDS = 0.5
 MYT_TIMEZONE = datetime.timezone(datetime.timedelta(hours=8), name="MYT")
 
 TRUE_VALUES = {"YES", "Y", "TRUE", "1", "X"}
@@ -647,8 +652,114 @@ def build_versioned_base(number, revision, wae_version):
     return base
 
 
-def configure_jt_builder(builder, output_path):
+def _add_unique_path(paths, path):
+    text = normalize_text(path)
+    if not text:
+        return
+    expanded = os.path.abspath(os.path.expandvars(os.path.expanduser(text)))
+    key = os.path.normcase(os.path.normpath(expanded))
+    if all(os.path.normcase(os.path.normpath(item)) != key for item in paths):
+        paths.append(expanded)
+
+
+def jt_config_candidates():
+    """Return likely NX tessellation-config paths in priority order."""
+    candidates = []
+    override = normalize_text(os.environ.get(JT_CONFIG_ENVIRONMENT_VARIABLE))
+    if override:
+        _add_unique_path(candidates, override)
+        return candidates
+
+    for variable in ("UGII_BASE_DIR", "UGII_ROOT_DIR"):
+        base = normalize_text(os.environ.get(variable))
+        if not base:
+            continue
+        _add_unique_path(candidates, os.path.join(base, "PVTRANS", "tessUG.config"))
+        _add_unique_path(candidates, os.path.join(base, "tessUG.config"))
+        _add_unique_path(
+            candidates,
+            os.path.join(os.path.dirname(base), "PVTRANS", "tessUG.config"),
+        )
+        _add_unique_path(
+            candidates,
+            os.path.join(os.path.dirname(base), "tessUG.config"),
+        )
+
+    source_directory = os.path.dirname(runtime_source_path())
+    for _unused in range(8):
+        _add_unique_path(
+            candidates,
+            os.path.join(source_directory, "PVTRANS", "tessUG.config"),
+        )
+        _add_unique_path(
+            candidates,
+            os.path.join(source_directory, "tessUG.config"),
+        )
+        parent = os.path.dirname(source_directory)
+        if parent == source_directory:
+            break
+        source_directory = parent
+    return candidates
+
+
+def resolve_jt_config_file():
+    candidates = jt_config_candidates()
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    override = normalize_text(os.environ.get(JT_CONFIG_ENVIRONMENT_VARIABLE))
+    if override:
+        raise RuntimeError(
+            "{0} points to a missing JT config file: {1}".format(
+                JT_CONFIG_ENVIRONMENT_VARIABLE,
+                candidates[0] if candidates else override,
+            )
+        )
+    raise RuntimeError(
+        "NX JT config tessUG.config was not found. Checked: {0}. "
+        "Set {1} to the full config-file path.".format(
+            "; ".join(candidates) if candidates else "no candidate paths",
+            JT_CONFIG_ENVIRONMENT_VARIABLE,
+        )
+    )
+
+
+def jt_output_wait_seconds():
+    raw = normalize_text(os.environ.get(JT_OUTPUT_WAIT_ENVIRONMENT_VARIABLE))
+    if not raw:
+        return JT_OUTPUT_WAIT_SECONDS
+    try:
+        return max(0.0, min(600.0, float(raw)))
+    except ValueError:
+        return JT_OUTPUT_WAIT_SECONDS
+
+
+def wait_for_nonzero_file(path, timeout_seconds, poll_seconds=JT_OUTPUT_POLL_SECONDS):
+    """Wait while the live JT builder finishes writing its output file."""
+    started = time.monotonic()
+    deadline = started + max(0.0, timeout_seconds)
+    while True:
+        try:
+            if os.path.isfile(path):
+                size = os.path.getsize(path)
+                if size > 0:
+                    return size, time.monotonic() - started
+        except Exception:
+            pass
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, time.monotonic() - started
+        time.sleep(min(max(0.01, poll_seconds), remaining))
+
+
+def configure_jt_builder(builder, output_path, config_path):
     """Apply the explicit J33 JT translation contract."""
+    builder.ConfigFile = config_path
+    load_config = getattr(builder, "LoadConfigSettings", None)
+    if callable(load_config):
+        load_config()
     builder.OutputJtFile = output_path
     builder.JtfileStructure = NXOpen.JtCreator.FileStructure.Monolithic
     builder.JtWrite = NXOpen.JtCreator.FileWrite.All
@@ -679,6 +790,7 @@ def export_jt_from_part(
     number,
     revision,
     wae_version,
+    log_buffer=None,
 ):
     set_display_part(session, part)
     session.Parts.SetWork(part)
@@ -690,25 +802,70 @@ def export_jt_from_part(
     if os.path.exists(output_path):
         raise RuntimeError("JT output already exists: {0}".format(output_path))
 
-    builder = session.PvtransManager.CreateJtCreator()
     try:
-        configure_jt_builder(builder, output_path)
+        config_path = resolve_jt_config_file()
+    except Exception as exc:
+        return {
+            "result": "FAILED_CONFIGURATION",
+            "path": "",
+            "size": "",
+            "message": str(exc),
+        }
+
+    wait_seconds = jt_output_wait_seconds()
+    log_line(session, "    JT config: {0}".format(config_path), log_buffer)
+    log_line(
+        session,
+        "    JT output wait: up to {0:.1f} seconds".format(wait_seconds),
+        log_buffer,
+    )
+
+    builder = session.PvtransManager.CreateJtCreator()
+    file_size = None
+    waited_seconds = 0.0
+    try:
+        configure_jt_builder(builder, output_path, config_path)
+        validate = getattr(builder, "Validate", None)
+        if callable(validate):
+            valid = bool(validate())
+            log_line(
+                session,
+                "    JT builder validation: {0}".format(valid),
+                log_buffer,
+            )
+            if not valid:
+                return {
+                    "result": "FAILED_BUILDER_VALIDATION",
+                    "path": "",
+                    "size": "",
+                    "message": (
+                        "JT builder validation failed with config {0}"
+                    ).format(config_path),
+                }
         builder.Commit()
+        file_size, waited_seconds = wait_for_nonzero_file(
+            output_path,
+            wait_seconds,
+        )
     finally:
         builder.Destroy()
 
-    if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
+    if VERIFY_OUTPUT_FILES and file_size is None:
         return {
             "result": "FAILED_NO_OUTPUT_FILE",
             "path": "",
             "size": "",
-            "message": "JT builder committed but no output file was created",
+            "message": (
+                "JT builder committed with config {0}, but no nonzero output "
+                "file was created within {1:.1f} seconds"
+            ).format(config_path, waited_seconds),
         }
 
-    try:
-        file_size = os.path.getsize(output_path)
-    except Exception:
-        file_size = ""
+    if file_size is None:
+        try:
+            file_size = os.path.getsize(output_path)
+        except Exception:
+            file_size = ""
 
     if VERIFY_OUTPUT_FILES and file_size == 0:
         return {
@@ -778,6 +935,7 @@ def export_jt_for_instruction(
             number,
             revision,
             wae_version,
+            log_buffer,
         )
         if not wae_version:
             warning = (
@@ -966,7 +1124,12 @@ def main():
         log_line(session, "Export complete", log_buffer)
         log_line(session, "Success: {0}".format(counts.get("SUCCESS", 0)), log_buffer)
         log_line(session, "Not found: {0}".format(counts.get("NOT_FOUND", 0)), log_buffer)
-        log_line(session, "Failed: {0}".format(counts.get("FAILED", 0)), log_buffer)
+        failure_count = sum(
+            count
+            for status, count in counts.items()
+            if status not in ("SUCCESS", "NOT_FOUND")
+        )
+        log_line(session, "Failed: {0}".format(failure_count), log_buffer)
         log_line(
             session,
             "JT files: {0}".format(sum(1 for item in results if item["JT_FILE"])),

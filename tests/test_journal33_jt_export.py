@@ -25,6 +25,26 @@ class Journal33JtExportTests(unittest.TestCase):
     def setUpClass(cls):
         cls.journal = load_journal()
 
+    def setUp(self):
+        config_folder = tempfile.TemporaryDirectory()
+        self.addCleanup(config_folder.cleanup)
+        self.config_path = Path(config_folder.name) / "tessUG.config"
+        self.config_path.write_text("# test JT config\n", encoding="utf-8")
+        resolver = mock.patch.object(
+            self.journal,
+            "resolve_jt_config_file",
+            return_value=str(self.config_path),
+        )
+        wait_time = mock.patch.object(
+            self.journal,
+            "jt_output_wait_seconds",
+            return_value=0.0,
+        )
+        resolver.start()
+        wait_time.start()
+        self.addCleanup(resolver.stop)
+        self.addCleanup(wait_time.stop)
+
     def write_scope(self, content):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
@@ -117,10 +137,16 @@ class Journal33JtExportTests(unittest.TestCase):
 
     def test_jt_builder_contract_is_explicit(self):
         self.install_jt_enums()
-        builder = types.SimpleNamespace()
+        builder = types.SimpleNamespace(LoadConfigSettings=mock.Mock())
 
-        self.journal.configure_jt_builder(builder, "part.jt")
+        self.journal.configure_jt_builder(
+            builder,
+            "part.jt",
+            "tessUG.config",
+        )
 
+        self.assertEqual("tessUG.config", builder.ConfigFile)
+        builder.LoadConfigSettings.assert_called_once_with()
         self.assertEqual("part.jt", builder.OutputJtFile)
         self.assertEqual("MONOLITHIC", builder.JtfileStructure)
         self.assertEqual("ALL", builder.JtWrite)
@@ -205,6 +231,87 @@ class Journal33JtExportTests(unittest.TestCase):
         )
 
         self.assertEqual("FAILED_NO_OUTPUT_FILE", result["result"])
+        self.assertIn(str(self.config_path), result["message"])
+        builder.Destroy.assert_called_once()
+
+    def test_builder_stays_alive_until_delayed_output_is_observed(self):
+        self.install_jt_enums()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+
+        class Builder:
+            def __init__(self):
+                self.destroyed = False
+
+            def Commit(self):
+                return None
+
+            def Destroy(self):
+                self.destroyed = True
+
+        builder = Builder()
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                SetDisplay=mock.Mock(return_value=None),
+                SetWork=mock.Mock(),
+            ),
+            PvtransManager=types.SimpleNamespace(
+                CreateJtCreator=mock.Mock(return_value=builder)
+            ),
+        )
+
+        def complete_output(path, _timeout):
+            self.assertFalse(builder.destroyed)
+            Path(path).write_bytes(b"JT")
+            return 2, 0.25
+
+        with mock.patch.object(
+            self.journal,
+            "wait_for_nonzero_file",
+            side_effect=complete_output,
+        ):
+            result = self.journal.export_jt_from_part(
+                session,
+                object(),
+                folder.name,
+                "P1",
+                "A",
+                "",
+            )
+
+        self.assertEqual("SUCCESS", result["result"])
+        self.assertTrue(builder.destroyed)
+
+    def test_failed_builder_validation_blocks_commit(self):
+        self.install_jt_enums()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        builder = types.SimpleNamespace(
+            Validate=mock.Mock(return_value=False),
+            Commit=mock.Mock(),
+            Destroy=mock.Mock(),
+        )
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                SetDisplay=mock.Mock(return_value=None),
+                SetWork=mock.Mock(),
+            ),
+            PvtransManager=types.SimpleNamespace(
+                CreateJtCreator=mock.Mock(return_value=builder)
+            ),
+        )
+
+        result = self.journal.export_jt_from_part(
+            session,
+            object(),
+            folder.name,
+            "P1",
+            "A",
+            "",
+        )
+
+        self.assertEqual("FAILED_BUILDER_VALIDATION", result["result"])
+        builder.Commit.assert_not_called()
         builder.Destroy.assert_called_once()
 
     def test_exact_identity_mismatch_blocks_builder_commit(self):
@@ -251,6 +358,57 @@ class Journal33JtExportTests(unittest.TestCase):
             "CreateDataset",
         ):
             self.assertNotIn(forbidden, source)
+
+
+class Journal33JtConfigResolutionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.journal = load_journal()
+
+    def test_explicit_config_override_wins(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        config_path = Path(folder.name) / "custom.config"
+        config_path.write_text("# custom\n", encoding="utf-8")
+
+        with mock.patch.dict(
+            self.journal.os.environ,
+            {"NX_JT_CONFIG_FILE": str(config_path)},
+            clear=True,
+        ):
+            resolved = self.journal.resolve_jt_config_file()
+
+        self.assertEqual(str(config_path.resolve()), resolved)
+
+    def test_ugii_root_nxbin_finds_sibling_pvtrans_config(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        install = Path(folder.name) / "NX2506"
+        nxbin = install / "NXBIN"
+        pvtrans = install / "PVTRANS"
+        nxbin.mkdir(parents=True)
+        pvtrans.mkdir()
+        config_path = pvtrans / "tessUG.config"
+        config_path.write_text("# installed\n", encoding="utf-8")
+
+        with mock.patch.dict(
+            self.journal.os.environ,
+            {"UGII_ROOT_DIR": str(nxbin)},
+            clear=True,
+        ):
+            resolved = self.journal.resolve_jt_config_file()
+
+        self.assertEqual(str(config_path.resolve()), resolved)
+
+    def test_missing_explicit_config_is_reported(self):
+        missing = str(ROOT / "does-not-exist" / "tessUG.config")
+        with mock.patch.dict(
+            self.journal.os.environ,
+            {"NX_JT_CONFIG_FILE": missing},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "points to a missing"):
+                self.journal.resolve_jt_config_file()
 
 
 if __name__ == "__main__":

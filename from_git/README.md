@@ -168,6 +168,11 @@ uses a revision-only filename and records a warning. J33 restores display/work
 parts, closes only journal-opened parts, and never saves, checks out, checks
 in, creates a Teamcenter dataset, or uploads output. NX runtime geometry,
 assembly structure, and PMI still require office-machine acceptance evidence.
+Both J07 and J33 resolve the NX JT translator configuration from
+`PVTRANS\tessUG.config`, load its settings, log the chosen path, validate the
+builder, and wait up to 120 seconds for a nonzero output before destroying the
+builder. Set `NX_JT_CONFIG_FILE` for a custom config path or
+`NX_JT_OUTPUT_WAIT_SECONDS` to override the wait.
 
 For the NX X 2506 closed-drawing test, deploy this complete folder, fully close
 `264MN028607A01/A/dwg1`, and run
@@ -177,7 +182,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-PDF-STEP-JT-V9
+Journal build: J07-NX2506-PDF-STEP-JT-V10
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

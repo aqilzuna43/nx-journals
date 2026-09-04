@@ -286,6 +286,26 @@ class JtExportTests(unittest.TestCase):
     def setUpClass(cls):
         cls.journal = load_journal()
 
+    def setUp(self):
+        config_folder = tempfile.TemporaryDirectory()
+        self.addCleanup(config_folder.cleanup)
+        self.config_path = Path(config_folder.name) / "tessUG.config"
+        self.config_path.write_text("# test JT config\n", encoding="utf-8")
+        resolver = mock.patch.object(
+            self.journal,
+            "resolve_jt_config_file",
+            return_value=str(self.config_path),
+        )
+        wait_time = mock.patch.object(
+            self.journal,
+            "jt_output_wait_seconds",
+            return_value=0.0,
+        )
+        resolver.start()
+        wait_time.start()
+        self.addCleanup(resolver.stop)
+        self.addCleanup(wait_time.stop)
+
     def install_jt_enums(self):
         self.journal.NXOpen.JtCreator = types.SimpleNamespace(
             FileStructure=types.SimpleNamespace(Monolithic="MONOLITHIC"),
@@ -320,10 +340,16 @@ class JtExportTests(unittest.TestCase):
 
     def test_jt_builder_contract_is_explicit(self):
         self.install_jt_enums()
-        builder = types.SimpleNamespace()
+        builder = types.SimpleNamespace(LoadConfigSettings=mock.Mock())
 
-        self.journal.configure_jt_builder(builder, "part.jt")
+        self.journal.configure_jt_builder(
+            builder,
+            "part.jt",
+            "tessUG.config",
+        )
 
+        self.assertEqual("tessUG.config", builder.ConfigFile)
+        builder.LoadConfigSettings.assert_called_once_with()
         self.assertEqual("part.jt", builder.OutputJtFile)
         self.assertEqual("MONOLITHIC", builder.JtfileStructure)
         self.assertEqual("ALL", builder.JtWrite)
@@ -408,6 +434,7 @@ class JtExportTests(unittest.TestCase):
         )
 
         self.assertEqual("FAILED_NO_OUTPUT_FILE", result["result"])
+        self.assertIn(str(self.config_path), result["message"])
         builder.Destroy.assert_called_once()
 
     def test_all_three_successes_produce_overall_success(self):
@@ -624,7 +651,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-STEP-JT-V9",
+            "J07-NX2506-PDF-STEP-JT-V10",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
