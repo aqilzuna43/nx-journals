@@ -34,24 +34,33 @@ normal NX/Teamcenter revise UI.
   explicitly opened and targeted with no selection.
 - Selecting a subassembly targets only that subassembly CAD file; descendants
   are never traversed.
-- Repeated occurrences of one prototype are collapsed. J31 increments that
-  prototype once, not once per occurrence.
-- A suppressed, unloaded, or unmanaged component blocks the complete batch.
-  An unrelated selection mixed with valid CAD targets also blocks the batch;
-  unrelated selections are ignored only when active-work-part fallback is
-  used.
+- Repeated occurrences and distinct loaded NX proxies for the same
+  case-insensitive `DB_PART_NO + DB_PART_REV` are collapsed. J31 increments
+  that Teamcenter identity once, not once per occurrence or proxy.
+- For J30, an unrelated selection mixed with valid CAD targets is skipped and
+  reported while valid targets continue. J31 keeps complete-selection
+  preflight and blocks before mutation if any selected target is invalid.
 - Audit JSON records the runtime type and resolution of every NX-selected
   object in `selected_objects`.
 
-## Complete-batch preflight
+## WAE lifecycle and preflight
 
 Before any mutation, both journals resolve every target, query the configured
-workflows, read checkout ownership, read display/internal release status, and
-validate `DB_PART_REV` plus the exact positive-integer `WAEItem/WAE_VERSION`.
+workflow per exact identity, read checkout ownership, read display/internal
+release status, and validate `DB_PART_REV` plus `WAEItem/WAE_VERSION`.
 
-If any unique target fails preflight, the result is `BLOCKED_BATCH` and nothing
-is saved, checked in/out, frozen/unfrozen, or written. A non-freeze release
-status also blocks the batch so these journals cannot bypass formal release.
+- J30 accepts a positive whole-number working WAE or an alphabetic final WAE
+  matching `DB_PART_REV`, such as `Rev E / WAE E`. Missing, malformed, and
+  mismatched values are blocked for that target. Other safe targets continue.
+- J31 accepts only positive whole-number working WAE values. A matching
+  alphabetic value produces `BLOCKED_FINAL_RELEASE_BASELINE`; that baseline
+  remains Frozen and the next engineering change must use normal Teamcenter
+  revision control.
+- J31 retains complete-selection preflight: any invalid target produces
+  `BLOCKED_BATCH` before any selected target is changed.
+
+A non-freeze controlled status remains a safety block, so neither journal can
+bypass formal release.
 
 ## J30 Freeze
 
@@ -61,42 +70,54 @@ For every preflighted target:
 2. A checked-in but unfrozen target still requires the freeze workflow;
    check-in alone is not considered frozen.
 3. A checked-out target must be writable and owned by the current Teamcenter
-   user. J30 saves it without changing revision or WAE, then batch-checks in
-   only those checked-out targets.
-4. J30 calls `PdmSession.AssignFreezeStatus(parts,
-   "Part_Freeze_Process")` once for every non-frozen target in the batch.
+   user. J30 saves and checks in that one target without changing revision or
+   WAE.
+4. J30 calls `PdmSession.AssignFreezeStatus([part],
+   "Part_Freeze_Process")` independently for each non-frozen exact identity.
 5. Every final target must positively show a freeze status, `CHECKED_IN`,
    read-only, `IsModifiable()=False`, unchanged `DB_PART_REV`, and unchanged
    `WAE_VERSION`. `HasWriteAccess` remains diagnostic only: NX X 2506 runtime
    evidence shows it may remain true for a genuinely frozen/read-only part.
 
-Only then does the batch report `ALL_TARGETS_FROZEN`.
+One target's Teamcenter failure does not stop later safe targets. A positively
+verified final state reports `FROZEN`; if the API raised an error but every
+postcondition passed, it reports `FROZEN_WITH_WARNING`. A target that did not
+reach Frozen reports `FAILED_FREEZE_WORKFLOW`. The overall result is
+`ALL_TARGETS_FROZEN`, `PARTIAL_COMPLETION`, or `NO_TARGETS_COMPLETED`.
 
 ## J31 Unfreeze
 
 Every target must start positively frozen and `CHECKED_IN`. A checked-out
 target blocks the complete batch, preventing a second WAE increment.
 
-1. J31 calls `PdmSession.AssignUnfreezeStatus(parts,
-   "Part_Unfreeze_Process")` once for the complete batch.
+1. J31 calls `PdmSession.AssignUnfreezeStatus([part],
+   "Part_Unfreeze_Process")` for one exact identity.
 2. It verifies that the freeze status is removed without changing revision,
    WAE, or checkout state.
-3. It checks out all unique targets in one batch and verifies that every target
-   is writable, has write/modification access, and is owned by the current
-   Teamcenter user.
-4. For each unique prototype, J31 computes the next WAE value internally,
+3. It checks out that identity and verifies it is writable, has
+   write/modification access, and is owned by the current Teamcenter user.
+4. J31 computes the next WAE value internally,
    writes exactly `current + 1`, rereads it, saves, and verifies it.
-5. Every target remains checked out and unfrozen for CAD editing.
+5. Only after the target completes does J31 proceed to the next identity.
+   Completed targets remain checked out and unfrozen for CAD editing.
 
 Only then does the batch report `ALL_TARGETS_UNFROZEN`.
 
 ## Runtime failure and recovery
 
 Teamcenter workflow, check-in/out, and saved attribute changes do not form one
-rollback transaction. If a mutation fails after execution begins, the journal
-stops immediately and reports `RECOVERY_REQUIRED`, the exact `failed_stage`,
-per-target operation flags, and fresh after-state snapshots. Operators must not
-rerun blindly; inspect the JSON and recover the affected targets first.
+rollback transaction. J30 isolates and reports a failed identity, then
+continues. J31 continues after a clean failure only when the target is
+positively verified to remain unchanged and Frozen. If a J31 failure leaves an
+unfrozen, checked-out, incremented, or otherwise incomplete/unknown state, it
+reports `RECOVERY_REQUIRED` and marks later targets
+`NOT_ATTEMPTED_AFTER_RECOVERY_REQUIRED`. Operators must not rerun blindly;
+inspect the JSON and recover the affected target first.
+
+For either journal, an API exception followed by fully successful final-state
+verification is recorded as `FROZEN_WITH_WARNING` or
+`UNFROZEN_WITH_WARNING`; no repeat operation is required solely because the
+API raised.
 
 ## Output and modes
 
@@ -104,8 +125,8 @@ Both journals default to `APPLY` for their NX toolbar buttons. Set
 `NX_J30_MODE=DRY_RUN` or `NX_J31_MODE=DRY_RUN` before starting NX for a
 non-mutating complete-batch preflight.
 
-J30 and J31 V4 require the shared helper build
-`WAE-CHANGE-CONTROL-V4`. A partial deployment stops with a helper-version
+J30 and J31 V5 require the shared helper build
+`WAE-CHANGE-CONTROL-V5`. A partial deployment stops with a helper-version
 mismatch instead of running older behavior under a newer journal build label.
 
 Audit JSON is written beneath:
