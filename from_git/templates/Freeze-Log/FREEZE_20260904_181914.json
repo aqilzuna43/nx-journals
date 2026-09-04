@@ -1,0 +1,910 @@
+{
+  "action": "FREEZE",
+  "build": "J30-NX2506-CAD-FREEZE-V4",
+  "counts": {
+    "blocked": 0,
+    "failed": 0,
+    "succeeded": 0
+  },
+  "duplicate_occurrences_collapsed": 0,
+  "failed_stage": "",
+  "helper_build": "WAE-CHANGE-CONTROL-V4",
+  "message": "Selected component 87 is suppressed.",
+  "mode": "APPLY",
+  "operation_raw": {},
+  "operations": {
+    "checkin_attempted": false,
+    "checkout_attempted": false,
+    "formal_revision_created": false,
+    "freeze_status_attempted": false,
+    "save_attempted": false,
+    "unfreeze_status_attempted": false,
+    "wae_write_attempted": false
+  },
+  "preflight": {
+    "errors": [],
+    "passed": false
+  },
+  "required_workflow": "",
+  "result": "BLOCKED",
+  "scope": "SELECTED_COMPONENT_PROTOTYPES_OR_ACTIVE_WORK_PART",
+  "selected_object_count": 314,
+  "selected_objects": [
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 1,
+      "name": "264MN035271A99/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "66977"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 2,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70176"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 3,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70177"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 4,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70178"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 5,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70179"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 6,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70180"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 7,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70170"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 8,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70171"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 9,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70172"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 10,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70173"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 11,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70174"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 12,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70175"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 13,
+      "name": "264MN034346A01/A",
+      "owning_component_tag": "67093",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70169"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 14,
+      "name": "264MN035270A99/A",
+      "owning_component_tag": "66977",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "66989"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 15,
+      "name": "1698UN207799A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69148"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 16,
+      "name": "1698UN207799A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69010"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 17,
+      "name": "1698UN207799A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69006"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 18,
+      "name": "1698UN207799A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69355"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 19,
+      "name": "1698UN161144A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69358"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 20,
+      "name": "1698UN161144A01/B",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68991"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 21,
+      "name": "264MN035269A99/A",
+      "owning_component_tag": "66989",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68653"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 22,
+      "name": "264MN031978A01/A",
+      "owning_component_tag": "68653",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "66981"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 23,
+      "name": "264MN024580A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70847"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 24,
+      "name": "264MN035536A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70884"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 25,
+      "name": "264MN035536A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70883"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 26,
+      "name": "264MN035686A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70872"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 27,
+      "name": "264MN035686A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70873"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 28,
+      "name": "264MN035686A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70874"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 29,
+      "name": "264MN035686A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70871"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 30,
+      "name": "264MN035549A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70880"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 31,
+      "name": "264MN035549A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70881"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 32,
+      "name": "264MN035549A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70870"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 33,
+      "name": "264MN035549A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70869"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 34,
+      "name": "264MN035672A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70865"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 35,
+      "name": "264MN035672A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70864"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 36,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70875"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 37,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70876"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 38,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70877"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 39,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70878"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 40,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70879"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 41,
+      "name": "264MN035588A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70862"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 42,
+      "name": "264MN035625A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70866"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 43,
+      "name": "264MN035625A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70867"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 44,
+      "name": "264MN035625A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70860"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 45,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70897"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 46,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70899"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 47,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70852"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 48,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70901"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 49,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70886"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 50,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70854"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 51,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70903"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 52,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70856"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 53,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70888"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 54,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70905"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 55,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70858"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 56,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70890"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 57,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70892"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 58,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70894"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 59,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70896"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 60,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70898"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 61,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70900"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 62,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70853"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 63,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70885"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 64,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70902"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 65,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70855"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 66,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70887"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 67,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70904"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 68,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70889"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 69,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70857"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 70,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70906"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 71,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70891"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 72,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70893"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 73,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70895"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 74,
+      "name": "264MN035406A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70851"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 75,
+      "name": "264MN035979A01/A",
+      "owning_component_tag": "66981",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70849"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 76,
+      "name": "264MN031986A01/A",
+      "owning_component_tag": "68653",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "67242"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 77,
+      "name": "264MN024819A01/A",
+      "owning_component_tag": "67242",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70464"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 78,
+      "name": "264MN035907A01/A",
+      "owning_component_tag": "67242",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70740"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 79,
+      "name": "264MN035907A01/A",
+      "owning_component_tag": "67242",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70739"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 80,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "67242",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70738"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 81,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "67242",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70465"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 82,
+      "name": "264MN031979A01/A",
+      "owning_component_tag": "68653",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70459"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 83,
+      "name": "264MN024836A01/A",
+      "owning_component_tag": "70459",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70743"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 84,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "70459",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70745"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 85,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "70459",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70746"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 86,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "70459",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70460"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 87,
+      "name": "264MN030099A01/A",
+      "owning_component_tag": "70459",
+      "resolution": "UNRESOLVED",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "70461"
+    }
+  ],
+  "target_source": "",
+  "targeting_rule": "Use all preselected Assembly Navigator component prototypes; otherwise use only the active work part.",
+  "targets": [],
+  "timestamp": "2026-09-04T18:19:14+08:00",
+  "unique_target_count": 0,
+  "workflow_query": {}
+}

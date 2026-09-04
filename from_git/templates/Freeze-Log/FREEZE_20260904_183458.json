@@ -1,0 +1,2289 @@
+{
+  "action": "FREEZE",
+  "build": "J30-NX2506-CAD-FREEZE-V4",
+  "counts": {
+    "blocked": 0,
+    "failed": 0,
+    "succeeded": 16
+  },
+  "duplicate_occurrences_collapsed": 35,
+  "failed_stage": "",
+  "helper_build": "WAE-CHANGE-CONTROL-V4",
+  "message": "All 16 unique target(s) completed and verified.",
+  "mode": "APPLY",
+  "operation_raw": {
+    "freeze_status": "<NXOpen.PDM.OperationErrors object at 0x0000022007570CD0>"
+  },
+  "operations": {
+    "checkin_attempted": false,
+    "checkout_attempted": false,
+    "formal_revision_created": false,
+    "freeze_status_attempted": true,
+    "save_attempted": false,
+    "unfreeze_status_attempted": false,
+    "wae_write_attempted": false
+  },
+  "preflight": {
+    "errors": [],
+    "passed": true
+  },
+  "required_workflow": "Part_Freeze_Process",
+  "result": "ALL_TARGETS_FROZEN",
+  "scope": "SELECTED_COMPONENT_PROTOTYPES_OR_ACTIVE_WORK_PART",
+  "selected_object_count": 51,
+  "selected_objects": [
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 1,
+      "name": "264MN035271A99/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "66977"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 2,
+      "name": "264MN024163A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69001"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 3,
+      "name": "264MN035136A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "67128"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 4,
+      "name": "264MN035368A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69177"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 5,
+      "name": "264MN035972A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "67722"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 6,
+      "name": "264LN035968A99/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68499"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 7,
+      "name": "264MN50086A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "67744"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 8,
+      "name": "264MN035725A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69274"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 9,
+      "name": "264MN035725A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69415"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 10,
+      "name": "264MN035725A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69125"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 11,
+      "name": "264MN035692A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69389"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 12,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69008"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 13,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69299"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 14,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68971"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 15,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69379"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 16,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69069"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 17,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69150"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 18,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69111"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 19,
+      "name": "264MN024068A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68964"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 20,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69425"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 21,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69332"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 22,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69364"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 23,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68981"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 24,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69158"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 25,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69079"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 26,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69225"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 27,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69451"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 28,
+      "name": "264MN026255A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69317"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 29,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69200"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 30,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69136"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 31,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "68994"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 32,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69170"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 33,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69285"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 34,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69400"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 35,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69258"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 36,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69340"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 37,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69052"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 38,
+      "name": "264MN032775A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69027"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 39,
+      "name": "264MN032731A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69356"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 40,
+      "name": "264MN032731A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69215"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 41,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69306"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 42,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69043"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 43,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69189"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 44,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69102"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 45,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69247"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 46,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69015"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 47,
+      "name": "264MN023984A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69149"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 48,
+      "name": "264MN036365A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69441"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 49,
+      "name": "264MN036365A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69093"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 50,
+      "name": "264MN025611A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69238"
+    },
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 51,
+      "name": "264MN025611A01/A",
+      "owning_component_tag": "68959",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69061"
+    }
+  ],
+  "target_source": "ASSEMBLY_NAVIGATOR_SELECTION",
+  "targeting_rule": "Use all preselected Assembly Navigator component prototypes; otherwise use only the active work part.",
+  "targets": [
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035271A99/A",
+        "component_tag": "66977",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035271A99/A",
+        "part_modified": true,
+        "part_number": "264MN035271A99",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035271A99/A",
+        "component_tag": "66977",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035271A99/A",
+        "part_modified": true,
+        "part_number": "264MN035271A99",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        1
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 1
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN024163A01/A",
+        "component_tag": "69001",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN024163A01/A",
+        "part_modified": false,
+        "part_number": "264MN024163A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN024163A01/A",
+        "component_tag": "69001",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN024163A01/A",
+        "part_modified": false,
+        "part_number": "264MN024163A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        2
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 2
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035136A01/A",
+        "component_tag": "67128",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035136A01/A",
+        "part_modified": false,
+        "part_number": "264MN035136A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035136A01/A",
+        "component_tag": "67128",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035136A01/A",
+        "part_modified": false,
+        "part_number": "264MN035136A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        3
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 3
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035368A01/A",
+        "component_tag": "69177",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035368A01/A",
+        "part_modified": false,
+        "part_number": "264MN035368A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035368A01/A",
+        "component_tag": "69177",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035368A01/A",
+        "part_modified": false,
+        "part_number": "264MN035368A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        4
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 4
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035972A01/A",
+        "component_tag": "67722",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035972A01/A",
+        "part_modified": false,
+        "part_number": "264MN035972A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035972A01/A",
+        "component_tag": "67722",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035972A01/A",
+        "part_modified": false,
+        "part_number": "264MN035972A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        5
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 5
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264LN035968A99/A",
+        "component_tag": "68499",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264LN035968A99/A",
+        "part_modified": false,
+        "part_number": "264LN035968A99",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264LN035968A99/A",
+        "component_tag": "68499",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264LN035968A99/A",
+        "part_modified": false,
+        "part_number": "264LN035968A99",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        6
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 6
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN50086A01/A",
+        "component_tag": "67744",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN50086A01/A",
+        "part_modified": false,
+        "part_number": "264MN50086A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN50086A01/A",
+        "component_tag": "67744",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN50086A01/A",
+        "part_modified": false,
+        "part_number": "264MN50086A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        7
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 7
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035725A01/A",
+        "component_tag": "69274",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035725A01/A",
+        "part_modified": false,
+        "part_number": "264MN035725A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035725A01/A",
+        "component_tag": "69274",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035725A01/A",
+        "part_modified": false,
+        "part_number": "264MN035725A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        8,
+        9,
+        10
+      ],
+      "selected_occurrence_count": 3,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 8
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035692A01/A",
+        "component_tag": "69389",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035692A01/A",
+        "part_modified": false,
+        "part_number": "264MN035692A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN035692A01/A",
+        "component_tag": "69389",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN035692A01/A",
+        "part_modified": false,
+        "part_number": "264MN035692A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        11
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 9
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN024068A01/A",
+        "component_tag": "69008",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN024068A01/A",
+        "part_modified": false,
+        "part_number": "264MN024068A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN024068A01/A",
+        "component_tag": "69008",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN024068A01/A",
+        "part_modified": false,
+        "part_number": "264MN024068A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "selected_occurrence_count": 8,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 10
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN026255A01/A",
+        "component_tag": "69425",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN026255A01/A",
+        "part_modified": false,
+        "part_number": "264MN026255A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN026255A01/A",
+        "component_tag": "69425",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN026255A01/A",
+        "part_modified": false,
+        "part_number": "264MN026255A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28
+      ],
+      "selected_occurrence_count": 9,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 11
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN032775A01/A",
+        "component_tag": "69200",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN032775A01/A",
+        "part_modified": false,
+        "part_number": "264MN032775A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN032775A01/A",
+        "component_tag": "69200",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN032775A01/A",
+        "part_modified": false,
+        "part_number": "264MN032775A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38
+      ],
+      "selected_occurrence_count": 10,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 12
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN032731A01/A",
+        "component_tag": "69356",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN032731A01/A",
+        "part_modified": false,
+        "part_number": "264MN032731A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN032731A01/A",
+        "component_tag": "69356",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN032731A01/A",
+        "part_modified": false,
+        "part_number": "264MN032731A01",
+        "read_only": true,
+        "release_status": {
+          "display": "",
+          "display_raw": "''",
+          "errors": [],
+          "internal": [],
+          "internal_raw": "['']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": true,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ASSIGN_FREEZE_STATUS",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        39,
+        40
+      ],
+      "selected_occurrence_count": 2,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 13
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN023984A01/A",
+        "component_tag": "69306",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN023984A01/A",
+        "part_modified": false,
+        "part_number": "264MN023984A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN023984A01/A",
+        "component_tag": "69306",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN023984A01/A",
+        "part_modified": false,
+        "part_number": "264MN023984A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "selected_occurrence_count": 7,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 14
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN036365A01/A",
+        "component_tag": "69441",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN036365A01/A",
+        "part_modified": false,
+        "part_number": "264MN036365A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN036365A01/A",
+        "component_tag": "69441",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN036365A01/A",
+        "part_modified": false,
+        "part_number": "264MN036365A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        48,
+        49
+      ],
+      "selected_occurrence_count": 2,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 15
+    },
+    {
+      "action": "FREEZE",
+      "after": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN025611A01/A",
+        "component_tag": "69238",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN025611A01/A",
+        "part_modified": false,
+        "part_number": "264MN025611A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "before": {
+        "checkout": {
+          "current_user": "99946e1828964542b86c86d6c2cf3cbe",
+          "owner": "",
+          "owner_is_current_user": null,
+          "raw": "(False, '')",
+          "state": "CHECKED_IN"
+        },
+        "component_name": "264MN025611A01/A",
+        "component_tag": "69238",
+        "db_part_rev": "A",
+        "modifiability": {
+          "errors": [],
+          "has_write_access": true,
+          "pdm_modifiable": false
+        },
+        "part_identifier": "@DB/264MN025611A01/A",
+        "part_modified": false,
+        "part_number": "264MN025611A01",
+        "read_only": true,
+        "release_status": {
+          "display": "Frozen",
+          "display_raw": "'Frozen'",
+          "errors": [],
+          "internal": [
+            "Cad0Frozen"
+          ],
+          "internal_raw": "['Cad0Frozen']"
+        },
+        "wae_attribute": {
+          "locked": false,
+          "not_saved": false,
+          "owned_by_system": false,
+          "pdm_based": false,
+          "type": "STRING",
+          "unset": false,
+          "value": "1"
+        },
+        "wae_version": 1,
+        "wae_version_raw": "1"
+      },
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "Freeze status, check-in, read-only state, revision, and WAE verified.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "ALREADY_FROZEN",
+      "result": "FROZEN",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        50,
+        51
+      ],
+      "selected_occurrence_count": 2,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 16
+    }
+  ],
+  "timestamp": "2026-09-04T18:34:38+08:00",
+  "unique_target_count": 16,
+  "workflow_query": {
+    "names": [
+      "Design_Release_Process",
+      "Design_Release_Process_With_Approver",
+      "Part_Freeze_Process",
+      "Part_Unfreeze_Process"
+    ],
+    "operation_errors": "<NXOpen.PDM.OperationErrors object at 0x00000220076760F0>",
+    "raw": "(<NXOpen.PDM.OperationErrors object at 0x00000220076760F0>, ['Design_Release_Process', 'Design_Release_Process_With_Approver', 'Part_Freeze_Process', 'Part_Unfreeze_Process'])"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "action": "FREEZE",
+  "build": "J30-NX2506-CAD-FREEZE-V4",
+  "counts": {
+    "blocked": 1,
+    "failed": 0,
+    "succeeded": 0
+  },
+  "duplicate_occurrences_collapsed": 0,
+  "failed_stage": "",
+  "helper_build": "WAE-CHANGE-CONTROL-V4",
+  "message": "Complete batch preflight failed; nothing changed.",
+  "mode": "APPLY",
+  "operation_raw": {},
+  "operations": {
+    "checkin_attempted": false,
+    "checkout_attempted": false,
+    "formal_revision_created": false,
+    "freeze_status_attempted": false,
+    "save_attempted": false,
+    "unfreeze_status_attempted": false,
+    "wae_write_attempted": false
+  },
+  "preflight": {
+    "errors": [
+      "Target 1: WAE_VERSION must be a positive whole number; found 'E'."
+    ],
+    "passed": false
+  },
+  "required_workflow": "Part_Freeze_Process",
+  "result": "BLOCKED_BATCH",
+  "scope": "SELECTED_COMPONENT_PROTOTYPES_OR_ACTIVE_WORK_PART",
+  "selected_object_count": 1,
+  "selected_objects": [
+    {
+      "has_pdm_part": false,
+      "has_prototype": true,
+      "index": 1,
+      "name": "993UN00002A01/E",
+      "owning_component_tag": "67106",
+      "resolution": "COMPONENT_PROTOTYPE",
+      "runtime_type": "NXOpen.Assemblies.Component",
+      "tag": "69616"
+    }
+  ],
+  "target_source": "ASSEMBLY_NAVIGATOR_SELECTION",
+  "targeting_rule": "Use all preselected Assembly Navigator component prototypes; otherwise use only the active work part.",
+  "targets": [
+    {
+      "action": "FREEZE",
+      "after": {},
+      "before": {},
+      "build": "J30-NX2506-CAD-FREEZE-V4",
+      "message": "WAE_VERSION must be a positive whole number; found 'E'.",
+      "mode": "APPLY",
+      "operation_raw": {},
+      "operations": {
+        "checkin_attempted": false,
+        "checkout_attempted": false,
+        "formal_revision_created": false,
+        "freeze_status_attempted": false,
+        "save_attempted": false,
+        "unfreeze_status_attempted": false,
+        "wae_write_attempted": false
+      },
+      "planned_action": "",
+      "result": "PREFLIGHT_BLOCKED",
+      "scope": "ONE_RESOLVED_CAD_PART",
+      "selected_indexes": [
+        1
+      ],
+      "selected_occurrence_count": 1,
+      "source": "ASSEMBLY_NAVIGATOR_SELECTION",
+      "target_index": 1
+    }
+  ],
+  "timestamp": "2026-09-04T18:16:21+08:00",
+  "unique_target_count": 1,
+  "workflow_query": {
+    "names": [
+      "Design_Release_Process",
+      "Design_Release_Process_With_Approver",
+      "Part_Freeze_Process",
+      "Part_Unfreeze_Process"
+    ],
+    "operation_errors": "<NXOpen.PDM.OperationErrors object at 0x00000220024DD070>",
+    "raw": "(<NXOpen.PDM.OperationErrors object at 0x00000220024DD070>, ['Design_Release_Process', 'Design_Release_Process_With_Approver', 'Part_Freeze_Process', 'Part_Unfreeze_Process'])"
+  }
+}
