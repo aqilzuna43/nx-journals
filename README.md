@@ -245,7 +245,7 @@ timestamp notes are removed through an NX undo mark before J07 continues.
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-PDF-STEP-JT-V11
+Journal build: J07-NX2506-PDF-STEP-JT-V12
 Drawing resolver: canonical Teamcenter specification identifier
 JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; reference set=default; PMI=part+assembly; LOD=defined 0.001 mm / 20 deg + auto-LOW
 ```
@@ -269,7 +269,10 @@ creates one combined multipage PDF per resolved drawing. PDF files use
 multiple drawing items resolve, the drawing index is appended as `_DWG<n>` to
 avoid collisions.
 
-JT files use `<DB_PART_NO>_REV<DB_PART_REV>.jt`. J07 creates one monolithic
+JT files use `<DB_PART_NO>_REV<DB_PART_REV>_<WAE_VERSION>.jt` (underscore
+version separator, not the dot PDF/STEP use): the NX 2506 PVTrans JT
+translator rewrites a requested `REVA.2.jt` as `REVA_2.jt`, so J07
+requests the underscore form directly. J07 creates one monolithic
 JT per requested revision with assembly structure, precise geometry, the
 default reference set, part/assembly PMI, and one explicit defined LOD level
 (0.001 mm chordal / 20 deg angular) plus auto-LOW - the same tessellation
@@ -374,16 +377,16 @@ from_git\journals\33_datapack_jt_export.py
 The listing window must show:
 
 ```text
-Journal build: J33-NX2506-DATAPACK-JT-V3
+Journal build: J33-NX2506-DATAPACK-JT-V4
 JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; reference set=default; PMI=part+assembly; LOD=defined 0.001 mm / 20 deg + auto-LOW
 ```
 
 Each requested revision produces one monolithic JT file using the same
-versioned filename convention as J07:
+versioned filename convention as J07 (underscore version separator):
 
 ```text
 <I/O root>\NX_BULK_EXPORT\YYYYMMDD_HHMMSS\
-  JT\<DB_PART_NO>_REV<DB_PART_REV>.<WAE_VERSION>.jt
+  JT\<DB_PART_NO>_REV<DB_PART_REV>_<WAE_VERSION>.jt
   REPORTS\JT_EXPORT_RESULT_YYYYMMDD_HHMMSS.csv
   LOGS\JT_EXPORT_LOG_YYYYMMDD_HHMMSS.txt
 ```
@@ -437,7 +440,7 @@ it opened.
 | J04 | `NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.csv` and matching `.baseline.json` |
 | J05 | `J05_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 | J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
-| J07 | `NX_BULK_EXPORT\<timestamp>\PDF\<number>_REV<rev>.<WAE_VERSION>.pdf`, `STEP\<number>_REV<rev>.<WAE_VERSION>.stp`, `JT\<number>_REV<rev>.<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
+| J07 | `NX_BULK_EXPORT\<timestamp>\PDF\<number>_REV<rev>.<WAE_VERSION>.pdf`, `STEP\<number>_REV<rev>.<WAE_VERSION>.stp`, `JT\<number>_REV<rev>_<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
@@ -446,7 +449,7 @@ it opened.
 | J22 | `NX_MASS_SURFACE_UPDATE\J22_DIAGNOSTIC_<root>_<timestamp>.csv` and `.json` |
 | J23 | `NX_HLA_VISIBILITY_DIAGNOSTIC\J23_EVIDENCE_<target>_<timestamp>.csv` and `.json` |
 | J25 | `NX_TC_SINGLE_DRAWING_CLEANUP\<timestamp>\` with CSV, JSON, log, and `BACKUP\` |
-| J33 | `NX_BULK_EXPORT\<timestamp>\JT\<number>_REV<rev>.<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
+| J33 | `NX_BULK_EXPORT\<timestamp>\JT\<number>_REV<rev>_<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
 | J34/J35 | `from_git\admin_freeze\reports\J34_VALIDATE_<timestamp>.*` and `J35_APPLY_<timestamp>.*` |
 
 ## Notes

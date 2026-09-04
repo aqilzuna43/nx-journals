@@ -413,7 +413,7 @@ class JtExportTests(unittest.TestCase):
         )
 
         self.assertEqual("SUCCESS", result["result"])
-        self.assertEqual("264MN020016A01_REVA.2.jt", Path(result["path"]).name)
+        self.assertEqual("264MN020016A01_REVA_2.jt", Path(result["path"]).name)
         self.assertEqual(7, result["size"])
         self.assertTrue(builder.destroyed)
         session.Parts.SetDisplay.assert_called_once_with(part, False, True)
@@ -716,7 +716,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-PDF-STEP-JT-V11",
+            "J07-NX2506-PDF-STEP-JT-V12",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(

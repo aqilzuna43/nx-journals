@@ -137,6 +137,17 @@ class Journal33JtExportTests(unittest.TestCase):
             "264MN020016A01_REVA",
             self.journal.build_versioned_base("264MN020016A01", "A", ""),
         )
+        # NX 2506 JT translator writes '_' where PDF/STEP keep '.':
+        # REVA.2.jt is written as REVA_2.jt, so JT requests the
+        # underscore form directly.
+        self.assertEqual(
+            "264MN020016A01_REVA_2",
+            self.journal.build_jt_versioned_base("264MN020016A01", "A", "2"),
+        )
+        self.assertEqual(
+            "264MN020016A01_REVA",
+            self.journal.build_jt_versioned_base("264MN020016A01", "A", ""),
+        )
 
     def test_jt_builder_contract_is_explicit(self):
         self.install_jt_enums()
@@ -210,7 +221,7 @@ class Journal33JtExportTests(unittest.TestCase):
         )
 
         self.assertEqual("SUCCESS", result["result"])
-        self.assertEqual("264MN020016A01_REVA.2.jt", Path(result["path"]).name)
+        self.assertEqual("264MN020016A01_REVA_2.jt", Path(result["path"]).name)
         self.assertEqual(7, result["size"])
         self.assertTrue(builder.destroyed)
         session.Parts.SetDisplay.assert_called_once_with(part, False, True)

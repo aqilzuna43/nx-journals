@@ -13,8 +13,11 @@ For JT:
   recorded interactive File > Export > JT journal.
 - Restore the original display/work parts and close only journal-opened parts.
 
-Output names use <number>_REV<revision>.<WAE_VERSION>.jt. A missing
-WAE_VERSION keeps the revision-only filename and records a warning.
+Output names use <number>_REV<revision>_<WAE_VERSION>.jt. The PVTrans JT
+translator replaces '.' in the requested output stem with '_' (NX 2506
+writes REVA.2.jt as REVA_2.jt), so the underscore form is requested
+directly. A missing WAE_VERSION keeps the revision-only filename and
+records a warning.
 
 Target: NX 2312 and NX X 2506 embedded Python
 Run via: NX > Tools > Journal > Play
@@ -31,7 +34,7 @@ import NXOpen
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J33-NX2506-DATAPACK-JT-V3"
+JOURNAL_BUILD_ID = "J33-NX2506-DATAPACK-JT-V4"
 WAE_VERSION_ATTRIBUTE = "WAE_VERSION"
 VERIFY_OUTPUT_FILES = True
 CLOSE_PARTS_OPENED_BY_JOURNAL = True
@@ -656,6 +659,16 @@ def build_versioned_base(number, revision, wae_version):
     return base
 
 
+def build_jt_versioned_base(number, revision, wae_version):
+    """JT base name for <number>_REV<rev>.<WAE_VERSION> identities.
+
+    The NX PVTrans JT translator replaces '.' in the requested output stem
+    with '_' (NX 2506 writes REVA.2.jt as REVA_2.jt), so request the
+    underscore form directly to keep the written name deterministic.
+    """
+    return build_versioned_base(number, revision, wae_version).replace(".", "_")
+
+
 def _add_unique_path(paths, path):
     text = normalize_text(path)
     if not text:
@@ -844,7 +857,7 @@ def export_jt_from_part(
 
     output_path = os.path.join(
         output_folder,
-        build_versioned_base(number, revision, wae_version) + ".jt",
+        build_jt_versioned_base(number, revision, wae_version) + ".jt",
     )
     if os.path.exists(output_path):
         raise RuntimeError("JT output already exists: {0}".format(output_path))

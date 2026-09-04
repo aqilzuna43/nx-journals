@@ -162,7 +162,7 @@ J33 remains J07's standalone JT alternative and reads the same
 It merges duplicate exact part/revision requests, reuses an exact loaded 3D
 master or opens `@DB/<part>/<revision>` with `/master` fallback, and verifies
 the resolved identity before export. Each enabled row creates one monolithic
-`JT\<number>_REV<revision>.<WAE_VERSION>.jt` plus a UTF-8-BOM result CSV and
+`JT\<number>_REV<revision>_<WAE_VERSION>.jt` plus a UTF-8-BOM result CSV and
 text log in the timestamped `NX_BULK_EXPORT` run folder. Missing `WAE_VERSION`
 uses a revision-only filename and records a warning. J33 restores display/work
 parts, closes only journal-opened parts, and never saves, checks out, checks
@@ -186,7 +186,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-PDF-STEP-JT-V11
+Journal build: J07-NX2506-PDF-STEP-JT-V12
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

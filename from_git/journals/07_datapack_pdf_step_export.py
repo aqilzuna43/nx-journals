@@ -27,6 +27,9 @@ For JT:
 
 Output names:
 - PDF, STEP, and JT files are named <number>_REV<revision>.<WAE_VERSION>.
+- JT writes <number>_REV<revision>_<WAE_VERSION>.jt instead: the PVTrans JT
+  translator replaces '.' in the output stem with '_' (NX 2506 writes
+  REVA.2.jt as REVA_2.jt).
 - Multi-drawing PDFs append _DWG<n> after the version.
 - Missing WAE_VERSION keeps the revision-only name and records a warning.
 
@@ -51,7 +54,7 @@ import NXOpen.Annotations
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-PDF-STEP-JT-V11"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-STEP-JT-V12"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -1088,6 +1091,16 @@ def build_versioned_base(number, revision, wae_version):
             base += "." + cleaned_version
 
     return base
+
+
+def build_jt_versioned_base(number, revision, wae_version):
+    """JT base name for <number>_REV<rev>.<WAE_VERSION> identities.
+
+    The NX PVTrans JT translator replaces '.' in the requested output stem
+    with '_' (NX 2506 writes REVA.2.jt as REVA_2.jt), so request the
+    underscore form directly to keep the written name deterministic.
+    """
+    return build_versioned_base(number, revision, wae_version).replace(".", "_")
 
 
 def build_pdf_filename(
@@ -2247,7 +2260,7 @@ def export_jt_from_part(
 
     output_path = os.path.join(
         output_folder,
-        build_versioned_base(number, revision, wae_version) + ".jt",
+        build_jt_versioned_base(number, revision, wae_version) + ".jt",
     )
     if os.path.exists(output_path):
         raise RuntimeError("JT output already exists: {0}".format(output_path))
