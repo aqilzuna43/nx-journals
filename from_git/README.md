@@ -24,7 +24,7 @@ Available production journals:
 04_assembly_attribute_audit.py Read-only 3D model business-attribute pull
 05_bulk_attribute_updater.py   Approved CSV update + checkout workflow
 06_auto_pdf_step_export.py     Active work part STEP + drawing PDF export
-07_datapack_pdf_step_export.py DataPack-controlled assembly PDF + STEP export
+07_datapack_pdf_step_export.py DataPack-controlled PDF + STEP + JT export
 08_list_loaded_drawings.py     Loaded-drawing Teamcenter identity probe
 09_test_teamcenter_specification_open.py Closed-drawing specification-open test
 10_test_step_export.py         STEP export and body-validation diagnostic
@@ -117,15 +117,15 @@ J07 is self-contained. Prepare `NX_EXPORT_SCOPE.csv` from
 on the user's Desktop, fully load the required parts under the active NX
 assembly, and play `journals/07_datapack_pdf_step_export.py`. It matches exact
 part-number/revision pairs and writes a timestamped `NX_BULK_EXPORT` run with
-one combined multipage PDF per drawing, AP214 STEP files, a UTF-8-BOM result
-CSV, and a text log.
+one combined multipage PDF per drawing, AP214 STEP files, monolithic JT files,
+a UTF-8-BOM result CSV, and a text log.
 
 Every J07 PDF page receives the native NX watermark
 `DRAFT_<revision>.<WAE_VERSION>`. The value is read from the already-loaded
-model first and then the drawing; STEP reads it from the master part. Output
-filenames embed the version after the revision —
-`<number>_REV<revision>.<WAE_VERSION>` for both PDF (multi-drawing PDFs
-append `_DWG<n>`) and STEP (`.stp`). Missing `WAE_VERSION` produces a
+model first and then the drawing; STEP and JT read it from the master part.
+Output filenames embed the version after the revision —
+`<number>_REV<revision>.<WAE_VERSION>` for PDF (multi-drawing PDFs append
+`_DWG<n>`), STEP (`.stp`), and JT (`.jt`). Missing `WAE_VERSION` produces a
 revision-only watermark such as `DRAFT_A`, keeps the revision-only filenames,
 and records a report warning. Drawing words, numbers, and the run-level
 `EXPORTED: YYYY-MM-DD HH:MM MYT` footer remain searchable/selectable PDF text.
@@ -149,15 +149,15 @@ It writes a UTF-8-BOM CSV plus
 `NX_ASSEMBLY_FULL_LOAD_DIAGNOSTIC` folder. J20 changes the in-memory load state
 but never saves, checks out, checks in, replaces, suppresses, or closes parts.
 
-J07 accepts the documented DataPack header aliases and PDF/STEP values, merges
-duplicate part/revision requests, reports invalid input, missing parts, and
+J07 accepts the documented DataPack header aliases and PDF/STEP/JT values,
+merges duplicate part/revision requests, reports invalid input, missing parts, and
 revision mismatches, and verifies that each expected export file exists. It
 reuses loaded drawings or opens the canonical Teamcenter specification
 `@DB/<part>/<revision>/specification/<part>-<revision>-dwg<n>`. It does not
 search for a different revision, modify or save NX parts, or require a JSON
 configuration file.
 
-J33 is J07's standalone JT companion. Add the `JT` control column to the same
+J33 remains J07's standalone JT alternative and reads the same
 `NX_EXPORT_SCOPE.csv`; accepted aliases are `JT`, `Export_JT`, and `EXPORT_JT`.
 It merges duplicate exact part/revision requests, reuses an exact loaded 3D
 master or opens `@DB/<part>/<revision>` with `/master` fallback, and verifies
@@ -177,7 +177,7 @@ sheets, the canonical `/specification/` identifier, and
 with:
 
 ```text
-Journal build: J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8
+Journal build: J07-NX2506-PDF-STEP-JT-V9
 Drawing resolver: canonical Teamcenter specification identifier
 ```
 

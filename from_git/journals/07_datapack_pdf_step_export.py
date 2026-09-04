@@ -1,5 +1,5 @@
 """
-Journal 07 - CSV-Driven Teamcenter PDF + STEP Export
+Journal 07 - CSV-Driven Teamcenter PDF + STEP + JT Export
 
 Processes every enabled DB_PART_NO + DB_PART_REV row in NX_EXPORT_SCOPE.csv.
 The requested item does not need to be present in the active assembly.
@@ -18,8 +18,13 @@ For STEP:
 - Otherwise open the Teamcenter master directly from the CSV identity.
 - Make the master the active display/work part before AP214 export.
 
+For JT:
+- Reuse the same exact-revision master-part resolution used for STEP.
+- Export one monolithic JT with assembly structure, precise geometry, and PMI.
+- Verify that the expected JT file exists and is not zero bytes.
+
 Output names:
-- PDF and STEP files are named <number>_REV<revision>.<WAE_VERSION>.
+- PDF, STEP, and JT files are named <number>_REV<revision>.<WAE_VERSION>.
 - Multi-drawing PDFs append _DWG<n> after the version.
 - Missing WAE_VERSION keeps the revision-only name and records a warning.
 
@@ -44,7 +49,7 @@ import NXOpen.Annotations
 
 INPUT_FILENAME = "NX_EXPORT_SCOPE.csv"
 OUTPUT_ROOT_FOLDER = "NX_BULK_EXPORT"
-JOURNAL_BUILD_ID = "J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8"
+JOURNAL_BUILD_ID = "J07-NX2506-PDF-STEP-JT-V9"
 STEP_FORMAT = "AP214"
 VERIFY_OUTPUT_FILES = True
 STEP_LAYER_MASK = "1-256"
@@ -83,13 +88,14 @@ _HEADER_ALIASES = {
     "revision": ("DB_PART_REV", "Item Rev", "REVISION", "Revision"),
     "pdf": ("PDF", "Export_PDF", "EXPORT_PDF"),
     "step": ("STEP", "Export_STEP", "EXPORT_STEP"),
+    "jt": ("JT", "Export_JT", "EXPORT_JT"),
     "data_pack_status": ("DATA_PACK_STATUS", "Status"),
     "primary_module": ("PRIMARY_MODULE", "Primary Module"),
     "part_description": ("PART_DESCRIPTION", "Part Description"),
     "owner": ("OWNER", "Owner"),
 }
 
-_REQUIRED_HEADERS = ("part_number", "revision", "pdf", "step")
+_REQUIRED_HEADERS = ("part_number", "revision", "pdf", "step", "jt")
 
 _RESULT_COLUMNS = (
     "RUN_TIMESTAMP",
@@ -108,6 +114,10 @@ _RESULT_COLUMNS = (
     "STEP_REQUESTED",
     "STEP_RESULT",
     "STEP_FILE",
+    "JT_REQUESTED",
+    "JT_RESULT",
+    "JT_FILE",
+    "JT_FILE_SIZE_BYTES",
     "LOADED_REVISION",
     "OVERALL_RESULT",
     "MESSAGE",
@@ -208,7 +218,7 @@ def create_run_folders(io_root, timestamp):
     os.makedirs(run, exist_ok=False)
 
     folders = {"run": run}
-    for name in ("PDF", "STEP", "REPORTS", "LOGS"):
+    for name in ("PDF", "STEP", "JT", "REPORTS", "LOGS"):
         path = os.path.join(run, name)
         os.makedirs(path, exist_ok=False)
         folders[name.lower()] = path
@@ -661,13 +671,23 @@ def read_export_scope(csv_path):
                 "STEP",
                 row_number,
             )
+            jt_requested, jt_warning = parse_control(
+                row_value(row, headers, "jt"),
+                "JT",
+                row_number,
+            )
             warnings = [
                 warning
-                for warning in (pdf_warning, step_warning)
+                for warning in (pdf_warning, step_warning, jt_warning)
                 if warning
             ]
 
-            if not pdf_requested and not step_requested and not warnings:
+            if (
+                not pdf_requested
+                and not step_requested
+                and not jt_requested
+                and not warnings
+            ):
                 ignored_count += 1
                 continue
 
@@ -697,8 +717,8 @@ def read_export_scope(csv_path):
                 errors.append("Part number is blank")
             if not revision:
                 errors.append("Revision is blank")
-            if not pdf_requested and not step_requested:
-                errors.append("No valid PDF or STEP request remains")
+            if not pdf_requested and not step_requested and not jt_requested:
+                errors.append("No valid PDF, STEP, or JT request remains")
 
             instruction = {
                 "source_rows": [row_number],
@@ -709,6 +729,7 @@ def read_export_scope(csv_path):
                 "normalized_key": (number.upper(), revision.upper()),
                 "pdf_requested": pdf_requested,
                 "step_requested": step_requested,
+                "jt_requested": jt_requested,
                 "warnings": warnings,
                 **optional,
             }
@@ -739,6 +760,9 @@ def read_export_scope(csv_path):
             existing["step_requested"] = (
                 existing["step_requested"] or step_requested
             )
+            existing["jt_requested"] = (
+                existing["jt_requested"] or jt_requested
+            )
 
             for name, value in optional.items():
                 if value and not existing[name]:
@@ -762,6 +786,7 @@ def read_export_scope(csv_path):
 def new_result(timestamp, instruction):
     pdf_requested = bool(instruction.get("pdf_requested"))
     step_requested = bool(instruction.get("step_requested"))
+    jt_requested = bool(instruction.get("jt_requested"))
 
     return {
         "RUN_TIMESTAMP": timestamp,
@@ -780,6 +805,10 @@ def new_result(timestamp, instruction):
         "STEP_REQUESTED": "YES" if step_requested else "NO",
         "STEP_RESULT": "PENDING" if step_requested else "NOT_REQUESTED",
         "STEP_FILE": "",
+        "JT_REQUESTED": "YES" if jt_requested else "NO",
+        "JT_RESULT": "PENDING" if jt_requested else "NOT_REQUESTED",
+        "JT_FILE": "",
+        "JT_FILE_SIZE_BYTES": "",
         "LOADED_REVISION": "",
         "OVERALL_RESULT": "PENDING",
         "MESSAGE": "",
@@ -794,6 +823,8 @@ def invalid_result(timestamp, instruction):
         result["PDF_RESULT"] = "INVALID_INPUT"
     if result["STEP_REQUESTED"] == "YES":
         result["STEP_RESULT"] = "INVALID_INPUT"
+    if result["JT_REQUESTED"] == "YES":
+        result["JT_RESULT"] = "INVALID_INPUT"
 
     result["OVERALL_RESULT"] = "INVALID_INPUT"
     result["MESSAGE"] = " | ".join(instruction.get("warnings", []))
@@ -2017,6 +2048,179 @@ def export_step_for_instruction(
 
 
 # ---------------------------------------------------------------------------
+# JT export
+# ---------------------------------------------------------------------------
+
+def configure_jt_builder(builder, output_path):
+    """Apply the explicit J07/J33 JT translation contract."""
+    builder.OutputJtFile = output_path
+    builder.JtfileStructure = NXOpen.JtCreator.FileStructure.Monolithic
+    builder.JtWrite = NXOpen.JtCreator.FileWrite.All
+    builder.JtParts = True
+    builder.AsmStructure = True
+    builder.PreciseGeom = True
+    builder.TessOption = NXOpen.JtCreator.TessellationOption.Nx
+    builder.UseRefset = NXOpen.JtCreator.RefsetOption.Default
+    builder.IncludePmi = NXOpen.JtCreator.PmiOption.PartAndAsm
+    builder.ApplyPmi = True
+    builder.AppendRefset = False
+    builder.MergeSolids = False
+    builder.MergeSheets = False
+    builder.WireFrame = False
+
+
+def jt_settings_summary():
+    return (
+        "monolithic; write=all; assembly structure=yes; precise geometry=yes; "
+        "tessellation=NX; reference set=default; PMI=part+assembly"
+    )
+
+
+def export_jt_from_part(
+    session,
+    part,
+    output_folder,
+    number,
+    revision,
+    wae_version,
+):
+    set_display_part(session, part)
+    session.Parts.SetWork(part)
+
+    output_path = os.path.join(
+        output_folder,
+        build_versioned_base(number, revision, wae_version) + ".jt",
+    )
+    if os.path.exists(output_path):
+        raise RuntimeError("JT output already exists: {0}".format(output_path))
+
+    builder = session.PvtransManager.CreateJtCreator()
+    try:
+        configure_jt_builder(builder, output_path)
+        builder.Commit()
+    finally:
+        builder.Destroy()
+
+    if VERIFY_OUTPUT_FILES and not os.path.isfile(output_path):
+        return {
+            "result": "FAILED_NO_OUTPUT_FILE",
+            "path": "",
+            "size": "",
+            "message": "JT builder committed but no output file was created",
+        }
+
+    try:
+        file_size = os.path.getsize(output_path)
+    except Exception:
+        file_size = ""
+
+    if VERIFY_OUTPUT_FILES and file_size == 0:
+        return {
+            "result": "FAILED_ZERO_BYTE_FILE",
+            "path": output_path,
+            "size": file_size,
+            "message": "JT output exists but is zero bytes; retained for diagnosis",
+        }
+
+    return {
+        "result": "SUCCESS",
+        "path": output_path,
+        "size": file_size,
+        "message": "",
+    }
+
+
+def export_jt_for_instruction(
+    session,
+    output_folder,
+    number,
+    revision,
+    original_display,
+    original_work,
+    log_buffer,
+):
+    candidate, attempts = resolve_master_candidate(
+        session,
+        number,
+        revision,
+        log_buffer,
+    )
+    if candidate is None:
+        return {
+            "result": "NOT_FOUND",
+            "path": "",
+            "size": "",
+            "message": (
+                "Master part could not be loaded. "
+                "See the text log for attempted @DB names."
+            ),
+            "attempts": attempts,
+        }
+
+    part = candidate["part"]
+    try:
+        loaded_number, loaded_revision = get_part_identity(part)
+        if (
+            loaded_number.upper() != number.upper()
+            or loaded_revision.upper() != revision.upper()
+        ):
+            return {
+                "result": "REVISION_MISMATCH",
+                "path": "",
+                "size": "",
+                "message": (
+                    "Resolved master identity {0}/{1} does not match requested "
+                    "{2}/{3}"
+                ).format(loaded_number, loaded_revision, number, revision),
+            }
+
+        wae_version = get_string_attribute(part, WAE_VERSION_ATTRIBUTE)
+        exported = export_jt_from_part(
+            session,
+            part,
+            output_folder,
+            number,
+            revision,
+            wae_version,
+        )
+        if not wae_version:
+            warning = (
+                "{0} is blank or unavailable on the master; JT exported with a "
+                "revision-only filename."
+            ).format(WAE_VERSION_ATTRIBUTE)
+            message = exported.get("message") or ""
+            exported["message"] = (
+                warning if not message else message + " | " + warning
+            )
+
+        if exported.get("result") == "SUCCESS":
+            log_line(
+                session,
+                "    JT created: {0}".format(exported.get("path", "")),
+                log_buffer,
+            )
+        else:
+            log_line(
+                session,
+                "    JT rejected: {0} - {1}".format(
+                    exported.get("result", "FAILED"),
+                    exported.get("message", ""),
+                ),
+                log_buffer,
+            )
+        return exported
+    finally:
+        restore_parts(
+            session,
+            original_display,
+            original_work,
+            log_buffer,
+        )
+        if candidate.get("opened_by_journal"):
+            close_part_best_effort(part, session, log_buffer)
+
+
+# ---------------------------------------------------------------------------
 # Per-row processing
 # ---------------------------------------------------------------------------
 
@@ -2025,6 +2229,8 @@ def overall_result(
     pdf_result,
     step_requested,
     step_result,
+    jt_requested=False,
+    jt_result="NOT_REQUESTED",
 ):
     requested_results = []
 
@@ -2032,6 +2238,8 @@ def overall_result(
         requested_results.append(pdf_result)
     if step_requested:
         requested_results.append(step_result)
+    if jt_requested:
+        requested_results.append(jt_result)
 
     if requested_results and all(
         result == "SUCCESS"
@@ -2048,6 +2256,7 @@ def overall_result(
     if (
         pdf_requested
         and not step_requested
+        and not jt_requested
         and pdf_result == "SKIPPED_NO_DRAWING"
     ):
         return "SKIPPED_NO_DRAWING"
@@ -2055,7 +2264,16 @@ def overall_result(
     if (
         step_requested
         and not pdf_requested
+        and not jt_requested
         and step_result == "NOT_FOUND"
+    ):
+        return "NOT_FOUND"
+
+    if (
+        jt_requested
+        and not pdf_requested
+        and not step_requested
+        and jt_result == "NOT_FOUND"
     ):
         return "NOT_FOUND"
 
@@ -2166,10 +2384,45 @@ def process_instruction(
                 log_buffer,
             )
 
+    if instruction.get("jt_requested"):
+        try:
+            jt_export = export_jt_for_instruction(
+                session,
+                folders["jt"],
+                number,
+                revision,
+                original_display,
+                original_work,
+                log_buffer,
+            )
+            result["JT_RESULT"] = jt_export["result"]
+            result["JT_FILE"] = jt_export["path"]
+            result["JT_FILE_SIZE_BYTES"] = jt_export.get("size", "")
+            append_unique(messages, jt_export.get("message", ""))
+
+            if jt_export.get("size") != "":
+                append_unique(
+                    messages,
+                    "JT file size: {0} bytes".format(jt_export["size"]),
+                )
+        except Exception as error:
+            result["JT_RESULT"] = "FAILED"
+            append_unique(
+                messages,
+                "JT export failed: {0}".format(error),
+            )
+            log_line(
+                session,
+                traceback.format_exc(),
+                log_buffer,
+            )
+
     if result["PDF_RESULT"] == "PENDING":
         result["PDF_RESULT"] = "FAILED"
     if result["STEP_RESULT"] == "PENDING":
         result["STEP_RESULT"] = "FAILED"
+    if result["JT_RESULT"] == "PENDING":
+        result["JT_RESULT"] = "FAILED"
 
     result["LOADED_REVISION"] = revision
     result["OVERALL_RESULT"] = overall_result(
@@ -2177,6 +2430,8 @@ def process_instruction(
         result["PDF_RESULT"],
         instruction["step_requested"],
         result["STEP_RESULT"],
+        instruction.get("jt_requested", False),
+        result["JT_RESULT"],
     )
     result["MESSAGE"] = " | ".join(messages)
     result["DURATION_SECONDS"] = "{0:.3f}".format(
@@ -2227,7 +2482,7 @@ def main():
 
         log_line(
             session,
-            "Journal 07 - CSV-driven PDF + STEP export",
+            "Journal 07 - CSV-driven PDF + STEP + JT export",
             log_buffer,
         )
         log_line(session, "Journal build: " + JOURNAL_BUILD_ID, log_buffer)
@@ -2237,6 +2492,7 @@ def main():
             log_buffer,
         )
         log_line(session, "Input CSV: " + input_csv, log_buffer)
+        log_line(session, "JT settings: " + jt_settings_summary(), log_buffer)
         log_line(
             session,
             (
@@ -2347,6 +2603,11 @@ def main():
                 "  STEP: {0}".format(result["STEP_RESULT"]),
                 log_buffer,
             )
+            log_line(
+                session,
+                "  JT: {0}".format(result["JT_RESULT"]),
+                log_buffer,
+            )
 
         restore_parts(
             session,
@@ -2412,6 +2673,17 @@ def main():
                     1
                     for item in results
                     if item["STEP_FILE"]
+                )
+            ),
+            log_buffer,
+        )
+        log_line(
+            session,
+            "JT files: {0}".format(
+                sum(
+                    1
+                    for item in results
+                    if item["JT_FILE"]
                 )
             ),
             log_buffer,

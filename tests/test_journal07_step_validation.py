@@ -281,6 +281,162 @@ class StepValidationTests(unittest.TestCase):
         self.assertEqual(step_exporter.call_args.args[5], "7")
 
 
+class JtExportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.journal = load_journal()
+
+    def install_jt_enums(self):
+        self.journal.NXOpen.JtCreator = types.SimpleNamespace(
+            FileStructure=types.SimpleNamespace(Monolithic="MONOLITHIC"),
+            FileWrite=types.SimpleNamespace(All="ALL"),
+            TessellationOption=types.SimpleNamespace(Nx="NX"),
+            RefsetOption=types.SimpleNamespace(Default="DEFAULT"),
+            PmiOption=types.SimpleNamespace(PartAndAsm="PART_AND_ASM"),
+        )
+
+    def test_updated_template_requests_all_three_exports(self):
+        template = (
+            ROOT / "from_git" / "templates" / "NX_EXPORT_SCOPE_TEMPLATE.csv"
+        )
+
+        parsed = self.journal.read_export_scope(template)
+
+        self.assertEqual(2, len(parsed["instructions"]))
+        self.assertEqual([], parsed["invalid_rows"])
+        first, second = parsed["instructions"]
+        self.assertTrue(first["pdf_requested"])
+        self.assertTrue(first["step_requested"])
+        self.assertTrue(first["jt_requested"])
+        self.assertTrue(second["pdf_requested"])
+        self.assertTrue(second["step_requested"])
+        self.assertFalse(second["jt_requested"])
+
+    def test_jt_header_is_required_for_j07(self):
+        with self.assertRaisesRegex(ValueError, "jt"):
+            self.journal.resolve_headers(
+                ["DB_PART_NO", "DB_PART_REV", "PDF", "STEP"]
+            )
+
+    def test_jt_builder_contract_is_explicit(self):
+        self.install_jt_enums()
+        builder = types.SimpleNamespace()
+
+        self.journal.configure_jt_builder(builder, "part.jt")
+
+        self.assertEqual("part.jt", builder.OutputJtFile)
+        self.assertEqual("MONOLITHIC", builder.JtfileStructure)
+        self.assertEqual("ALL", builder.JtWrite)
+        self.assertTrue(builder.JtParts)
+        self.assertTrue(builder.AsmStructure)
+        self.assertTrue(builder.PreciseGeom)
+        self.assertEqual("NX", builder.TessOption)
+        self.assertEqual("DEFAULT", builder.UseRefset)
+        self.assertEqual("PART_AND_ASM", builder.IncludePmi)
+        self.assertTrue(builder.ApplyPmi)
+        self.assertFalse(builder.MergeSolids)
+        self.assertFalse(builder.WireFrame)
+
+    def test_jt_export_creates_versioned_file_and_destroys_builder(self):
+        self.install_jt_enums()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+
+        class Builder:
+            def __init__(self):
+                self.destroyed = False
+
+            def Commit(self):
+                Path(self.OutputJtFile).write_bytes(b"JT-test")
+
+            def Destroy(self):
+                self.destroyed = True
+
+        builder = Builder()
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                SetDisplay=mock.Mock(return_value=None),
+                SetWork=mock.Mock(),
+            ),
+            PvtransManager=types.SimpleNamespace(
+                CreateJtCreator=mock.Mock(return_value=builder)
+            ),
+        )
+        part = object()
+
+        result = self.journal.export_jt_from_part(
+            session,
+            part,
+            folder.name,
+            "264MN020016A01",
+            "A",
+            "2",
+        )
+
+        self.assertEqual("SUCCESS", result["result"])
+        self.assertEqual("264MN020016A01_REVA.2.jt", Path(result["path"]).name)
+        self.assertEqual(7, result["size"])
+        self.assertTrue(builder.destroyed)
+        session.Parts.SetDisplay.assert_called_once_with(part, False, True)
+        session.Parts.SetWork.assert_called_once_with(part)
+
+    def test_jt_commit_without_output_is_rejected(self):
+        self.install_jt_enums()
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        builder = types.SimpleNamespace(
+            Commit=mock.Mock(),
+            Destroy=mock.Mock(),
+        )
+        session = types.SimpleNamespace(
+            Parts=types.SimpleNamespace(
+                SetDisplay=mock.Mock(return_value=None),
+                SetWork=mock.Mock(),
+            ),
+            PvtransManager=types.SimpleNamespace(
+                CreateJtCreator=mock.Mock(return_value=builder)
+            ),
+        )
+
+        result = self.journal.export_jt_from_part(
+            session,
+            object(),
+            folder.name,
+            "P1",
+            "A",
+            "",
+        )
+
+        self.assertEqual("FAILED_NO_OUTPUT_FILE", result["result"])
+        builder.Destroy.assert_called_once()
+
+    def test_all_three_successes_produce_overall_success(self):
+        self.assertEqual(
+            "SUCCESS",
+            self.journal.overall_result(
+                True,
+                "SUCCESS",
+                True,
+                "SUCCESS",
+                True,
+                "SUCCESS",
+            ),
+        )
+
+    def test_one_failed_format_produces_partial_success(self):
+        self.assertEqual(
+            "PARTIAL_SUCCESS",
+            self.journal.overall_result(
+                True,
+                "SUCCESS",
+                True,
+                "SUCCESS",
+                True,
+                "FAILED",
+            ),
+        )
+
+
 class PdfGroupingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -468,7 +624,7 @@ class PdfGroupingTests(unittest.TestCase):
     def test_runtime_identity_marks_canonical_nx2506_build(self):
         self.assertEqual(
             self.journal.JOURNAL_BUILD_ID,
-            "J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8",
+            "J07-NX2506-PDF-STEP-JT-V9",
         )
         self.assertTrue(
             self.journal.runtime_source_path().endswith(
@@ -1127,12 +1283,13 @@ class PdfGroupingTests(unittest.TestCase):
 
         cleanup.assert_called_once()
 
-    def test_halted_pdf_batch_still_runs_independent_step_export(self):
+    def test_halted_pdf_batch_still_runs_independent_step_and_jt_exports(self):
         instruction = {
             "part_number": "264MN000001A01",
             "revision": "A",
             "pdf_requested": True,
             "step_requested": True,
+            "jt_requested": True,
             "warnings": [],
         }
         state = {
@@ -1145,6 +1302,12 @@ class PdfGroupingTests(unittest.TestCase):
             "message": "",
             "size": 42,
         }
+        jt_result = {
+            "result": "SUCCESS",
+            "path": "part.jt",
+            "message": "",
+            "size": 84,
+        }
 
         with mock.patch.object(
             self.journal,
@@ -1156,12 +1319,16 @@ class PdfGroupingTests(unittest.TestCase):
             return_value=step_result,
         ) as step_exporter, mock.patch.object(
             self.journal,
+            "export_jt_for_instruction",
+            return_value=jt_result,
+        ) as jt_exporter, mock.patch.object(
+            self.journal,
             "restore_parts",
         ):
             result = self.journal.process_instruction(
                 types.SimpleNamespace(),
                 instruction,
-                {"pdf": "PDF", "step": "STEP"},
+                {"pdf": "PDF", "step": "STEP", "jt": "JT"},
                 "20260731_001300",
                 "EXPORTED: 2026-07-31 00:13 MYT",
                 state,
@@ -1175,7 +1342,9 @@ class PdfGroupingTests(unittest.TestCase):
             "FAILED_TIMESTAMP_CLEANUP",
         )
         self.assertEqual(result["STEP_RESULT"], "SUCCESS")
+        self.assertEqual(result["JT_RESULT"], "SUCCESS")
         step_exporter.assert_called_once()
+        jt_exporter.assert_called_once()
 
     def run_grouped_export(self, candidates, wae_version="2"):
         session = types.SimpleNamespace()

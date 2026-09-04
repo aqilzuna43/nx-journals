@@ -47,7 +47,7 @@ shared helpers from `from_git\utils`.
 | 04 | `from_git/journals/04_assembly_attribute_audit.py` | Read-only 3D master business-attribute pull |
 | 05 | `from_git/journals/05_bulk_attribute_updater.py` | Approved CSV update with stale-value and checkout gates |
 | 06 | `from_git/journals/06_auto_pdf_step_export.py` | Exports the active work part to STEP and its drawing sheets to PDF in one run |
-| 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Exports DataPack-controlled drawing PDFs and AP214 STEP files from the loaded assembly |
+| 07 | `from_git/journals/07_datapack_pdf_step_export.py` | Exports DataPack-controlled PDF, AP214 STEP, and monolithic JT files |
 | 08 | `from_git/journals/08_list_loaded_drawings.py` | Reports exact Teamcenter identities for drawings already loaded in NX |
 | 09 | `from_git/journals/09_test_teamcenter_specification_open.py` | Tests automatic opening of one canonical Teamcenter drawing specification |
 | 10 | `from_git/journals/10_test_step_export.py` | Diagnoses STEP export and validates body geometry |
@@ -179,14 +179,14 @@ USER_MODE = "DRY_RUN"
 
 `CURRENT_PART_NAME` is the stale-value safety check. J14 uses `UF_UGMGR.SetPartNameDesc()` and verifies the name and description after each update. A managed NX/Teamcenter session is required; the target part does not need to be open.
 
-## Journal 07 - DataPack PDF + STEP Export
+## Journal 07 - DataPack PDF + STEP + JT Export
 
-Journal 07 reads a manually prepared DataPack scope and exports only the PDF
-and STEP outputs explicitly enabled in that CSV. It matches each request by the
-normalized combination of `DB_PART_NO` and `DB_PART_REV`; it does not decide
-which parts are BTP, determine drawing readiness, or select a different
-revision. It reuses a loaded drawing when possible and otherwise attempts to
-open its canonical Teamcenter specification:
+Journal 07 reads a manually prepared DataPack scope and exports only the PDF,
+STEP, and JT outputs explicitly enabled in that CSV. It matches each request
+by the normalized combination of `DB_PART_NO` and `DB_PART_REV`; it does not
+decide which parts are BTP, determine drawing readiness, or select a different
+revision. It reuses loaded masters and drawings when possible and otherwise
+attempts the exact Teamcenter master or canonical drawing specification:
 
 ```text
 @DB/<part>/<revision>/specification/<part>-<revision>-dwg<n>
@@ -197,7 +197,8 @@ open its canonical Teamcenter specification:
 1. Refresh and filter the FZ-PowerSystem DataPack tracker to the required BTP
    scope.
 2. Export or copy the selected rows to CSV and confirm the `PDF`, `STEP`, and
-   `JT` controls. J07 reads PDF and STEP; J33 reads JT.
+   `JT` controls. J07 reads all three; J33 remains available for standalone JT
+   runs.
 3. Use `from_git/templates/NX_EXPORT_SCOPE_TEMPLATE.csv` as the starting
    format, then save the working file with the exact name
    `NX_EXPORT_SCOPE.csv`.
@@ -213,15 +214,15 @@ Required logical columns and accepted aliases:
 | Revision | `DB_PART_REV`, `Item Rev`, `REVISION`, `Revision` |
 | PDF control | `PDF`, `Export_PDF`, `EXPORT_PDF` |
 | STEP control | `STEP`, `Export_STEP`, `EXPORT_STEP` |
-| JT control (J33) | `JT`, `Export_JT`, `EXPORT_JT` |
+| JT control | `JT`, `Export_JT`, `EXPORT_JT` |
 
 Optional traceability columns are `DATA_PACK_STATUS`/`Status`,
 `PRIMARY_MODULE`/`Primary Module`, `PART_DESCRIPTION`/`Part Description`, and
 `OWNER`/`Owner`. Enabled controls are `YES`, `Y`, `TRUE`, `1`, or `X`;
 disabled controls are blank, `NO`, `N`, `FALSE`, or `0`. An unknown nonblank
-control is reported as a warning and treated as disabled. Rows with both
+control is reported as a warning and treated as disabled. Rows with all three
 controls explicitly disabled are ignored. Duplicate part/revision rows are
-merged, with PDF and STEP enabled when any contributing row requests them.
+merged, with PDF, STEP, and JT enabled when any contributing row requests them.
 
 ### Prepare NX and run
 
@@ -235,17 +236,18 @@ NX > Tools > Journal > Play
 from_git\journals\07_datapack_pdf_step_export.py
 ```
 
-The journal uses only prototype revisions already available through the loaded
-assembly. It may open a drawing specification for that exact revision, but it
-does not search for another revision, save NX parts, create datasets, or upload
-generated files. Temporary PDF timestamp notes are removed through an NX undo
-mark before J07 continues.
+The journal reuses an exact loaded 3D master or opens
+`@DB/<part>/<revision>` with `/master` fallback. It may also open a drawing
+specification for that exact revision. It does not search for another revision,
+save NX parts, create datasets, or upload generated files. Temporary PDF
+timestamp notes are removed through an NX undo mark before J07 continues.
 
 The listing window must identify the current deployment before export:
 
 ```text
-Journal build: J07-NX2506-SEARCHABLE-TEXT-NATIVE-WATERMARK-V8
+Journal build: J07-NX2506-PDF-STEP-JT-V9
 Drawing resolver: canonical Teamcenter specification identifier
+JT settings: monolithic; write=all; assembly structure=yes; precise geometry=yes; tessellation=NX; reference set=default; PMI=part+assembly
 ```
 
 ### Journal 07 outputs
@@ -256,6 +258,7 @@ Each run creates an audit-preserving folder:
 <I/O root>\NX_BULK_EXPORT\YYYYMMDD_HHMMSS\
   PDF\
   STEP\
+  JT\
   REPORTS\EXPORT_RESULT_YYYYMMDD_HHMMSS.csv
   LOGS\EXPORT_LOG_YYYYMMDD_HHMMSS.txt
 ```
@@ -265,6 +268,10 @@ creates one combined multipage PDF per resolved drawing. PDF files use
 `DRAWING_NUMBER` when available, otherwise the requested part number. When
 multiple drawing items resolve, the drawing index is appended as `_DWG<n>` to
 avoid collisions.
+
+JT files use `<DB_PART_NO>_REV<DB_PART_REV>.jt`. J07 creates one monolithic
+JT per requested revision with assembly structure, precise geometry, NX
+tessellation, the default reference set, and part/assembly PMI.
 
 Every Journal 07 PDF page receives the native NX draft watermark:
 
@@ -282,17 +289,17 @@ J07 creates the footer as a temporary native drafting note on every sheet,
 exports the existing combined multipage PDF, and undoes the notes immediately
 afterwards. It logs drawing-resolution, timestamp preparation, PDF commit, and
 cleanup timings. A timestamp-cleanup failure stops later PDF work but does not
-prevent independently requested STEP exports.
+prevent independently requested STEP or JT exports.
 
 Journal 07 reads `WAE_VERSION` from the already-loaded model first and then
-from the drawing (STEP reads it from the master part). Output filenames embed
-the version after the revision: `<number>_REV<revision>.<WAE_VERSION>.pdf`
+from the drawing (STEP and JT read it from the master part). Output filenames
+embed the version after the revision: `<number>_REV<revision>.<WAE_VERSION>.pdf`
 (for example `264MN021888A01_REVA.2.pdf`), with multi-drawing PDFs appending
-`_DWG<n>` after the version; STEP files use the same pattern with a `.stp`
-extension. If `WAE_VERSION` is unavailable, the PDF is still exported with a
-revision-only watermark such as `DRAFT_A`, both outputs keep their
-revision-only filenames, and the result report records a warning. Journal 07
-keeps drawing text as PDF text, so drawing words, numbers, and the export
+`_DWG<n>` after the version; STEP and JT files use the same pattern with
+`.stp` and `.jt` extensions. If `WAE_VERSION` is unavailable, the PDF is still
+exported with a revision-only watermark such as `DRAFT_A`; all outputs keep
+their revision-only filenames and the result report records a warning. Journal
+07 keeps drawing text as PDF text, so drawing words, numbers, and the export
 footer are searchable and selectable without OCR. The large `DRAFT_<revision>.<WAE_VERSION>` value uses
 the normal NX PDF watermark feature and may also be searchable.
 `CustomSymbolsInForeground` is enabled so drawing symbols remain visible.
@@ -300,10 +307,11 @@ the normal NX PDF watermark feature and may also be searchable.
 The UTF-8-BOM result CSV contains one row per valid unique request plus each
 invalid input row. Principal results are `SUCCESS`, `PARTIAL_SUCCESS`,
 `NOT_REQUESTED`, `SKIPPED_NO_DRAWING`, `NOT_FOUND`, `REVISION_MISMATCH`,
-`INVALID_INPUT`, `FAILED`, and `FAILED_NO_OUTPUT_FILE`. PDF and STEP outcomes
-are independent, and the expected file must exist before an export is recorded
-as successful. A valid-header CSV containing only invalid or ignored rows still
-produces a report but performs no conversion.
+`INVALID_INPUT`, `FAILED`, `FAILED_NO_OUTPUT_FILE`, and
+`FAILED_ZERO_BYTE_FILE`. PDF, STEP, and JT outcomes are independent. The
+expected file must exist before an export is recorded as successful; JT must
+also be nonzero. A valid-header CSV containing only invalid or ignored rows
+still produces a report but performs no conversion.
 
 The NX Listing Window shows progress, traversal diagnostics, collisions, and a
 final file-count summary. Journal 07 restores the original display and work
@@ -315,10 +323,10 @@ parts even when an individual export fails.
 2. Close `264MN028607A01/A/dwg1` completely so it is absent from the NX session.
 3. Run Journal 09 with its defaults.
 4. Require the canonical `/specification/` identifier, `Drawing sheets returned: 3`, and `FINAL STATUS: SUCCESS`.
-5. Run Journal 07 with PDF and STEP enabled.
+5. Run Journal 07 with PDF, STEP, and JT enabled.
 6. Require the Journal 07 build and resolver banners, one multipage PDF with
    the draft watermark and catalog symbols visible on every page, successful
-   STEP body validation, and restored display/work parts.
+   STEP body validation, a nonzero JT, and restored display/work parts.
 7. Repeat Journal 07 with the drawing preloaded and compare the resulting PDF.
 
 Journal 09 can be redirected without editing the file by setting
@@ -327,10 +335,10 @@ Journal 09 can be redirected without editing the file by setting
 
 ## Journal 33 - DataPack JT Export
 
-Journal 33 is the JT companion to J07 and uses the same exact
+Journal 33 is the standalone JT alternative to J07 and uses the same exact
 `NX_EXPORT_SCOPE.csv` file. J33 requires the part-number, revision, and `JT`
-logical columns; the PDF and STEP columns remain available for J07 but are
-ignored by J33. Enabled values are `YES`, `Y`, `TRUE`, `1`, or `X`. Disabled
+logical columns; the PDF and STEP columns are ignored by J33. Enabled values
+are `YES`, `Y`, `TRUE`, `1`, or `X`. Disabled
 rows are ignored, duplicate part/revision requests are merged, and invalid
 controls are retained in the audit report.
 
@@ -405,7 +413,7 @@ it opened.
 | J04 | `NX_ATTRIBUTE_UPDATE_<root>_<timestamp>.csv` and matching `.baseline.json` |
 | J05 | `J05_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
 | J06 | STEP: `<DB_PART_NO>_REV<DB_PART_REV>.stp`; PDF: `<DRAWING_NUMBER>_REV<revision>.pdf` |
-| J07 | `NX_BULK_EXPORT\<timestamp>\PDF\<number>_REV<rev>.<WAE_VERSION>.pdf`, `STEP\<number>_REV<rev>.<WAE_VERSION>.stp`, plus `REPORTS` and `LOGS` |
+| J07 | `NX_BULK_EXPORT\<timestamp>\PDF\<number>_REV<rev>.<WAE_VERSION>.pdf`, `STEP\<number>_REV<rev>.<WAE_VERSION>.stp`, `JT\<number>_REV<rev>.<WAE_VERSION>.jt`, plus `REPORTS` and `LOGS` |
 | J11 | `J11_CHECKOUT_ACCEPTANCE_<timestamp>.json` |
 | J12 | `NX_PDF_DIAGNOSTIC\<timestamp>_<PRELOADED-or-CLOSED_AUTO>\*.pdf` |
 | J14 | `J14_PART_NAME_<DRY_RUN-or-APPLY_APPROVED>_<timestamp>.csv` |
@@ -428,7 +436,7 @@ it opened.
 - J14 changes Teamcenter Item Name only and verifies the result through UF_UGMGR read-back.
 - J01 exports the currently open work part as AP214 STEP and names the file from `DB_PART_NO` / `DB_PART_REV` when available.
 - J06 combines the J01 STEP path and active-part drawing PDF export into one no-prompt journal. It writes files to the configured output folder and does not create Teamcenter datasets.
-- J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision matches already loaded under the active assembly and can open their canonical drawing specifications.
+- J07 is self-contained and needs no shared utility or JSON configuration file. It processes exact part-number/revision requests and independently exports PDF, STEP, and JT; it can open exact Teamcenter masters and canonical drawing specifications.
 - J33 is a separate self-contained JT journal. It reads the J07 DataPack scope's `JT` control, verifies the exact resolved master identity, and creates one monolithic JT per requested revision without modifying NX or Teamcenter data.
 - J18 measures every face of direct traditional solid bodies in the active work part, including hidden bodies. It reports square metres only and intentionally contains no paint-weight calculation.
 - J21 APPLY calls `LoadThisPartFully()` on each unique BoM-visible target that needs it and re-traverses until newly exposed descendants are discovered. It never calls assembly-wide `LoadFully()`, so suppressed/reference/keyword-excluded structure remains out of scope. APPLY then scans every prototype and makes only targets missing the exact `NX_MassPropRollupMass` title the work part; existing values (including `0.0`) are trusted without checkout inspection, native update, or save. Missing targets run bottom-up through NX's native `CreateMassPropertiesBuilder` path (`UpdateOnSave` + `UpdateNow` + `Commit`). Load failures block the affected target and missing ancestors while safe sibling branches continue. J21 never checks out parts or writes reserved titles directly; selected checked-in, read-only, and other-user targets are skipped and reported. `NX_J21_MODE=REFRESH_ALL` retains V5's full rebuild and all-or-nothing load gate, `DRY_RUN` does not load or save, and `SMOKE` forces one active-work-part update.
