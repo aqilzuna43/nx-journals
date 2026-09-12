@@ -171,7 +171,8 @@ class SingleDrawingCleanupTests(unittest.TestCase):
             "identifier": self.journal.drawing_id("MODEL100", "A", index),
             "backup": [{"file": "dwg{0}.prt".format(index), "sha256": str(index) * 64}],
             "delete_result": "[0]", "delete_statuses": [0],
-            "keep_empty_dataset": False,
+            "keep_empty_dataset": False, "file_count": 1,
+            "empty_payload": False, "delete_attempted": True,
         }
         post_absent = {
             "state": "NOT_OPENABLE", "loaded_at_start": False, "detail": "not found",
@@ -246,6 +247,138 @@ class SingleDrawingCleanupTests(unittest.TestCase):
         self.assertIs(manager.delete_args[1], False)
         self.assertEqual([0], outcome["delete_statuses"])
         self.assertEqual(1, len(outcome["backup"]))
+
+    def test_empty_payload_extra_is_deleted_without_a_backup(self):
+        class FakePart:
+            JournalIdentifier = "@DB/MODEL100/A/specification/MODEL100-A-dwg2"
+
+        class Parts:
+            def OpenBase(self, identifier):
+                return FakePart(), None
+
+        class FileManagement:
+            def __init__(self):
+                self.delete_args = None
+                self.download_calls = []
+
+            def GetAssociatedFiles(self, parts, excluded):
+                return []
+
+            def DownloadAssociatedFiles(self, parts, files):
+                self.download_calls.append(list(files))
+                return []
+
+            def DeleteExistingAttachedFiles(self, files, keep_empty):
+                self.delete_args = (list(files), keep_empty)
+                return []
+
+        with tempfile.TemporaryDirectory() as folder:
+            manager = FileManagement()
+            session = types.SimpleNamespace(Parts=Parts())
+            with mock.patch.object(
+                self.journal.J16, "find_loaded_by_identifier", return_value=None
+            ), mock.patch.object(self.journal.J16, "close_opened_part"):
+                outcome = self.journal.backup_and_delete_target(
+                    session, manager, "MODEL100", "A", 2, folder, FakeLog()
+                )
+        self.assertTrue(outcome["empty_payload"])
+        self.assertTrue(outcome["delete_attempted"])
+        self.assertEqual(0, outcome["file_count"])
+        self.assertEqual([], outcome["backup"])
+        self.assertEqual([], manager.download_calls)
+        self.assertEqual([], manager.delete_args[0])
+        self.assertIs(manager.delete_args[1], False)
+
+    def test_unprovable_file_name_still_fails_closed(self):
+        class FakePart:
+            JournalIdentifier = "@DB/MODEL100/A/specification/MODEL100-A-dwg2"
+
+        class FakePdmFile:
+            def GetFileName(self):
+                return ""
+
+            def FreeResource(self):
+                pass
+
+        class Parts:
+            def OpenBase(self, identifier):
+                return FakePart(), None
+
+        class FileManagement:
+            def GetAssociatedFiles(self, parts, excluded):
+                return [FakePdmFile()]
+
+            def DownloadAssociatedFiles(self, parts, files):
+                raise AssertionError("download must not run when names are unprovable")
+
+            def DeleteExistingAttachedFiles(self, files, keep_empty):
+                raise AssertionError("delete must not run when names are unprovable")
+
+        with tempfile.TemporaryDirectory() as folder:
+            session = types.SimpleNamespace(Parts=Parts())
+            with mock.patch.object(
+                self.journal.J16, "find_loaded_by_identifier", return_value=None
+            ), mock.patch.object(self.journal.J16, "close_opened_part"):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Could not prove all associated file names"
+                ):
+                    self.journal.backup_and_delete_target(
+                        session, FileManagement(), "MODEL100", "A", 2, folder,
+                        FakeLog(),
+                    )
+
+    def test_empty_dataset_that_survives_is_reported_not_crashed(self):
+        initial = self.plan(extras=(2, 3))
+        final = {1: self.inspection(sheets=3), 2: self.inspection(sheets=0)}
+
+        def outcomes(index):
+            if index == 2:
+                return {
+                    "identifier": self.journal.drawing_id("MODEL100", "A", 2),
+                    "backup": [], "delete_result": "[]", "delete_statuses": [],
+                    "keep_empty_dataset": False, "file_count": 0,
+                    "empty_payload": True, "delete_attempted": True,
+                }
+            return {
+                "identifier": self.journal.drawing_id("MODEL100", "A", 3),
+                "backup": [{"file": "dwg3.prt", "sha256": "3" * 64}],
+                "delete_result": "[0]", "delete_statuses": [0],
+                "keep_empty_dataset": False, "file_count": 1,
+                "empty_payload": False, "delete_attempted": True,
+            }
+
+        def post(session, identifier, log):
+            if identifier.endswith("dwg2"):
+                return {
+                    "state": "EXISTS", "loaded_at_start": False,
+                    "detail": "still live", "drawing_sheet_count": 0,
+                }
+            return {
+                "state": "NOT_OPENABLE", "loaded_at_start": False,
+                "detail": "removed", "drawing_sheet_count": -1,
+            }
+
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(
+            self.journal, "validate_plan", side_effect=[initial, initial]
+        ), mock.patch.object(
+            self.journal, "backup_and_delete_target",
+            side_effect=lambda *args: outcomes(args[4]),
+        ), mock.patch.object(
+            self.journal, "inspect_exact", side_effect=post
+        ), mock.patch.object(
+            self.journal, "discover_drawings", return_value=final
+        ):
+            reports = self.journal.execute(
+                [self.row()], object(), object(), "APPLY_APPROVED", folder,
+                "20260912_231556", FakeLog(),
+            )
+        report = reports[0]
+        self.assertEqual("PARTIAL_EMPTY_DATASET_REMAINS", report["RESULT"])
+        self.assertEqual("3", report["REMOVED_DWG_INDICES"])
+        self.assertEqual("2", report["EMPTY_DATASET_DWG_INDICES"])
+        self.assertEqual("YES", report["WRITE_ATTEMPTED"])
+        self.assertEqual("DWG2:0 | DWG3:1", report["EXTRA_ASSOCIATED_FILE_COUNTS"])
+        self.assertIn("cut", report["MESSAGE"].lower())
 
     def test_source_declares_destructive_semantics_and_postcheck(self):
         source = JOURNAL.read_text(encoding="utf-8")

@@ -21,6 +21,31 @@ The call removes the drawing's files and the now-empty drawing dataset. Its
 `IMAN_specification` relationship disappears because the dataset is removed.
 This is destructive Teamcenter cleanup, not merely hiding or unlinking a DWG.
 
+### Drawings that carry no files
+
+Some extra specifications are empty: NX reports `DrawingSheets = 0` for them
+and Teamcenter associates no file with the dataset. There is nothing to back
+up, so J25 records the payload count and then attempts the dataset removal
+anyway. Because the delete API is file-driven, a zero-file call may remove
+nothing at all — so the outcome is decided by evidence, not by the call:
+
+- Dataset gone after the delete, and the final inventory shows only the keep
+drawing → `SINGLE_DWG_VERIFIED` as usual.
+- Dataset still openable → the row stops being automatic and reports
+  `EMPTY_DATASET_REMAINS` (nothing else was removed) or
+  `PARTIAL_EMPTY_DATASET_REMAINS` (the other extras were removed). The
+  remaining empty dataset must be cut off the revision in the **rich
+  Teamcenter client**; the free TCX client has no Cut command.
+
+A blank file *name* is deliberately still a hard failure (`Could not prove all
+associated file names`): files exist that cannot be identified, so neither a
+provable backup nor a provable delete is possible.
+
+Two report columns make the payload visible per row: `EXTRA_ASSOCIATED_FILE_COUNTS`
+(for example `DWG1:0 | DWG2:0 | DWG3:1`) and `EMPTY_DATASET_DWG_INDICES`.
+`WRITE_ATTEMPTED` now becomes `YES` only once a delete API call is actually made,
+so a row that fails before the first removal reports `NO`.
+
 ## Prepare the input
 
 ### Option A: generate the scope from a J07 export report (recommended)
@@ -96,6 +121,11 @@ same as Cut, and no orphan dataset is left behind in Teamcenter.
 After every deletion, J25 proves that the removed exact specification no
 longer opens. Final success is `SINGLE_DWG_VERIFIED`, which additionally
 requires that only the selected DWG remains and still contains drawing sheets.
+`EMPTY_DATASET_REMAINS` and `PARTIAL_EMPTY_DATASET_REMAINS` are terminal
+results that mean the automatic work is done and one or more empty datasets
+still need a Cut in the rich Teamcenter client; update the row's
+`EXPECTED_REMOVE_DWG_INDICES` to the remaining live extras before re-running,
+because J25 blocks a plan whose expected list does not match the live one.
 
 Because NX is not installed on this repository host, local tests prove only
 parsing, safety gates, API call shape, and report logic. Aqil must run the

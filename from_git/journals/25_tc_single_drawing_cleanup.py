@@ -15,6 +15,16 @@ Important Teamcenter semantics:
   retained as an orphan.
 - Before each removal, J25 downloads every associated file into the run's
   BACKUP folder and records SHA-256 evidence.
+- A drawing specification with no associated files (NX reports DrawingSheets
+  = 0 for these) has nothing to back up. J25 attempts the dataset removal
+  anyway and proves the outcome with the post-delete open attempt and the
+  final inventory. A blank file NAME is a different case and still fails
+  closed: files exist that cannot be identified, so neither a provable backup
+  nor a provable delete is possible.
+- When an empty dataset survives the delete API, the row is reported as
+  EMPTY_DATASET_REMAINS (or PARTIAL_EMPTY_DATASET_REMAINS when other extras in
+  the same row were removed). The free TCX client cannot cut a dataset off a
+  revision, so that single dataset needs the rich Teamcenter client.
 - J25 never modifies or deletes the selected KEEP_DWG_INDEX drawing or the 3D
   master. It never checks out, checks in, revises, or saves an NX part.
 
@@ -50,7 +60,7 @@ USER_MODE = "DRY_RUN"
 #   NX_J25_MAX_DELETIONS=1..100 (default 25)
 # ============================================================================
 
-BUILD = "J25-TCX-SINGLE-DRAWING-CLEANUP-NX2506-V1"
+BUILD = "J25-TCX-SINGLE-DRAWING-CLEANUP-NX2506-V2"
 DEFAULT_INPUT = "NX_TC_SINGLE_DRAWING_SCOPE.csv"
 OUTPUT_FOLDER = "NX_TC_SINGLE_DRAWING_CLEANUP"
 VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
@@ -75,8 +85,9 @@ REPORT_COLUMNS = (
     "LIVE_REMOVE_DWG_INDICES", "MASTER_CHECKOUT_STATE",
     "KEEP_CHECKOUT_STATE", "KEEP_DRAWING_SHEET_COUNT",
     "EXTRA_CHECKOUT_STATES", "EXTRA_DRAWING_SHEET_COUNTS",
-    "EXTRA_LOADED_AT_START", "BACKUP_FILES", "BACKUP_SHA256",
-    "DELETE_API_RESULTS", "REMOVED_DWG_INDICES", "POSTCHECK_DWG_INDICES",
+    "EXTRA_ASSOCIATED_FILE_COUNTS", "EXTRA_LOADED_AT_START", "BACKUP_FILES",
+    "BACKUP_SHA256", "DELETE_API_RESULTS", "EMPTY_DATASET_DWG_INDICES",
+    "REMOVED_DWG_INDICES", "POSTCHECK_DWG_INDICES",
     "APPROVED", "ENGINEER", "CONFIRMATION", "WRITE_ATTEMPTED", "RESULT",
     "MESSAGE",
 )
@@ -353,7 +364,14 @@ def backup_and_delete_target(
     session, file_management, part_number, revision, drawing_index,
     backup_root, log,
 ):
-    """Back up one exact drawing, then delete all files and its empty dataset."""
+    """Back up one exact drawing, then delete all files and its empty dataset.
+
+    Returns file_count (associated files proven), empty_payload (True when the
+    specification carries no files at all) and delete_attempted. When
+    empty_payload is True there is no status evidence to require, so the caller
+    must prove the outcome with the post-delete open attempt and the final
+    inventory instead.
+    """
     identifier = drawing_id(part_number, revision, drawing_index)
     if J16.find_loaded_by_identifier(session, identifier) is not None:
         raise RuntimeError("{0} is loaded; close it before APPLY_APPROVED.".format(identifier))
@@ -386,50 +404,64 @@ def backup_and_delete_target(
         pdm_files = unique_pdm_files(get_files([part], []))
         resource_files.extend(pdm_files)
         names = [J16.pdm_file_name(value) for value in pdm_files]
-        if not pdm_files or any(not name for name in names):
+        # A blank name means files exist that cannot be identified, so neither a
+        # provable backup nor a provable delete is possible: fail closed. An
+        # empty list is a different case - the drawing specification carries no
+        # payload at all (NX reports DrawingSheets = 0 for these). There is
+        # nothing to back up, so the removal is attempted and the post-delete
+        # open attempt plus the final inventory are the proof.
+        if any(not name for name in names):
             raise RuntimeError("Could not prove all associated file names for {0}.".format(identifier))
-        native_names = [name for name in names if name.lower().endswith(".prt")]
-        if len(native_names) != 1:
-            raise RuntimeError(
-                "Expected exactly one native .prt for {0}; found {1}: {2}".format(
-                    identifier, len(native_names), " | ".join(names)
+        empty_payload = not pdm_files
+        if empty_payload:
+            log.write(
+                "  DWG{0} {1}: no associated files; nothing to back up.".format(
+                    drawing_index, identifier
                 )
             )
+        else:
+            native_names = [name for name in names if name.lower().endswith(".prt")]
+            if len(native_names) != 1:
+                raise RuntimeError(
+                    "Expected exactly one native .prt for {0}; found {1}: {2}".format(
+                        identifier, len(native_names), " | ".join(names)
+                    )
+                )
 
-        returned = unique_pdm_files(download_files([part], pdm_files))
-        for value in returned:
-            if all(value is not existing for existing in resource_files):
-                resource_files.append(value)
-        download_cwd = os.getcwd()
-        all_names = list(names) + [
-            J16.pdm_file_name(value)
-            for value in returned
-            if J16.pdm_file_name(value)
-        ]
-        physical = J16.locate_downloaded_files(all_names, download_cwd)
-        expected_basenames = {os.path.basename(name).lower() for name in names}
-        found_basenames = {os.path.basename(path).lower() for path in physical.values()}
-        missing = sorted(expected_basenames - found_basenames)
-        if missing:
-            raise RuntimeError(
-                "Backup download did not materialize: {0}".format(", ".join(missing))
-            )
+            returned = unique_pdm_files(download_files([part], pdm_files))
+            for value in returned:
+                if all(value is not existing for existing in resource_files):
+                    resource_files.append(value)
+            download_cwd = os.getcwd()
+            all_names = list(names) + [
+                J16.pdm_file_name(value)
+                for value in returned
+                if J16.pdm_file_name(value)
+            ]
+            physical = J16.locate_downloaded_files(all_names, download_cwd)
+            expected_basenames = {os.path.basename(name).lower() for name in names}
+            found_basenames = {os.path.basename(path).lower() for path in physical.values()}
+            missing = sorted(expected_basenames - found_basenames)
+            if missing:
+                raise RuntimeError(
+                    "Backup download did not materialize: {0}".format(", ".join(missing))
+                )
 
-        target_backup = os.path.join(
-            backup_root,
-            J16.safe_folder_name(
-                "{0}_{1}_DWG{2}".format(part_number, revision, drawing_index)
-            ),
-        )
-        os.makedirs(target_backup, exist_ok=True)
-        for source in sorted(physical.values(), key=lambda value: value.lower()):
-            destination = os.path.join(
-                target_backup, J16.safe_folder_name(os.path.basename(source))
+            target_backup = os.path.join(
+                backup_root,
+                J16.safe_folder_name(
+                    "{0}_{1}_DWG{2}".format(part_number, revision, drawing_index)
+                ),
             )
-            shutil.copy2(source, destination)
-            backup_rows.append({"file": destination, "sha256": sha256(destination)})
-        if not backup_rows:
-            raise RuntimeError("No backup files were copied for {0}.".format(identifier))
+            os.makedirs(target_backup, exist_ok=True)
+            for source in sorted(physical.values(), key=lambda value: value.lower()):
+                destination = os.path.join(
+                    target_backup, J16.safe_folder_name(os.path.basename(source))
+                )
+                shutil.copy2(source, destination)
+                backup_rows.append({"file": destination, "sha256": sha256(destination)})
+            if not backup_rows:
+                raise RuntimeError("No backup files were copied for {0}.".format(identifier))
 
         os.chdir(original_cwd)
         J16.dispose(load_status)
@@ -443,6 +475,9 @@ def backup_and_delete_target(
             "delete_result": repr(raw_delete)[:2000],
             "delete_statuses": flatten_int_statuses(raw_delete),
             "keep_empty_dataset": False,
+            "file_count": len(pdm_files),
+            "empty_payload": empty_payload,
+            "delete_attempted": True,
         }
     finally:
         try:
@@ -609,21 +644,30 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
         try:
             recheck = validate_plan(row, session, log)
             require_apply_authorization(row, recheck)
-            report["WRITE_ATTEMPTED"] = "YES"
             removed, backup_files, backup_hashes, api_results = [], [], [], []
+            file_counts, empty_extras = [], []
             for index in recheck["live_remove"]:
                 outcome = backup_and_delete_target(
                     session, file_management, recheck["part_number"],
                     recheck["revision"], index, backup_root, log,
                 )
+                if outcome["delete_attempted"]:
+                    report["WRITE_ATTEMPTED"] = "YES"
                 backup_files.extend(item["file"] for item in outcome["backup"])
                 backup_hashes.extend(item["sha256"] for item in outcome["backup"])
+                file_counts.append("DWG{0}:{1}".format(index, outcome["file_count"]))
                 api_results.append("DWG{0}:{1}".format(index, outcome["delete_result"]))
+                report["EXTRA_ASSOCIATED_FILE_COUNTS"] = " | ".join(file_counts)
                 report["BACKUP_FILES"] = " | ".join(backup_files)
                 report["BACKUP_SHA256"] = " | ".join(backup_hashes)
                 report["DELETE_API_RESULTS"] = " | ".join(api_results)
                 statuses = outcome["delete_statuses"]
-                if not statuses or any(status != 0 for status in statuses):
+                # An empty payload has no files to hash and the delete API is
+                # file-driven, so all-zero status evidence cannot be required;
+                # the post-delete open attempt below is the proof instead.
+                if not outcome["empty_payload"] and (
+                    not statuses or any(status != 0 for status in statuses)
+                ):
                     raise RuntimeError(
                         "DWG{0} delete API did not return all-zero status evidence: {1}."
                         .format(index, statuses)
@@ -633,12 +677,20 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                     drawing_id(recheck["part_number"], recheck["revision"], index),
                     log,
                 )
-                if post["state"] == "EXISTS":
-                    raise RuntimeError(
-                        "DWG{0} still opens after DeleteExistingAttachedFiles.".format(index)
-                    )
                 if post["state"] == "IDENTITY_MISMATCH":
                     raise RuntimeError("DWG{0} post-delete identity mismatch.".format(index))
+                if post["state"] == "EXISTS":
+                    if not outcome["empty_payload"]:
+                        raise RuntimeError(
+                            "DWG{0} still opens after DeleteExistingAttachedFiles.".format(index)
+                        )
+                    empty_extras.append(index)
+                    report["EMPTY_DATASET_DWG_INDICES"] = indices_text(empty_extras)
+                    log.write(
+                        "  DWG{0} carried no associated files and its dataset is still "
+                        "live; a rich Teamcenter client Cut is required.".format(index)
+                    )
+                    continue
                 removed.append(index)
                 report["REMOVED_DWG_INDICES"] = indices_text(removed)
 
@@ -646,7 +698,13 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                 session, recheck["part_number"], recheck["revision"], log
             )
             report["POSTCHECK_DWG_INDICES"] = indices_text(final_drawings)
-            if sorted(final_drawings) != [recheck["keep"]]:
+            unexpected = sorted(
+                index for index in final_drawings if index != recheck["keep"]
+            )
+            unexplained = [
+                index for index in unexpected if index not in empty_extras
+            ]
+            if unexplained:
                 raise RuntimeError(
                     "Postcheck expected only DWG{0}; found [{1}].".format(
                         recheck["keep"], indices_text(final_drawings)
@@ -654,10 +712,24 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                 )
             if final_drawings[recheck["keep"]]["drawing_sheet_count"] < 1:
                 raise RuntimeError("Retained drawing no longer proves drawing sheets.")
-            report["RESULT"] = "SINGLE_DWG_VERIFIED"
-            report["MESSAGE"] = (
-                "Extra drawing datasets were backed up and removed; only the selected final drawing remains openable."
-            )
+            if empty_extras:
+                report["RESULT"] = (
+                    "PARTIAL_EMPTY_DATASET_REMAINS" if removed
+                    else "EMPTY_DATASET_REMAINS"
+                )
+                report["MESSAGE"] = (
+                    "Every extra drawing that carries files was backed up and removed. "
+                    "DWG{0} carries no associated files, so DeleteExistingAttachedFiles "
+                    "could not remove its dataset; cut that dataset off the revision in "
+                    "the rich Teamcenter client, then re-run J25 to verify.".format(
+                        indices_text(empty_extras)
+                    )
+                )
+            else:
+                report["RESULT"] = "SINGLE_DWG_VERIFIED"
+                report["MESSAGE"] = (
+                    "Extra drawing datasets were backed up and removed; only the selected final drawing remains openable."
+                )
         except Exception as error:
             report["RESULT"] = (
                 "PARTIAL_FAILURE" if report["REMOVED_DWG_INDICES"]
