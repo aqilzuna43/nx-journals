@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "journal_build": "J25-TCX-SINGLE-DRAWING-CLEANUP-NX2506-V3",
+  "semantics": "DeleteExistingAttachedFiles(files, keepEmptyDataset=False): backup files, delete extra drawing dataset, retain selected drawing",
+  "reports": [
+    {
+      "RUN_TIMESTAMP": "20260913_000105",
+      "MODE": "APPLY_APPROVED",
+      "CSV_ROW": 2,
+      "PART_NUMBER": "264MN025454A01",
+      "REVISION": "A",
+      "MASTER_IDENTIFIER": "@DB/264MN025454A01/A",
+      "KEEP_DWG_INDEX": "4",
+      "KEEP_IDENTIFIER": "@DB/264MN025454A01/A/specification/264MN025454A01-A-dwg4",
+      "DISCOVERED_DWG_INDICES": "1|2|3|4",
+      "EXPECTED_REMOVE_DWG_INDICES": "1|2|3",
+      "LIVE_REMOVE_DWG_INDICES": "1|2|3",
+      "MASTER_CHECKOUT_STATE": "CHECKED_IN",
+      "KEEP_CHECKOUT_STATE": "CHECKED_IN",
+      "KEEP_DRAWING_SHEET_COUNT": "2",
+      "EXTRA_CHECKOUT_STATES": "DWG1:CHECKED_IN | DWG2:CHECKED_IN | DWG3:CHECKED_IN",
+      "EXTRA_DRAWING_SHEET_COUNTS": "DWG1:0 | DWG2:0 | DWG3:0",
+      "EXTRA_ASSOCIATED_FILE_COUNTS": "DWG1:0 | DWG2:0 | DWG3:0",
+      "EXTRA_LOADED_AT_START": "",
+      "BACKUP_FILES": "",
+      "BACKUP_SHA256": "",
+      "DELETE_API_RESULTS": "DWG1:[] | DWG2:[] | DWG3:[]",
+      "EMPTY_DATASET_DWG_INDICES": "1|2|3",
+      "REMOVED_DWG_INDICES": "",
+      "POSTCHECK_DWG_INDICES": "1|2|3|4",
+      "APPROVED": "YES",
+      "ENGINEER": "AQIL",
+      "CONFIRMATION": "REMOVE_EXTRA_DRAWINGS",
+      "WRITE_ATTEMPTED": "NO",
+      "RESULT": "EMPTY_DATASET_REMAINS",
+      "MESSAGE": "Every extra drawing that carries files was backed up and removed. DWG1|2|3 carries no associated files, so DeleteExistingAttachedFiles could not remove its dataset; cut that dataset off the revision in the rich Teamcenter client, then re-run J25 to verify.",
+      "FILE_DIAGNOSTICS": "",
+      "FAILURE_POSTCHECK": "",
+      "KEEP_POSTCHECK_SHEET_COUNT": ""
+    }
+  ]
+}
