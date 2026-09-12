@@ -15,10 +15,10 @@ Important Teamcenter semantics:
   retained as an orphan.
 - Before each removal, J25 downloads every associated file into the run's
   BACKUP folder and records SHA-256 evidence.
-- A drawing specification with no associated files (NX reports DrawingSheets
-  = 0 for these) has nothing to back up. J25 attempts the dataset removal
-  anyway and proves the outcome with the post-delete open attempt and the
-  final inventory. A blank file NAME is a different case and still fails
+- A drawing specification with no enumerated associated files has nothing
+  available to back up. J25 skips the targetless delete call and records the
+  subsequent open attempt and final inventory. An empty NX enumeration alone
+  does not prove an empty server dataset. A blank file NAME still fails
   closed: files exist that cannot be identified, so neither a provable backup
   nor a provable delete is possible.
 - When an empty dataset survives the delete API, the row is reported as
@@ -60,7 +60,7 @@ USER_MODE = "DRY_RUN"
 #   NX_J25_MAX_DELETIONS=1..100 (default 25)
 # ============================================================================
 
-BUILD = "J25-TCX-SINGLE-DRAWING-CLEANUP-NX2506-V2"
+BUILD = "J25-TCX-SINGLE-DRAWING-CLEANUP-NX2506-V3"
 DEFAULT_INPUT = "NX_TC_SINGLE_DRAWING_SCOPE.csv"
 OUTPUT_FOLDER = "NX_TC_SINGLE_DRAWING_CLEANUP"
 VALID_MODES = ("DRY_RUN", "APPLY_APPROVED")
@@ -90,6 +90,7 @@ REPORT_COLUMNS = (
     "REMOVED_DWG_INDICES", "POSTCHECK_DWG_INDICES",
     "APPROVED", "ENGINEER", "CONFIRMATION", "WRITE_ATTEMPTED", "RESULT",
     "MESSAGE",
+    "FILE_DIAGNOSTICS", "FAILURE_POSTCHECK", "KEEP_POSTCHECK_SHEET_COUNT",
 )
 
 
@@ -338,6 +339,40 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def inspect_associated_files(session, file_management, identifier, log):
+    """Read current NX file enumeration; this is not a server relation query."""
+    part = J16.find_loaded_by_identifier(session, identifier)
+    opened_here = part is None
+    status = None
+    files = []
+    try:
+        if opened_here:
+            part, status = J16.unwrap_open_result(session.Parts.OpenBase(identifier))
+        if part is None or normalized_identifier(J16.journal_identifier(part)) != normalized_identifier(identifier):
+            raise RuntimeError("Cannot inspect files for exact identity: " + identifier)
+        files = unique_pdm_files(file_management.GetAssociatedFiles([part], []))
+        return {"identifier": identifier, "file_count": len(files),
+                "file_names": [J16.pdm_file_name(value) for value in files]}
+    finally:
+        J16.release_pdm_files(files)
+        J16.dispose(status)
+        if opened_here and part is not None:
+            J16.close_opened_part(part, log)
+
+
+def collect_file_diagnostics(session, file_management, plan, log):
+    evidence = {}
+    for index in plan["discovered"]:
+        identifier = drawing_id(plan["part_number"], plan["revision"], index)
+        try:
+            evidence[str(index)] = inspect_associated_files(
+                session, file_management, identifier, log)
+        except Exception as error:
+            evidence[str(index)] = {"identifier": identifier,
+                                    "error": J16.error_text(error)}
+    return json.dumps(evidence, sort_keys=True)
+
+
 def unique_pdm_files(value):
     files = []
     for candidate in J16.collect_pdm_files(value):
@@ -468,7 +503,9 @@ def backup_and_delete_target(
         load_status = None
         J16.close_opened_part(part, log)
         part = None
-        raw_delete = delete_files(pdm_files, False)
+        # No PdmFile means no dataset identity reaches this file-driven API.
+        # Do not present DeleteExistingAttachedFiles([], False) as a write.
+        raw_delete = delete_files(pdm_files, False) if pdm_files else []
         return {
             "identifier": identifier,
             "backup": backup_rows,
@@ -477,7 +514,7 @@ def backup_and_delete_target(
             "keep_empty_dataset": False,
             "file_count": len(pdm_files),
             "empty_payload": empty_payload,
-            "delete_attempted": True,
+            "delete_attempted": bool(pdm_files),
         }
     finally:
         try:
@@ -601,6 +638,8 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                 require_apply_authorization(row, plan)
             prepared.append((row, report, plan))
             if mode == "DRY_RUN":
+                report["FILE_DIAGNOSTICS"] = collect_file_diagnostics(
+                    session, file_management, plan, log)
                 report["RESULT"] = "DRY_RUN_READY" if plan["live_remove"] else "ALREADY_SINGLE_DWG"
                 report["MESSAGE"] = (
                     "Exact live inventory matches the requested keep/remove plan. No Teamcenter data was changed."
@@ -682,7 +721,11 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                 if post["state"] == "EXISTS":
                     if not outcome["empty_payload"]:
                         raise RuntimeError(
-                            "DWG{0} still opens after DeleteExistingAttachedFiles.".format(index)
+                            "DWG{0} still opens after DeleteExistingAttachedFiles. "
+                            "Zero file statuses do not prove dataset removal. Preserve BACKUP; "
+                            "restart NX and run DRY_RUN before any retry. A Teamcenter "
+                            "administrator must verify the specification relation if it remains."
+                            .format(index)
                         )
                     empty_extras.append(index)
                     report["EMPTY_DATASET_DWG_INDICES"] = indices_text(empty_extras)
@@ -736,6 +779,23 @@ def execute(rows, session, file_management, mode, backup_root, timestamp, log):
                 else "FAILED"
             )
             report["MESSAGE"] = J16.error_text(error)
+            # Keep the original failure and capture read-only evidence even when
+            # an extra remains openable. Never infer removal from a failed open.
+            try:
+                evidence = {}
+                for index in plan["discovered"]:
+                    evidence[str(index)] = inspect_exact(
+                        session, drawing_id(plan["part_number"], plan["revision"], index), log)
+                report["FAILURE_POSTCHECK"] = json.dumps(evidence, sort_keys=True)
+                report["POSTCHECK_DWG_INDICES"] = indices_text(
+                    int(index) for index, item in evidence.items() if item["state"] == "EXISTS")
+                keep_evidence = evidence[str(plan["keep"])]
+                report["KEEP_POSTCHECK_SHEET_COUNT"] = str(
+                    keep_evidence.get("drawing_sheet_count", -1))
+                report["FILE_DIAGNOSTICS"] = collect_file_diagnostics(
+                    session, file_management, plan, log)
+            except Exception as diagnostic_error:
+                report["FAILURE_POSTCHECK"] = J16.error_text(diagnostic_error)
             log.write(
                 "  ROW {0} {1}: {2}".format(
                     report["CSV_ROW"], report["RESULT"], report["MESSAGE"]

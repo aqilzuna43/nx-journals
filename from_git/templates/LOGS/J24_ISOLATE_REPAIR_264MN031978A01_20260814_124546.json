@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "journal_build": "J24-NX2506-HLA-ISOLATE-REPAIR-V1",
+  "run_timestamp": "2026-08-14T12:45:46+08:00",
+  "scope": "DISPLAY_ONLY_CURRENT_ISOLATE_VIEW_MUTATION_NO_SAVE",
+  "root_assembly": "264MN024625A01/A;1-ASSY-DCDC",
+  "target_request": {
+    "source": "EXACT_PART_NUMBER",
+    "value": "264MN031978A01"
+  },
+  "target": {
+    "assembly_path": "264MN024625A01/A;1-ASSY-DCDC / 264MN031978A01/A",
+    "level": 1,
+    "component_tag": "69623",
+    "component_name": "264MN031978A01/A",
+    "parent_component_tag": "",
+    "prototype_tag": "107624",
+    "prototype_type": "Part",
+    "prototype_name": "264MN031978A01/A;1-ASY, FRAMEBASE, DCDC",
+    "part_number": "264MN031978A01",
+    "revision": "A",
+    "reference_set": "Entire Part"
+  },
+  "traversal_errors": [],
+  "work_view": {
+    "name": "Isolate",
+    "tag": "65595"
+  },
+  "mapped_target_body_count": 36,
+  "before": {
+    "probe_status": "OBSERVED",
+    "visible_object_count": 2143,
+    "mapped_target_tags_visible": [],
+    "mapped_target_count_visible": 0,
+    "error": ""
+  },
+  "action": {
+    "api": "ComponentAssembly.ShowComponentsInIsolateView",
+    "attempted": true,
+    "component_scope": "EXACT_TARGET_AND_COMPLETE_SUBTREE",
+    "component_count": 28,
+    "component_tags": [
+      "69623",
+      "70446",
+      "70447",
+      "70448",
+      "70449",
+      "70450",
+      "70451",
+      "70452",
+      "70453",
+      "70454",
+      "70455",
+      "70456",
+      "70457",
+      "70458",
+      "70459",
+      "70460",
+      "70461",
+      "70462",
+      "69677",
+      "70464",
+      "70467",
+      "70468",
+      "70469",
+      "70470",
+      "70463",
+      "70465",
+      "70466",
+      "70445"
+    ],
+    "error_list": [],
+    "exception": "Function takes 1 arguments, 2 passed.",
+    "refresh_probes": [],
+    "undo_mark_name": "J24 Show Target In Isolate View"
+  },
+  "after": null,
+  "rollback": {
+    "attempted": true,
+    "status": "ROLLED_BACK",
+    "error": ""
+  },
+  "verdict": {
+    "status": "API_ERROR",
+    "root_cause_code": "SHOW_COMPONENTS_IN_ISOLATE_VIEW_FAILED",
+    "statement": "NX rejected the supported isolate-view show operation; the undo rollback was attempted."
+  }
+}

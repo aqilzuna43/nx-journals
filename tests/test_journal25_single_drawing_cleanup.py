@@ -248,7 +248,7 @@ class SingleDrawingCleanupTests(unittest.TestCase):
         self.assertEqual([0], outcome["delete_statuses"])
         self.assertEqual(1, len(outcome["backup"]))
 
-    def test_empty_payload_extra_is_deleted_without_a_backup(self):
+    def test_empty_payload_does_not_issue_a_targetless_delete(self):
         class FakePart:
             JournalIdentifier = "@DB/MODEL100/A/specification/MODEL100-A-dwg2"
 
@@ -282,12 +282,55 @@ class SingleDrawingCleanupTests(unittest.TestCase):
                     session, manager, "MODEL100", "A", 2, folder, FakeLog()
                 )
         self.assertTrue(outcome["empty_payload"])
-        self.assertTrue(outcome["delete_attempted"])
+        self.assertFalse(outcome["delete_attempted"])
         self.assertEqual(0, outcome["file_count"])
         self.assertEqual([], outcome["backup"])
         self.assertEqual([], manager.download_calls)
-        self.assertEqual([], manager.delete_args[0])
-        self.assertIs(manager.delete_args[1], False)
+        self.assertIsNone(manager.delete_args)
+
+    def test_failed_dwg3_preserves_keep4_postcheck_and_backup_evidence(self):
+        plan = self.plan(extras=(2, 3))
+        plan.update(keep=4, discovered=[1, 2, 3, 4], live_remove=[1, 2, 3],
+                    expected_remove=[1, 2, 3])
+        plan["drawings"] = {i: self.inspection(sheets=2 if i == 4 else 0)
+                            for i in plan["discovered"]}
+        row = self.row(KEEP_DWG_INDEX="4", EXPECTED_REMOVE_DWG_INDICES="1|2|3")
+
+        def outcome(*args):
+            index = args[4]
+            return {"backup": [{"file": "dwg3.prt", "sha256": "abc"}] if index == 3 else [],
+                    "delete_attempted": index == 3, "file_count": 3 if index == 3 else 0,
+                    "delete_result": "[0, 0, 0]" if index == 3 else "[]",
+                    "delete_statuses": [0, 0, 0] if index == 3 else [],
+                    "empty_payload": index != 3}
+
+        with mock.patch.object(self.journal, "validate_plan", return_value=plan), \
+             mock.patch.object(self.journal, "backup_and_delete_target", side_effect=outcome) as delete, \
+             mock.patch.object(self.journal, "inspect_exact", return_value=self.inspection(sheets=2)), \
+             mock.patch.object(self.journal, "collect_file_diagnostics", return_value='{}'):
+            report = self.journal.execute([row], object(), object(), "APPLY_APPROVED",
+                                          "unused", "now", FakeLog())[0]
+        self.assertEqual("FAILED", report["RESULT"])
+        self.assertEqual("1|2|3|4", report["POSTCHECK_DWG_INDICES"])
+        self.assertEqual("2", report["KEEP_POSTCHECK_SHEET_COUNT"])
+        self.assertEqual("dwg3.prt", report["BACKUP_FILES"])
+        self.assertIn("restart NX", report["MESSAGE"])
+        self.assertEqual([1, 2, 3], [call.args[4] for call in delete.call_args_list])
+
+    def test_file_diagnostics_release_resources_and_close_opened_part(self):
+        identifier = self.journal.drawing_id("MODEL100", "A", 4)
+        part = types.SimpleNamespace(JournalIdentifier=identifier)
+        file = types.SimpleNamespace(GetFileName=lambda: "dwg4.prt")
+        manager = types.SimpleNamespace(GetAssociatedFiles=mock.Mock(return_value=[file]))
+        session = types.SimpleNamespace(Parts=types.SimpleNamespace(
+            OpenBase=mock.Mock(return_value=(part, None))))
+        with mock.patch.object(self.journal.J16, "find_loaded_by_identifier", return_value=None), \
+             mock.patch.object(self.journal.J16, "release_pdm_files") as release, \
+             mock.patch.object(self.journal.J16, "close_opened_part") as close:
+            result = self.journal.inspect_associated_files(session, manager, identifier, FakeLog())
+        self.assertEqual(["dwg4.prt"], result["file_names"])
+        release.assert_called_once_with([file])
+        close.assert_called_once()
 
     def test_unprovable_file_name_still_fails_closed(self):
         class FakePart:

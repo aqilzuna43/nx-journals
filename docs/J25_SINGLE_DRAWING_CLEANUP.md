@@ -4,6 +4,41 @@ J25 reduces one Teamcenter-managed 3D Item/Revision from multiple drawing
 specifications (`dwg1`, `dwg2`, ...) to one explicitly selected final drawing.
 It is intended for a customer migration rule that permits only one DWG.
 
+## 2026-09-12 roadblock: keep DWG4
+
+Run `20260912_234432` on `264MN025454A01/A` did **not** prove removal.
+DWG1/DWG2 returned zero associated files and empty delete results. DWG3
+returned three files, which were backed up, and delete statuses `[0, 0, 0]`,
+but its exact identity still opened. DWG4 had two sheets at preflight and
+was never a delete target. The failed run did not capture a final keep check.
+
+The cause of DWG3 remaining openable is unresolved: the result alone cannot
+distinguish a surviving server dataset from NX session/cache behavior.
+Do not infer a successful Cut from zero file status codes or assume an empty
+file enumeration proves an empty Teamcenter dataset.
+
+V3 skips targetless empty delete calls. DRY_RUN now records `FILE_DIAGNOSTICS`
+for all discovered drawings, including DWG4, with file counts, names, or query
+errors. Failed apply rows also record individual open results in
+`FAILURE_POSTCHECK`, the openable indices, and `KEEP_POSTCHECK_SHEET_COUNT`.
+These are NX observations, not an authoritative Teamcenter relation query.
+
+Next office-machine run:
+
+1. Preserve the entire original BACKUP folder; do not overwrite it.
+2. Restart NX, use V3 with `USER_MODE = "DRY_RUN"`, and ensure `NX_J25_MODE`
+   is unset or `DRY_RUN` (the environment overrides the setting).
+3. Use `PART_NUMBER=264MN025454A01`, `REVISION=A`, `KEEP_DWG_INDEX=4`,
+   `EXPECTED_REMOVE_DWG_INDICES=1|2|3`.
+4. Return the new JSON and log. If the inventory has changed, the exact-plan
+   gate will block; report that result before changing the removal scope.
+5. If the extra specifications remain, ask a Teamcenter administrator to
+   inspect their `IMAN_specification` relations and perform the supported Cut
+   of only DWG1–DWG3, retaining DWG4. V3 adds diagnostics; it does not implement
+   or prove a relation-only Cut through NXOpen.
+
+Local tests cannot establish the state of those Teamcenter datasets.
+
 ## Exact mutation semantics
 
 NXOpen does not expose a supported relation-only detach call in the available
@@ -25,9 +60,9 @@ This is destructive Teamcenter cleanup, not merely hiding or unlinking a DWG.
 
 Some extra specifications are empty: NX reports `DrawingSheets = 0` for them
 and Teamcenter associates no file with the dataset. There is nothing to back
-up, so J25 records the payload count and then attempts the dataset removal
-anyway. Because the delete API is file-driven, a zero-file call may remove
-nothing at all — so the outcome is decided by evidence, not by the call:
+up, so J25 records the payload count and skips the targetless delete call.
+The delete API is file-driven; an empty argument contains no target identity.
+The outcome is decided by the subsequent inspection:
 
 - Dataset gone after the delete, and the final inventory shows only the keep
 drawing → `SINGLE_DWG_VERIFIED` as usual.
