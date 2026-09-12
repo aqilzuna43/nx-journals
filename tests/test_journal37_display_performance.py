@@ -1332,8 +1332,10 @@ class Journal37DisplayPerformanceTests(unittest.TestCase):
                 self.assertEqual("12000", leaf_row["FACE_COUNT"])
                 self.assertEqual("1", leaf_row["DENSITY_ZERO_COUNT"])
                 self.assertEqual("AL-6061", leaf_row["MATERIAL"])
-                self.assertEqual("FULLY_LOADED", leaf_row["LOAD_STATE"])
+                self.assertEqual("FullyLoaded", leaf_row["LOAD_STATE"])
+                self.assertEqual("YES", leaf_row["IS_FULLY_LOADED"])
                 self.assertEqual("1", leaf_row["VISIBLE_LAYER_COUNT"])
+                self.assertEqual("FakePart", leaf_row["PART_NX_TYPE"])
 
                 suspect_path = [
                     os.path.join(reports, name)
@@ -1371,7 +1373,7 @@ class Journal37DisplayPerformanceTests(unittest.TestCase):
                 ) as handle:
                     log_text = handle.read()
                 self.assertIn(
-                    "J37-NX2506-DISPLAY-PERF-TRIAGE-V1", log_text
+                    "J37-NX2506-DISPLAY-PERF-TRIAGE-V2", log_text
                 )
                 self.assertIn("Read-only", log_text)
 
@@ -1459,6 +1461,184 @@ class Journal37DisplayPerformanceTests(unittest.TestCase):
                 ) as handle:
                     log_text = handle.read()
                 self.assertIn("No work part is loaded", log_text)
+        finally:
+            self.nxopen.Session.__dict__.pop("GetSession", None)
+
+    def test_canonical_load_state_accepts_numeric_enum_values(self):
+        """NX 2506 returns PartLoadState as 1/2 rather than an enum name.
+
+        Reading '1' as text made every part look unloaded, so this is the
+        regression guard for the v1 false positive.
+        """
+        journal = self.journal
+        fully = FakePart("A", tag="a", fully_loaded=None, load_state=1)
+        partial = FakePart("B", tag="b", fully_loaded=None, load_state=2)
+        none_loaded = FakePart("C", tag="c", fully_loaded=None, load_state=0)
+        minimal = FakePart("D", tag="d", fully_loaded=None, load_state="3")
+
+        self.assertEqual("FULLY_LOADED", journal.part_load_state(fully)[0])
+        self.assertEqual("FullyLoaded", journal.load_state_text(fully))
+        self.assertEqual("NOT_FULLY_LOADED", journal.part_load_state(partial)[0])
+        self.assertEqual("PartiallyLoaded", journal.load_state_text(partial))
+        self.assertEqual(
+            "NOT_FULLY_LOADED", journal.part_load_state(none_loaded)[0]
+        )
+        self.assertEqual("NOT_FULLY_LOADED", journal.part_load_state(minimal)[0])
+
+    def test_canonical_load_state_accepts_enum_names_and_reprs(self):
+        journal = self.journal
+        for raw, expected in (
+            (
+                types.SimpleNamespace(name="FullyLoaded"),
+                "FULLY_LOADED",
+            ),
+            ("PartLoadState.FullyLoaded", "FULLY_LOADED"),
+            ("FullyLoaded", "FULLY_LOADED"),
+            ("PartiallyLoaded", "NOT_FULLY_LOADED"),
+            ("MinimallyLoaded", "NOT_FULLY_LOADED"),
+        ):
+            part = FakePart("P", tag="p", fully_loaded=None, load_state=raw)
+            self.assertEqual(expected, journal.part_load_state(part)[0], raw)
+
+    def test_canonical_load_state_falls_back_to_is_fully_loaded(self):
+        journal = self.journal
+        part = FakePart("P", tag="p", fully_loaded=True, load_state=None)
+        self.assertEqual("FULLY_LOADED", journal.part_load_state(part)[0])
+        part.IsFullyLoaded = False
+        self.assertEqual("NOT_FULLY_LOADED", journal.part_load_state(part)[0])
+        part.IsFullyLoaded = None
+        self.assertEqual("UNKNOWN", journal.part_load_state(part)[0])
+
+    def test_annotation_manager_without_enumeration_is_unavailable(self):
+        class NotACollection:
+            pass
+
+        part = FakePart("P", tag="p")
+        part.Annotations = NotACollection()
+        geometry = self.probe_geometry(part)
+        status, count, error = geometry["collection_status"]["Annotations"]
+        self.assertEqual("UNAVAILABLE", status)
+        self.assertEqual("", geometry["annotation_count"])
+        self.assertIn("not iterable", error)
+
+    def test_annotation_manager_with_getter_is_counted(self):
+        class WithGetter:
+            def GetAnnotations(self):
+                return [object(), object()]
+
+        part = FakePart("P", tag="p")
+        part.Annotations = WithGetter()
+        geometry = self.probe_geometry(part)
+        self.assertEqual(2, geometry["annotation_count"])
+
+    def test_identity_label_uses_component_path_for_unnamed_prototype(self):
+        journal = self.journal
+        unnamed = FakePart("", tag="x")
+        unnamed.Name = ""
+        unnamed.Leaf = ""
+        unnamed.FullPath = ""
+        self.assertEqual(
+            "<unnamed prototype> @ ROOT / SUB / LEAF",
+            journal.identity_label(unnamed, "ROOT / SUB / LEAF"),
+        )
+        self.assertEqual(
+            "264MN000003A01/A",
+            journal.identity_label(
+                FakePart("L", tag="l", attributes={"DB_PART_NO": "264MN000003A01", "DB_PART_REV": "A"}),
+                "path",
+            ),
+        )
+
+    def test_main_discover_writes_api_member_dump(self):
+        tree, _view, _session = self.build_session()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                self.run_main(folder, NX_J37_DISCOVER="YES")
+                _run, reports, _logs = self.read_run(folder)
+                discover = [
+                    name
+                    for name in os.listdir(reports)
+                    if name.startswith("J37_DISCOVER_")
+                ]
+                self.assertEqual(1, len(discover))
+                with open(
+                    os.path.join(reports, discover[0]),
+                    "r",
+                    encoding="utf-8-sig",
+                    newline="",
+                ) as handle:
+                    rows = list(csv.DictReader(handle))
+                self.assertTrue(rows)
+                self.assertEqual(
+                    {"RUN_TIMESTAMP", "SCOPE", "OWNER", "MEMBER", "STATUS", "VALUE"},
+                    set(rows[0].keys()),
+                )
+        finally:
+            self.nxopen.Session.__dict__.pop("GetSession", None)
+
+    def test_main_payload_carries_totals_and_visible_rows(self):
+        tree, _view, _session = self.build_session(
+            visible_objects=[FakeBody("B1"), FakeComponent("C1")]
+        )
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                self.run_main(folder)
+                _run, reports, _logs = self.read_run(folder)
+                evidence = [
+                    name
+                    for name in os.listdir(reports)
+                    if name.startswith("J37_EVIDENCE_")
+                ][0]
+                with open(
+                    os.path.join(reports, evidence), "r", encoding="utf-8"
+                ) as handle:
+                    payload = json.load(handle)
+                totals = payload["totals"]
+                self.assertEqual(4, totals["prototypes"])
+                self.assertEqual(12000, totals["faces_total"])
+                self.assertEqual(0, totals["not_fully_loaded_prototypes"])
+                self.assertEqual(0, totals["entire_part_refset_occurrences"])
+                self.assertTrue(payload["visible_rows"])
+                self.assertEqual(
+                    2,
+                    int(
+                        next(
+                            row["TOTAL_VISIBLE_OBJECTS"]
+                            for row in payload["visible_rows"]
+                        )
+                    ),
+                )
+        finally:
+            self.nxopen.Session.__dict__.pop("GetSession", None)
+
+    def test_main_does_not_flag_fully_loaded_numeric_state(self):
+        """End-to-end guard: numeric PartLoadState must not create suspects."""
+        tree = make_assembly()
+        for part in (tree["root"], tree["sub"], tree["leaf"], tree["shared"]):
+            part.IsFullyLoaded = None
+            part.PartLoadState = 1
+        view = FakeView(visible_objects=[])
+        session = FakeSession(
+            work_part=tree["root"],
+            loaded_parts=[tree["sub"], tree["leaf"], tree["shared"]],
+            preferences=SESSION_PREFS,
+            views=[view],
+        )
+        self.nxopen.Session.GetSession = staticmethod(lambda: session)
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                self.run_main(folder)
+                _run, reports, _logs = self.read_run(folder)
+                suspect_path = [
+                    os.path.join(reports, name)
+                    for name in os.listdir(reports)
+                    if name.startswith("J37_SUSPECTS_")
+                ][0]
+                with open(
+                    suspect_path, "r", encoding="utf-8-sig", newline=""
+                ) as handle:
+                    codes = {row["CODE"] for row in csv.DictReader(handle)}
+                self.assertNotIn("NOT_FULLY_LOADED", codes)
         finally:
             self.nxopen.Session.__dict__.pop("GetSession", None)
 

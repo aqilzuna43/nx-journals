@@ -90,7 +90,7 @@ import NXOpen
 # ---------------------------------------------------------------------------
 
 OUTPUT_ROOT_FOLDER = "NX_DISPLAY_PERF"
-JOURNAL_BUILD_ID = "J37-NX2506-DISPLAY-PERF-TRIAGE-V1"
+JOURNAL_BUILD_ID = "J37-NX2506-DISPLAY-PERF-TRIAGE-V2"
 
 MODE = "PROBE"  # PROBE / TIMED
 SCOPE_FILTER = "ALL"  # ALL / BOM
@@ -136,6 +136,7 @@ OCCURRENCE_COLUMNS = (
     "PROTOTYPE_DB_PART_REV",
     "PROTOTYPE_NAME",
     "PROTOTYPE_LOAD_STATE",
+    "PROTOTYPE_NX_TYPE",
     "IS_SUPPRESSED",
     "IS_BLANKED",
     "COMPONENT_LAYER",
@@ -157,6 +158,7 @@ TARGET_COLUMNS = (
     "DB_PART_REV",
     "PART_NAME",
     "PART_KIND",
+    "PART_NX_TYPE",
     "IS_WORK_PART",
     "LEVEL",
     "DEEPEST_LEVEL",
@@ -194,6 +196,10 @@ TARGET_COLUMNS = (
     "DYNAMIC_SECTION_COUNT",
     "IMAGE_COUNT",
     "DRAWING_SHEET_COUNT",
+    "SAVE_DISPLAY_FACETS",
+    "PART_PREVIEW_MODE",
+    "IS_DESIGN_REVIEW_PART",
+    "IS_DISPLAYED",
     "DENSITY_MIN",
     "DENSITY_MAX",
     "DENSITY_AVERAGE",
@@ -271,6 +277,15 @@ TIMING_COLUMNS = (
     "NOTE",
 )
 
+DISCOVER_COLUMNS = (
+    "RUN_TIMESTAMP",
+    "SCOPE",
+    "OWNER",
+    "MEMBER",
+    "STATUS",
+    "VALUE",
+)
+
 
 # ---------------------------------------------------------------------------
 # Mode resolution
@@ -335,6 +350,13 @@ def resolve_max_bodies():
     if count < 1:
         raise ValueError("NX_J37_MAX_BODIES must be >= 1")
     return count
+
+
+def resolve_discover():
+    value = normalize_text(os.environ.get("NX_J37_DISCOVER")).upper()
+    if not value:
+        return False
+    return value in TRUE_VALUES
 
 
 # ---------------------------------------------------------------------------
@@ -587,10 +609,29 @@ def _list_result(value):
             return ("OK", list(to_array()), "")
         except Exception as error:
             return ("ERROR", [], error_text(error))
+    # Some NX managers (for example Annotations.AnnotationManager) are not
+    # iterable and have no ToArray; try the documented enumeration methods
+    # before declaring the probe unavailable.
     try:
         return ("OK", list(value), "")
+    except TypeError:
+        pass
     except Exception as error:
         return ("ERROR", [], error_text(error))
+    for getter_name in ("GetObjects", "GetAnnotations", "AskAnnotations", "GetList"):
+        getter = getattr(value, getter_name, None)
+        if callable(getter):
+            try:
+                return ("OK", list(getter()), "")
+            except Exception as error:
+                return ("ERROR", [], error_text(error))
+    return (
+        "UNAVAILABLE",
+        [],
+        "{0} is not iterable and exposes no enumeration method".format(
+            type(value).__name__
+        ),
+    )
 
 
 def collection_items(owner, name):
@@ -861,6 +902,9 @@ def collect_occurrences(work_part, scope_filter="ALL"):
                 "PROTOTYPE_LOAD_STATE": (
                     load_state_text(prototype) if prototype is not None else ""
                 ),
+                "PROTOTYPE_NX_TYPE": (
+                    nx_type_name(prototype) if prototype is not None else ""
+                ),
                 "IS_SUPPRESSED": "YES" if suppressed else "NO",
                 "IS_BLANKED": "YES" if blanked else "NO",
                 "COMPONENT_LAYER": safe_property(component, "Layer", ""),
@@ -967,23 +1011,89 @@ def arrangement_text(arrangement):
 # ---------------------------------------------------------------------------
 
 
+# PartLoadState enum values (NX returns the NAME on some builds and the
+# NUMERIC VALUE on others: NX 2506 returned '1' for FullyLoaded).
+LOAD_STATE_BY_VALUE = {
+    0: "NotLoaded",
+    1: "FullyLoaded",
+    2: "PartiallyLoaded",
+    3: "MinimallyLoaded",
+}
+LOAD_STATE_BY_NAME = {
+    "NOTLOADED": "NotLoaded",
+    "FULLYLOADED": "FullyLoaded",
+    "PARTIALLYLOADED": "PartiallyLoaded",
+    "MINIMALLYLOADED": "MinimallyLoaded",
+    "LOADED": "FullyLoaded",
+}
+
+
+def canonical_load_state(raw):
+    """Return (canonical_name, raw_text) for a PartLoadState value.
+
+    Accepts an enum (uses .name), a number, a numeric string, or an enum
+    repr such as 'PartLoadState.FullyLoaded'. Unknown input is returned as-is
+    rather than being forced into a load state.
+    """
+    if raw is None:
+        return ("", "")
+    name = getattr(raw, "name", None)
+    text = clean(name if name is not None else raw)
+    if not text:
+        return ("", "")
+
+    key = text.replace("_", "").replace(" ", "").upper()
+    if key in LOAD_STATE_BY_NAME:
+        return (LOAD_STATE_BY_NAME[key], text)
+
+    tail = key.split(".")[-1]
+    if tail in LOAD_STATE_BY_NAME:
+        return (LOAD_STATE_BY_NAME[tail], text)
+
+    try:
+        value = int(float(text))
+    except Exception:
+        value = None
+    if value is not None and value in LOAD_STATE_BY_VALUE:
+        return (LOAD_STATE_BY_VALUE[value], text)
+
+    return (text, text)
+
+
 def load_state_text(part):
     status, raw_state = part_load_state(part)
     return raw_state or status
 
 
 def part_load_state(part):
+    """Return (status, raw_state).
+
+    status is FULLY_LOADED, NOT_FULLY_LOADED, or UNKNOWN and is the only value
+    callers may compare against. raw_state is the human-readable canonical
+    name (FullyLoaded / PartiallyLoaded / ...) for the report.
+    """
     fully_loaded = safe_property(part, "IsFullyLoaded")
-    state = clean(safe_property(part, "PartLoadState"))
+    canonical, raw_text = canonical_load_state(
+        safe_property(part, "PartLoadState")
+    )
+
+    if canonical in LOAD_STATE_BY_VALUE.values():
+        status = (
+            "FULLY_LOADED"
+            if canonical == "FullyLoaded"
+            else "NOT_FULLY_LOADED"
+        )
+        return (status, canonical)
+
     if fully_loaded is None:
-        return ("UNKNOWN", state)
+        return ("UNKNOWN", canonical or raw_text or "UNKNOWN")
     try:
         return (
             "FULLY_LOADED" if bool(fully_loaded) else "NOT_FULLY_LOADED",
-            state,
+            canonical or raw_text or "UNKNOWN",
         )
     except Exception:
-        return ("UNKNOWN", state)
+        return ("UNKNOWN", canonical or raw_text or "UNKNOWN")
 
 
 def minimally_loaded_children(part):
@@ -1077,6 +1187,151 @@ PART_COLLECTION_SPECS = (
     ("Images", "image_count"),
     ("DrawingSheets", "drawing_sheet_count"),
 )
+
+
+def identity_label(part, sample_path=""):
+    """Identity for reports, with the component path when the part is unnamed.
+
+    NX 2506 returned 46 prototypes with no readable Name/Leaf/FullPath and no
+    DB_PART_NO; without the path they all collapse into one useless label.
+    """
+    number, revision = part_identity(part)
+    name = safe_part_name(part, fallback="")
+    if number or name:
+        return "{0}/{1}".format(number or name, revision or "-")
+    return "<unnamed prototype> @ {0}".format(sample_path or "<unknown path>")
+
+
+def part_display_flags(part):
+    """Cheap part-level display facts that need no geometry enumeration."""
+    flags = {}
+    for key, probe in (
+        ("save_display_facets", "SaveDisplayFacets"),
+        ("part_preview_mode", "PartPreviewMode"),
+        ("is_design_review_part", "IsDesignReviewPart"),
+        ("is_displayed", "Displayed"),
+    ):
+        status, value, _error = probe_value(part, probe)
+        flags[key] = (
+            enum_text(value)
+            if status == "OK" and key != "save_display_facets"
+            else (value if status == "OK" else "")
+        )
+    return flags
+
+
+def discover_attributes(session, parts, max_names=400):
+    """Read-only API discovery for probes this NX build does not expose.
+
+    dumps the member names of the preference containers and of one
+    representative component/prototype so the probe paths can be corrected
+    from real evidence instead of guesswork. Nothing is modified.
+    """
+    rows = []
+
+    def dump(scope, owner_label, owner, name_filter=None):
+        if owner is None:
+            rows.append(
+                {
+                    "SCOPE": scope,
+                    "OWNER": owner_label,
+                    "MEMBER": "<container>",
+                    "STATUS": "UNAVAILABLE",
+                    "VALUE": "owner is None",
+                }
+            )
+            return
+        names = []
+        for name in dir(owner):
+            if name.startswith("_"):
+                continue
+            if name_filter is not None and not any(
+                token in name.lower() for token in name_filter
+            ):
+                continue
+            names.append(name)
+        for name in sorted(names)[: int(max_names)]:
+            status, value, error = probe_value(owner, name)
+            rows.append(
+                {
+                    "SCOPE": scope,
+                    "OWNER": owner_label,
+                    "MEMBER": name,
+                    "STATUS": status,
+                    "VALUE": (
+                        enum_text(value)
+                        if status == "OK"
+                        else (error or "")[:120]
+                    ),
+                }
+            )
+
+    session_prefs = safe_property(session, "Preferences")
+    dump("SESSION_PREFERENCES", "session.Preferences", session_prefs)
+    for container_name in (
+        "PerformanceVisualization",
+        "Visualization",
+        "VisualizationVisual",
+        "Assembly",
+        "SessionVisualizationPerformance",
+        "ShadeVisualization",
+    ):
+        container = safe_property(session_prefs, container_name)
+        if container is not None:
+            dump(
+                "SESSION_PREFERENCES",
+                "session.Preferences.{0}".format(container_name),
+                container,
+            )
+
+    for part in parts[:1]:
+        dump("PART_PREFERENCES", "part.Preferences", safe_property(part, "Preferences"))
+        for container_name in (
+            "PerformanceVisualization",
+            "ShadeVisualization",
+            "VisualVisualization",
+        ):
+            container = safe_property(
+                safe_property(part, "Preferences"), container_name
+            )
+            if container is not None:
+                dump(
+                    "PART_PREFERENCES",
+                    "part.Preferences.{0}".format(container_name),
+                    container,
+                )
+        dump(
+            "PROTOTYPE",
+            "part",
+            part,
+            name_filter=(
+                "facet",
+                "display",
+                "lightweight",
+                "preview",
+                "annotat",
+                "represent",
+            ),
+        )
+        root = safe_property(
+            safe_property(part, "ComponentAssembly"), "RootComponent"
+        )
+        if root is not None:
+            dump(
+                "COMPONENT",
+                "root component",
+                root,
+                name_filter=(
+                    "represent",
+                    "lightweight",
+                    "refset",
+                    "reference",
+                    "facet",
+                    "load",
+                ),
+            )
+
+    return rows
 
 
 def census_part_collections(part, result):
@@ -1625,7 +1880,7 @@ def build_suspects(
     not_fully_loaded = [
         target
         for target in targets
-        if load_state_text(target["part"]) not in ("", "FULLY_LOADED")
+        if part_load_state(target["part"])[0] != "FULLY_LOADED"
     ]
     for target in not_fully_loaded:
         number, revision = part_identity(target["part"])
@@ -1693,7 +1948,7 @@ def build_suspects(
     faces_by_identity = {}
     for target in targets:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
         try:
             faces = int(geometry.get("face_count") or 0)
@@ -1767,7 +2022,7 @@ def build_suspects(
     )
     for target in ranked[:TOP_SUSPECTS]:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
         faces = faces_by_identity.get(identity, 0)
         if not faces or faces < THRESHOLD_FACE_COUNT:
@@ -1793,7 +2048,7 @@ def build_suspects(
 
     for target in targets:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
         try:
             convergent = int(geometry.get("convergent_body_count") or 0)
@@ -1819,7 +2074,7 @@ def build_suspects(
 
     for target in targets:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
         zero = geometry.get("density_zero_count", "")
         if zero == "":
@@ -1852,7 +2107,7 @@ def build_suspects(
 
     for target in targets:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
         try:
             minimum = float(geometry.get("density_min"))
@@ -1883,7 +2138,7 @@ def build_suspects(
     # --- clutter, blanking, layers --------------------------------------
     for target in targets:
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         geometry = geometry_by_key.get(target["key"], {})
 
         clutter = 0
@@ -1973,7 +2228,7 @@ def build_suspects(
         if not info:
             continue
         number, revision = part_identity(target["part"])
-        identity = "{0}/{1}".format(number or safe_part_name(target["part"]), revision or "-")
+        identity = identity_label(target["part"], target["sample_path"])
         visible_layers = info.get("visible_layers", 0)
         populated = info.get("populated_layers", 0)
         hidden_populated = info.get("hidden_populated_layers", 0)
@@ -2405,6 +2660,7 @@ def main():
         visible_scan = resolve_visible_scan()
         rotation_count = resolve_rotation_count()
         max_bodies = resolve_max_bodies()
+        discover = resolve_discover()
 
         io_root = resolve_io_root()
         run_datetime = datetime.datetime.now(MYT_TIMEZONE)
@@ -2421,11 +2677,13 @@ def main():
         )
         log_line(
             session,
-            "Mode: {0}; scope: {1}; visible scan: {2}; rotations: {3}".format(
+            "Mode: {0}; scope: {1}; visible scan: {2}; rotations: {3}; "
+            "discover: {4}".format(
                 mode,
                 scope_filter,
                 "YES" if visible_scan else "NO",
                 rotation_count if mode == "TIMED" else "n/a",
+                "YES" if discover else "NO",
             ),
             log_buffer,
         )
@@ -2491,17 +2749,18 @@ def main():
         log_line(session, "Load state per prototype:", log_buffer)
         for target in targets:
             state = load_state_text(target["part"])
+            load_status = part_load_state(target["part"])[0]
             number, revision = part_identity(target["part"])
-            identity = "{0}/{1}".format(
-                number or safe_part_name(target["part"]), revision or "-"
+            identity = identity_label(
+                target["part"], target["sample_path"]
             )
             ledger.add(
                 "PartLoadState",
                 identity,
-                "OK" if state else "UNAVAILABLE",
+                "OK" if load_status != "UNKNOWN" else "UNAVAILABLE",
                 state,
             )
-            if state != "FULLY_LOADED":
+            if load_status != "FULLY_LOADED":
                 log_line(
                     session,
                     "  NOT FULLY LOADED: {0} -> {1}".format(identity, state),
@@ -2516,7 +2775,7 @@ def main():
             )
             ledger.add(
                 "HasAnyMinimallyLoadedChildren",
-                identity,
+                identity_label(target["part"], target["sample_path"]),
                 status,
                 len(names) if status == "OK" else "",
                 error,
@@ -2545,9 +2804,7 @@ def main():
         for target in targets:
             part = target["part"]
             number, revision = part_identity(part)
-            identity = "{0}/{1}".format(
-                number or safe_part_name(part), revision or "-"
-            )
+            identity = identity_label(part, target["sample_path"])
             started = time.perf_counter()
             geometry = census_geometry(part, max_bodies=max_bodies)
             census_seconds = elapsed_seconds(started)
@@ -2624,6 +2881,7 @@ def main():
                 "DB_PART_REV": revision,
                 "PART_NAME": safe_part_name(part),
                 "PART_KIND": part_kind(part),
+                "PART_NX_TYPE": nx_type_name(part),
                 "IS_WORK_PART": "YES" if target["is_work_part"] else "NO",
                 "LEVEL": target["level"],
                 "DEEPEST_LEVEL": target["deepest_level"],
@@ -2631,15 +2889,21 @@ def main():
                 "GLOBAL_OCCURRENCE_COUNT": global_occurrences,
                 "SAMPLE_PATH": target["sample_path"],
                 "LOAD_STATE": load_state_text(part),
-                "IS_FULLY_LOADED": (
-                    "YES"
-                    if part_load_state(part)[0] == "FULLY_LOADED"
-                    else "NO"
-                ),
+                "IS_FULLY_LOADED": {
+                    "FULLY_LOADED": "YES",
+                    "NOT_FULLY_LOADED": "NO",
+                }.get(part_load_state(part)[0], "UNKNOWN"),
                 "MATERIAL": material_text(part),
                 "PROBE_STATUS": geometry["status"],
                 "PROBE_ERROR": geometry["error"],
             }
+            flags = part_display_flags(part)
+            row["SAVE_DISPLAY_FACETS"] = flags.get("save_display_facets", "")
+            row["PART_PREVIEW_MODE"] = flags.get("part_preview_mode", "")
+            row["IS_DESIGN_REVIEW_PART"] = flags.get(
+                "is_design_review_part", ""
+            )
+            row["IS_DISPLAYED"] = flags.get("is_displayed", "")
             for column, key in (
                 ("BODY_COUNT", "body_count"),
                 ("SOLID_BODY_COUNT", "solid_body_count"),
@@ -2713,9 +2977,7 @@ def main():
         for target in targets:
             part = target["part"]
             number, revision = part_identity(part)
-            identity = "{0}/{1}".format(
-                number or safe_part_name(part), revision or "-"
-            )
+            identity = identity_label(part, target["sample_path"])
             rows, status, error, visible_layers = census_layers(part)
             ledger.add("Layers", identity, status, visible_layers, error)
             populated = sum(1 for row in rows if int(row["TOTAL_COUNT"]) > 0)
@@ -2929,6 +3191,47 @@ def main():
                 log_buffer,
             )
 
+        # --- optional API discovery ----------------------------------------
+        discover_path = ""
+        discover_rows = []
+        if discover:
+            try:
+                discover_rows = discover_attributes(
+                    session, [t["part"] for t in targets]
+                )
+            except Exception:
+                log_line(session, traceback.format_exc(), log_buffer)
+                discover_rows = []
+            discover_path = os.path.join(
+                folders["reports"], "J37_DISCOVER_{0}.csv".format(timestamp)
+            )
+            write_csv(discover_path, DISCOVER_COLUMNS, discover_rows)
+            log_line(
+                session,
+                "API discovery rows: {0} -> {1}".format(
+                    len(discover_rows), discover_path
+                ),
+                log_buffer,
+            )
+            for row in discover_rows:
+                if row["STATUS"] == "OK" and any(
+                    token in row["MEMBER"].lower()
+                    for token in (
+                        "lightweight",
+                        "faceted",
+                        "facet",
+                        "represent",
+                        "preview",
+                    )
+                ):
+                    log_line(
+                        session,
+                        "  {0}.{1} = {2}".format(
+                            row["OWNER"], row["MEMBER"], row["VALUE"]
+                        ),
+                        log_buffer,
+                    )
+
         # --- suspects ------------------------------------------------------
         # Aggregate occurrence-level probes so every suspect line can cite a
         # fact that was actually recorded.
@@ -3076,6 +3379,52 @@ def main():
         medium = sum(1 for s in suspects if s["SEVERITY"] == "MEDIUM")
         info = sum(1 for s in suspects if s["SEVERITY"] == "INFO")
 
+        def total_faces():
+            total = 0
+            for geometry in geometry_by_key.values():
+                try:
+                    total += int(geometry.get("face_count") or 0)
+                except Exception:
+                    continue
+            return total
+
+        def total_bodies():
+            total = 0
+            for geometry in geometry_by_key.values():
+                try:
+                    total += int(geometry.get("body_count") or 0)
+                except Exception:
+                    continue
+            return total
+
+        unnamed_prototypes = sum(
+            1
+            for target in targets
+            if not part_identity(target["part"])[0]
+            and not safe_part_name(target["part"], fallback="")
+        )
+        not_fully_loaded_count = sum(
+            1
+            for target in targets
+            if part_load_state(target["part"])[0] != "FULLY_LOADED"
+        )
+        totals = {
+            "occurrences": global_occurrences,
+            "prototypes": len(targets),
+            "faces_total": total_faces(),
+            "bodies_total": total_bodies(),
+            "entire_part_refset_occurrences": entire_part_count,
+            "entire_part_refset_parts": sum(
+                1
+                for suspect in suspects
+                if suspect["CODE"] == "ENTIRE_PART_REFSET"
+            ),
+            "not_fully_loaded_prototypes": not_fully_loaded_count,
+            "unnamed_prototypes": unnamed_prototypes,
+            "visible_objects": visible_total,
+            "suspects": len(suspects),
+        }
+
         payload = ledger.to_dict()
         payload.update(
             {
@@ -3096,6 +3445,10 @@ def main():
                 "timing_rows": timing_rows,
                 "suspects": suspects,
                 "report_paths": report_paths,
+                "totals": totals,
+                "visible_rows": visible_rows,
+                "discover_rows": discover_rows,
+                "discover_report": discover_path,
                 "reports": {
                     "targets": target_path,
                     "occurrences": occurrence_path,
@@ -3110,6 +3463,21 @@ def main():
         write_json(evidence_path, payload)
 
         log_line(session, "Triage complete", log_buffer)
+        log_line(
+            session,
+            "Totals: occurrences={0}; prototypes={1}; faces={2}; bodies={3}; "
+            "entire-part-refset occurrences={4}; not fully loaded={5}; "
+            "unnamed prototypes={6}".format(
+                totals["occurrences"],
+                totals["prototypes"],
+                totals["faces_total"],
+                totals["bodies_total"],
+                totals["entire_part_refset_occurrences"],
+                totals["not_fully_loaded_prototypes"],
+                totals["unnamed_prototypes"],
+            ),
+            log_buffer,
+        )
         log_line(
             session,
             "Suspects: HIGH={0}; MEDIUM={1}; INFO={2}".format(
